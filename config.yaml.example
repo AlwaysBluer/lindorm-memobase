@@ -1,0 +1,68 @@
+# LindormMemobase Configuration Example
+# Copy this file to config.yaml and update with your settings
+
+# LLM Configuration (Required)
+llm_api_key: null  # Set via environment variable MEMOBASE_LLM_API_KEY
+llm_base_url: null  # Optional: Set custom OpenAI-compatible endpoint
+best_llm_model: "gpt-4o-mini"
+thinking_llm_model: "gpt-4o-mini"
+summary_llm_model: null  # Uses best_llm_model if not set
+
+# Language Settings
+language: "en"  # "en" or "zh"
+
+# Profile Settings
+profile_strict_mode: false  # Only extract predefined topics
+profile_validate_mode: true  # Validate profile updates with LLM
+
+# Additional user profiles (optional)
+additional_user_profiles: []
+# Example:
+# - topic: "interests"
+#   description: "User interests and hobbies"
+#   sub_topics:
+#     - name: "music"
+#       description: "Musical preferences and activities"
+#       validate_value: false
+#     - name: "sports"
+#       description: "Sports activities and preferences"
+
+# Override all profiles (optional)
+overwrite_user_profiles: null
+
+# Embedding Configuration (Optional)
+enable_event_embedding: true
+embedding_provider: "openai"  # "openai" or "jina"
+embedding_api_key: null  # Set via environment variable MEMOBASE_EMBEDDING_API_KEY
+embedding_base_url: null
+embedding_model: "text-embedding-3-small"
+embedding_dim: 1536
+embedding_max_token_size: 8192
+
+# Token Limits
+max_chat_blob_buffer_token_size: 1024
+max_chat_blob_buffer_process_token_size: 16384
+max_profile_subtopics: 15
+max_pre_profile_token_size: 128
+
+# Buffer Settings
+buffer_flush_interval: 3600  # 1 hour in seconds
+
+# Event Settings
+event_theme_requirement: "Focus on the user's infos, not its instructions."
+minimum_chats_token_size_for_event_summary: 256
+event_tags: []
+
+# System Settings
+persistent_chat_blobs: false
+use_timezone: null  # null for system timezone, or specific timezone like "UTC"
+system_prompt: null
+llm_tab_separator: "::"
+cache_user_profiles_ttl: 1200  # 20 minutes
+
+# Telemetry
+telemetry_deployment_environment: "local"
+
+# Optional LLM Headers and Query Parameters
+llm_openai_default_query: null
+llm_openai_default_header: null
