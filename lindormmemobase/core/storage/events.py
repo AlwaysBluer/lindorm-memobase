@@ -12,7 +12,7 @@ def get_lindorm_search_storage(config: Config) -> 'LindormSearchStorage':
     """Get or create a global LindormSearchStorage instance."""
     global _lindorm_search_storage
     if _lindorm_search_storage is None and config is None:
-        raise Exception("requre configurations to set lindorm connection")
+        raise Exception("requre configurations params to connect to lindorm")
     elif _lindorm_search_storage is None:
         _lindorm_search_storage = LindormSearchStorage(config)
     return _lindorm_search_storage
@@ -281,9 +281,7 @@ async def store_event_with_embedding(
     embedding: Optional[List[float]] = None,
     config: Config = None
 ) -> Promise[str]:
-    if config is None:
-        return Promise.reject("CONFIG_ERROR", "Config parameter is required")
-    storage = LindormSearchStorage(config)
+    storage = get_lindorm_search_storage(config)
     return await storage.store_event_with_embedding(user_id, event_data, embedding)
 
 async def store_event_gist_with_embedding(
@@ -293,7 +291,5 @@ async def store_event_gist_with_embedding(
     embedding: Optional[List[float]] = None,
     config: Config = None
 ) -> Promise[str]:
-    if config is None:
-        return Promise.reject("CONFIG_ERROR", "Config parameter is required")
-    storage = LindormSearchStorage(config)
+    storage = get_lindorm_search_storage(config)
     return await storage.store_event_gist_with_embedding(user_id, event_id, gist_data, embedding)
