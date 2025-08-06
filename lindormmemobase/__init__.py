@@ -10,7 +10,7 @@ This package provides core functionality for:
 
 __version__ = "0.1.0"
 
-from .main import LindormMemobase, create_config, extract_memories
+from .main import LindormMemobase
 from .config import Config
 from .models.blob import Blob, BlobType
 from .models.types import FactResponse, MergeAddResult, Profile, ProfileEntry
@@ -18,8 +18,6 @@ from .models.profile_topic import ProfileConfig
 
 __all__ = [
     "LindormMemobase",
-    "create_config",
-    "extract_memories",
     "Config",
     "ProfileConfig",
     "Blob",

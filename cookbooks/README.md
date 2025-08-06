@@ -6,8 +6,37 @@ This directory contains practical examples and recipes for using the lindormmemo
 
 - `basic_usage.py` - Basic usage of the memory extraction API
 - `profile_management.py` - Managing user profiles and topics
+- `memory_chatbot.py` - **Complete memory-enhanced chatbot application**
 - `embedding_search.py` - Using embedding-based search functionality
 - `async_processing.py` - Asynchronous batch processing examples
+
+## Featured: Memory-Enhanced Chatbot
+
+The `memory_chatbot.py` is a complete application demonstrating all lindormmemobase capabilities:
+
+### Key Features
+🧠 **Smart Memory System** - Automatically extracts and stores memories from conversations
+🎯 **Context Enhancement** - Uses memories to provide personalized responses
+💬 **Interactive Chat** - Real-time chat with rich command system
+📚 **Memory Management** - Search, view, and manage stored memories
+
+### Quick Start
+```bash
+# Set up environment
+cp cookbooks/chatbot.env .env
+# Edit .env with your API keys
+
+# Run the chatbot
+python cookbooks/memory_chatbot.py --user_id your_name
+
+# Available commands in chat:
+# /memories - View stored memories
+# /search - Search through memories
+# /toggle - Toggle memory enhancement
+# /help - Show all commands
+```
+
+See `CHATBOT_README.md` for detailed documentation.
 
 ## How to Run Examples
 

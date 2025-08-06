@@ -58,27 +58,6 @@ class LindormMemobase:
         config = create_config(**kwargs)
         return cls(config)
     
-    async def process_user_blobs(
-        self, 
-        user_id: str, 
-        blobs: List[Blob], 
-        profile_config: Optional[ProfileConfig] = None
-    ) -> Promise:
-        """
-        Process user blobs to extract memory and update profiles.
-        
-        Args:
-            user_id: Unique identifier for the user
-            blobs: List of user data blobs to process
-            profile_config: Profile configuration. If None, uses default.
-            
-        Returns:
-            Promise containing the processing results
-        """
-        if profile_config is None:
-            profile_config = ProfileConfig()
-            
-        return await process_blobs(user_id, profile_config, blobs, self.config)
     
     async def extract_memories(
         self, 
@@ -383,29 +362,6 @@ class LindormMemobase:
             topics=topics,
             max_profiles=max_results
         )
-
-
-# Convenience functions for users who want simple interfaces
-async def extract_memories(
-    user_id: str, 
-    blobs: List[Blob], 
-    config: Optional[Config] = None,
-    profile_config: Optional[ProfileConfig] = None
-) -> Promise:
-    """
-    Simple function to extract memories from user blobs.
-    
-    Args:
-        user_id: Unique identifier for the user  
-        blobs: List of user data blobs to process
-        config: System configuration. If None, loads from default.
-        profile_config: Profile configuration. If None, uses default.
-        
-    Returns:
-        Promise containing the extraction results
-    """
-    memobase = LindormMemobase(config)
-    return await memobase.extract_memories(user_id, blobs, profile_config)
 
 
 def create_config(**kwargs) -> Config:
