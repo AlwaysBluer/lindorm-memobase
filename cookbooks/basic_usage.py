@@ -9,7 +9,7 @@ This example demonstrates the core functionality of lindormmemobase:
 """
 
 import asyncio
-from lindormmemobase import MemoBaseAPI, Blob, Config
+from lindormmemobase import LindormMemobase, Blob, Config
 from datetime import datetime
 
 async def basic_usage_example():
@@ -17,7 +17,7 @@ async def basic_usage_example():
     
     # Initialize the API with configuration
     config = Config.load_config()
-    api = MemoBaseAPI(config)
+    api = LindormMemobase(config)
     
     # Create some sample conversation blobs
     blobs = [

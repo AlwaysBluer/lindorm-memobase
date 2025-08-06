@@ -10,14 +10,14 @@ This package provides core functionality for:
 
 __version__ = "0.1.0"
 
-from .api import MemoBaseAPI
+from .main import LindormMemobase
 from .config import Config
 from .models.blob import Blob
 from .models.response import FactResponse, MergeAddResult
 from .models.types import Profile, ProfileEntry
 
 __all__ = [
-    "MemoBaseAPI",
+    "LindormMemobase",
     "Config", 
     "Blob",
     "FactResponse",

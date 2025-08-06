@@ -4,12 +4,12 @@ A lightweight memory extraction and profile management system for LLM applicatio
 
 ## Features
 
-- >à **Memory Extraction**: Extract structured facts from conversational data
-- =d **Profile Management**: Organize user information by topics and subtopics
-- = **Embedding Search**: Vector-based similarity search capabilities
-- =Ä **Flexible Storage**: Support for MySQL and OpenSearch backends
-- < **Multi-language**: English and Chinese language processing
-- ¡ **Async Processing**: Efficient asynchronous processing pipeline
+- **Memory Extraction**: Extract structured facts from conversational data
+- **Profile Management**: Organize user information by topics and subtopics
+- **Embedding Search**: Vector-based similarity search capabilities
+- **Flexible Storage**: Support for MySQL and OpenSearch backends
+- **Multi-language**: English and Chinese language processing
+- **Async Processing**: Efficient asynchronous processing pipeline
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ async def main():
     # Process and extract memory
     result = await api.process_blobs(blobs)
     if result.ok():
-        print(" Memory extraction successful!")
+        print("Memory extraction successful!")
         print(f"Facts: {result.data().facts}")
 
 asyncio.run(main())
@@ -95,7 +95,7 @@ asyncio.run(main())
 ### Processing Pipeline
 
 ```
-Raw Blobs ’ Truncation ’ Entry Summary ’ [Profile Extraction + Event Processing] ’ Structured Response
+Raw Blobs â†’ Truncation â†’ Entry Summary â†’ [Profile Extraction + Event Processing] â†’ Structured Response
 ```
 
 ## Building and Distribution
