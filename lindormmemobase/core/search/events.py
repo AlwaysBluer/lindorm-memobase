@@ -1,11 +1,11 @@
-from config import Config, TRACE_LOG
-
-from models.response import UserEventGistsData, CODE
-from models.blob import OpenAICompatibleMessage
-
-from utils.promise import Promise
-
-from utils.tools import get_encoded_tokens
+from ...config import Config, TRACE_LOG
+from ...models.response import UserEventGistsData, CODE
+from ...models.blob import OpenAICompatibleMessage
+from ...utils.promise import Promise
+from ...utils.tools import get_encoded_tokens
+from ..storage.events import LindormSearchStorage
+from ...embedding import get_embedding
+from datetime import datetime, timedelta
 
 def pack_latest_chat(chats: list[OpenAICompatibleMessage], chat_num: int = 3) -> str:
     return "\n".join([f"{m.content}" for m in chats[-chat_num:]])
@@ -42,6 +42,7 @@ async def get_user_event_gists_data(
         p = await search_user_event_gists(
             user_id,
             query=search_query,
+            config=global_config,
             topk=60,
             similarity_threshold=event_similarity_threshold,
             time_range_in_days=time_range_in_days,
@@ -49,52 +50,72 @@ async def get_user_event_gists_data(
     else:
         p = await get_user_event_gists(
             user_id,
+            config=global_config,
             topk=60,
             time_range_in_days=time_range_in_days,
         )
     return p
 
+
 async def get_user_event_gists(
     user_id: str,
+    config: Config,
     topk: int = 10,
     time_range_in_days: int = 21,
 ) -> Promise[UserEventGistsData]:
-    with Session() as session:
-        query = (
-            session.query(UserEventGist)
-            .filter_by(user_id=user_id, project_id=project_id)
-            .filter(
-                UserEventGist.created_at
-                > (func.now() - timedelta(days=time_range_in_days))
-            )
-        )
-        user_event_gists = (
-            query.order_by(UserEventGist.created_at.desc()).limit(topk).all()
-        )
-        if user_event_gists is None:
-            return Promise.resolve(UserEventGistsData(gists=[]))
-        results = [
-            {
-                "id": ue.id,
-                "gist_data": ue.gist_data,
-                "created_at": ue.created_at,
-                "updated_at": ue.updated_at,
+    """Get user event gists from Lindorm Search without vector search."""
+    try:
+        storage = LindormSearchStorage(config)
+        
+        # Calculate time cutoff
+        time_cutoff = datetime.utcnow() - timedelta(days=time_range_in_days)
+        
+        # Search query to get recent gists for the user
+        query = {
+            "size": topk,
+            "sort": [{"created_at": {"order": "desc"}}],
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"user_id": user_id}},
+                        {"range": {"created_at": {"gte": time_cutoff.isoformat()}}}
+                    ]
+                }
             }
-            for ue in user_event_gists
-        ]
-    gists = UserEventGistsData(gists=results)
-    return Promise.resolve(gists)
+        }
+        
+        response = storage.client.search(
+            index=config.opensearch_event_gists_index,
+            body=query,
+            routing=user_id
+        )
+        
+        gists = []
+        for hit in response['hits']['hits']:
+            source = hit['_source']
+            gists.append({
+                "id": hit['_id'],
+                "gist_data": source['gist_data'],
+                "created_at": source['created_at'],
+                "updated_at": source.get('updated_at', source['created_at'])
+            })
+        
+        return Promise.resolve(UserEventGistsData(gists=gists))
+    except Exception as e:
+        TRACE_LOG.error(user_id, f"Failed to get user event gists: {str(e)}")
+        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get user event gists: {str(e)}")
 
 
 async def search_user_event_gists(
     user_id: str,
     query: str,
-    global_config: Config,
+    config: Config,
     topk: int = 10,
     similarity_threshold: float = 0.2,
     time_range_in_days: int = 21,
 ) -> Promise[UserEventGistsData]:
-    if not global_config.enable_event_embedding:
+    """Search user event gists using vector similarity in Lindorm Search."""
+    if not config.enable_event_embedding:
         TRACE_LOG.warning(
             user_id,
             "Event embedding is not enabled, skip search",
@@ -103,62 +124,69 @@ async def search_user_event_gists(
             CODE.NOT_IMPLEMENTED,
             "Event embedding is not enabled",
         )
-    query_embeddings = await get_embedding(
-        [query], phase="query", model=global_config.embedding_model
-    )
-    if not query_embeddings.ok():
-        TRACE_LOG.error(
-            user_id,
-            f"Failed to get embeddings: {query_embeddings.msg()}",
+    
+    try:
+        query_embeddings = await get_embedding(
+            [query], phase="query", model=config.embedding_model, config=config
         )
-        return query_embeddings
-    query_embedding = query_embeddings.data()[0]
-
-    # Calculate the time cutoff once
-    time_cutoff = func.now() - timedelta(days=time_range_in_days)
-
-    # Store the similarity expression to avoid recomputation
-    similarity_expr = 1 - UserEventGist.embedding.cosine_distance(query_embedding)
-
-    stmt = (
-        select(
-            UserEventGist,
-            similarity_expr.label("similarity"),
-        )
-        .where(
-            UserEventGist.user_id == user_id,
-            UserEventGist.project_id == project_id,
-            UserEventGist.created_at > time_cutoff,
-            similarity_expr > similarity_threshold,
-            UserEventGist.embedding.is_not(None),  # Skip null embeddings
-        )
-        .order_by(desc("similarity"))
-        .limit(topk)
-    )
-
-    with Session() as session:
-        # Use .all() instead of .scalars().all() to get both columns
-        result = session.execute(stmt).all()
-        user_event_gists: list[UserEventGistData] = []
-        for row in result:
-            user_event: UserEventGist = row[0]  # UserEventGist object
-            similarity: float = row[1]  # similarity value
-            user_event_gists.append(
-                UserEventGistData(
-                    id=user_event.id,
-                    gist_data=user_event.gist_data,
-                    created_at=user_event.created_at,
-                    updated_at=user_event.updated_at,
-                    similarity=similarity,
-                )
+        if not query_embeddings.ok():
+            TRACE_LOG.error(
+                user_id,
+                f"Failed to get embeddings: {query_embeddings.msg()}",
             )
-
-        # Create UserEventsData with the events
-        user_event_gists_data = UserEventGistsData(gists=user_event_gists)
-        TRACE_LOG.info(
-            project_id,
-            user_id,
-            f"Event Query: {query}",
+            return query_embeddings
+        
+        query_embedding = query_embeddings.data()[0]
+        
+        time_cutoff = datetime.utcnow() - timedelta(days=time_range_in_days)
+        storage = LindormSearchStorage(config)
+        
+        search_query = {
+            "size": topk,
+            "query": {
+                "knn": {
+                    "embedding":  {
+                        "k": topk,
+                        "vector": query_embedding,
+                        "filter": {
+                            "bool": {
+                                "must": [
+                                    {"term": {"user_id": user_id}},
+                                    {"range": {"created_at": {"gte": time_cutoff.isoformat()}}},
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+            "ext": {"lvector": {"min_score": str(similarity_threshold)}}
+        }
+        
+        response = storage.client.search(
+            index=config.opensearch_event_gists_index,
+            body=search_query,
+            routing=user_id
         )
-
-    return Promise.resolve(user_event_gists_data)
+        
+        gists = []
+        for hit in response['hits']['hits']:
+            source = hit['_source']
+            similarity = hit['_score']
+            gists.append({
+                "id": hit['_id'],
+                "gist_data": source['gist_data'],
+                "created_at": source['created_at'],
+                "updated_at": source.get('updated_at', source['created_at']),
+                "similarity": similarity
+            })
+        
+        user_event_gists_data = UserEventGistsData(gists=gists)
+        TRACE_LOG.info(
+            user_id,
+            f"Event Query: {query}, Found {len(gists)} results",
+        )
+        
+        return Promise.resolve(user_event_gists_data)
+    except Exception as e:
+        TRACE_LOG.error(user_id, f"Failed to search user event gists: {str(e)}")
+        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to search user event gists: {str(e)}")
