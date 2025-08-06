@@ -39,11 +39,11 @@ class LindormTableStorage:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_profiles (
                     user_id VARCHAR(255) NOT NULL,
-                    profile_id VARCHAR(36) NOT NULL,
-                    content VARCHAR(8000) NOT NULL,
-                    attributes VARCHAR(2000),
-                    created_at VARCHAR(32),
-                    updated_at VARCHAR(32),
+                    profile_id VARCHAR(255) NOT NULL,
+                    content VARCHAR NOT NULL,
+                    attributes JSON,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
                     PRIMARY KEY(user_id, profile_id)
                 )
             """)
@@ -68,13 +68,13 @@ class LindormTableStorage:
                 cursor = conn.cursor()
                 for content, attributes in zip(profiles, attributes_list):
                     profile_id = str(uuid.uuid4())
-                    now = datetime.utcnow().isoformat()
+                    now = datetime.utcnow()  # 使用datetime对象而不是ISO字符串
                     cursor.execute(
                         """
                         INSERT INTO user_profiles (user_id, profile_id, content, attributes, created_at, updated_at)
                         VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (user_id, profile_id, content, json.dumps(attributes), now, now)
+                        (user_id, profile_id, content, attributes, now, now)
                     )
                     profile_ids.append(profile_id)
                 conn.commit()
@@ -105,7 +105,7 @@ class LindormTableStorage:
             try:
                 cursor = conn.cursor()
                 for profile_id, content, attributes in zip(profile_ids, contents, attributes_list):
-                    now = datetime.utcnow().isoformat()
+                    now = datetime.utcnow()  # 使用datetime对象而不是ISO字符串
                     if attributes is not None:
                         cursor.execute(
                             """
@@ -113,7 +113,7 @@ class LindormTableStorage:
                             SET content = %s, attributes = %s, updated_at = %s
                             WHERE user_id = %s AND profile_id = %s
                             """,
-                            (content, json.dumps(attributes), now, user_id, profile_id)
+                            (content, attributes, now, user_id, profile_id)  # attributes现在是JSON类型，不需要json.dumps
                         )
                     else:
                         cursor.execute(
@@ -205,9 +205,9 @@ class LindormTableStorage:
                     profiles.append({
                         'id': row['profile_id'],  # 使用 profile_id 作为 id
                         'content': row['content'],
-                        'attributes': json.loads(row['attributes']) if row['attributes'] else None,
-                        'created_at': row['created_at'],  # Already in ISO format string
-                        'updated_at': row['updated_at']   # Already in ISO format string
+                        'attributes': row['attributes'],  # JSON类型会自动解析为dict/list
+                        'created_at': row['created_at'].isoformat() if row['created_at'] else None,  # 转换TIMESTAMP为ISO字符串
+                        'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None   # 转换TIMESTAMP为ISO字符串
                     })
                 return profiles
             finally:

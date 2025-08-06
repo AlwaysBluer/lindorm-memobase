@@ -211,13 +211,6 @@ LOG.addHandler(handler)
 ENCODER = tiktoken.encoding_for_model("gpt-4o")
 
 
-# Config should be loaded by users, not globally
-# But some legacy code still expects a global CONFIG, so provide a fallback
-try:
-    CONFIG = Config.load_config()
-except Exception:
-    CONFIG = None
-
 
 class ProjectLogger:
     def __init__(self, logger: logging.Logger):

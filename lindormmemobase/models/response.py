@@ -118,3 +118,7 @@ class UserEventData(BaseModel):
     )
     similarity: Optional[float] = Field(None, description="Similarity score")
 
+
+class ContextData(BaseModel):
+    context: str = Field(..., description="Context string")
+

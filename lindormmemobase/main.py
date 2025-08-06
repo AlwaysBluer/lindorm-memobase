@@ -107,61 +107,7 @@ class LindormMemobase:
         # TODO: Implement profile retrieval from storage
         return Promise.resolve([])
     
-    async def update_user_profiles(
-        self, 
-        user_id: str, 
-        profiles: List[Profile]
-    ) -> Promise[bool]:
-        """
-        Update user profiles in storage.
-        
-        Args:
-            user_id: Unique identifier for the user
-            profiles: List of profiles to update
-            
-        Returns:
-            Promise containing success status
-        """
-        # TODO: Implement profile updates to storage
-        return Promise.resolve(True)
     
-    async def search_profiles(
-        self, 
-        user_id: str, 
-        query: str, 
-        limit: int = 10
-    ) -> Promise[List[Profile]]:
-        """
-        Search user profiles by query.
-        
-        Args:
-            user_id: Unique identifier for the user
-            query: Search query string
-            limit: Maximum number of results to return
-            
-        Returns:
-            Promise containing matching profiles
-        """
-        # TODO: Implement profile search functionality
-        return Promise.resolve([])
-    
-    async def store_events(
-        self, 
-        user_id: str, 
-        events: List[dict]
-    ) -> Promise[bool]:
-        """
-        Store events in the event storage.
-        
-        Args:
-            user_id: Unique identifier for the user
-            events: List of events to store
-            
-        Returns:
-            Promise containing success status
-        """
-        # TODO: Implement event storage
-        return Promise.resolve(True)
     
     async def get_events(
         self, 
