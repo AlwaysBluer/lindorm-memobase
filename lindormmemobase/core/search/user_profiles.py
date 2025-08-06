@@ -1,14 +1,14 @@
 import json
 import re
-from config import Config, TRACE_LOG
-from core.extraction.prompts import pick_related_profiles as pick_prompt
-from llm.complete import llm_complete
-from models.blob import OpenAICompatibleMessage
-from models.response import UserProfilesData, CODE
-from utils.promise import Promise
-from utils.tools import get_encoded_tokens, truncate_string, find_list_int_or_none
+from ...config import Config, TRACE_LOG
+from ..extraction.prompts import pick_related_profiles as pick_prompt
+from ...llm.complete import llm_complete
+from ...models.blob import OpenAICompatibleMessage
+from ...models.response import UserProfilesData, CODE
+from ...utils.promise import Promise
+from ...utils.tools import get_encoded_tokens, truncate_string, find_list_int_or_none
 
-from storage.user_profiles import get_user_profiles
+from ..storage.user_profiles import get_user_profiles
 
 
 JSON_BODY_REGEX = re.compile(r"({[\s\S]*})")
@@ -108,6 +108,7 @@ async def get_user_profiles_data(
                 user_id,
                 total_profiles,
                 chats,
+                global_config,
                 only_topics=only_topics,
             )
             if p.ok():
@@ -176,6 +177,7 @@ async def filter_profiles_with_chats(
         system_prompt=system_prompt,
         temperature=0.2,  # precise
         model=global_config.summary_llm_model,
+        config=global_config,
         **pick_prompt.get_kwargs(),
     )
     if not r.ok():

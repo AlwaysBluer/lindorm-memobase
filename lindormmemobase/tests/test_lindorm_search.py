@@ -18,9 +18,9 @@ import pytest
 from datetime import datetime
 from typing import List, Dict, Any
 
-from ..config import Config
-from ..core.storage.events import LindormSearchStorage
-from ..utils.promise import Promise
+from lindormmemobase.config import Config
+from lindormmemobase.core.storage.events import LindormSearchStorage
+from lindormmemobase.utils.promise import Promise
 
 
 class TestLindormSearchStorage:

@@ -28,6 +28,7 @@ dependencies = [
     "opensearch-py>=2.0.0",
     "mysql-connector-python==8.0.11",
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
 ]
 
 [build-system]
@@ -41,3 +42,14 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["lindormmemobase/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "asyncio: mark test as async",
+]

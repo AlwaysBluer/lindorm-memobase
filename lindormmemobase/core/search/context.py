@@ -1,17 +1,14 @@
 from functools import partial
 
+from ...config import Config, TRACE_LOG
+from ...models.response import CODE
+from ...models.blob import OpenAICompatibleMessage
+from ...models.response import ContextData
+from ...models.profile_topic import ProfileConfig
+from ..extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
 
-from config import Config, TRACE_LOG
-
-from models.response import CODE
-from models.response import response as res
-from models.blob import OpenAICompatibleMessage
-from models.response import ContextData
-from models.profile_topic import ProfileConfig
-from core.extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
-
-from utils.promise import Promise
-from utils.tools import get_encoded_tokens
+from ...utils.promise import Promise
+from ...utils.tools import get_encoded_tokens
 
 from .events import get_user_event_gists_data, truncate_event_gists
 from .user_profiles import get_user_profiles_data
@@ -48,7 +45,6 @@ async def get_user_context(
     assert 0 < profile_event_ratio <= 1, "profile_event_ratio must be between 0 and 1"
     max_profile_token_size = int(max_token_size * profile_event_ratio)
 
-    profile_config = p.data()
     use_language = profile_config.language or global_config.language
     context_prompt_func = CONTEXT_PROMPT_PACK[use_language]
     if customize_context_prompt is not None:
@@ -67,6 +63,7 @@ async def get_user_context(
             topic_limits,
             chats,
             full_profile_and_only_search_event,
+            global_config,
         ),
         get_user_event_gists_data(
             user_id,
@@ -74,6 +71,7 @@ async def get_user_context(
             require_event_summary,
             event_similarity_threshold,
             time_range_in_days,
+            global_config,
         ),
         return_exceptions=True,
     )

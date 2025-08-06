@@ -20,17 +20,17 @@ from datetime import datetime
 from typing import List, Dict, Any
 import json
 
-from ..config import Config
-from ..models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
-from ..models.profile_topic import ProfileConfig
-from ..models.response import ProfileData
-from ..core.extraction.processor.entry_summary import entry_chat_summary
-from ..core.extraction.processor.extract import extract_topics
-from ..core.extraction.processor.merge import merge_or_valid_new_memos
-from ..core.extraction.processor.event_summary import tag_event
-from ..core.extraction.processor.process_blobs import truncate_chat_blobs, process_profile_res, process_event_res
-from ..core.extraction.processor.organize import organize_profiles, deduplicate_profiles
-from ..core.extraction.processor.summary import re_summary, summary_memo
+from lindormmemobase.config import Config
+from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
+from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.models.response import ProfileData
+from lindormmemobase.core.extraction.processor.entry_summary import entry_chat_summary
+from lindormmemobase.core.extraction.processor.extract import extract_topics
+from lindormmemobase.core.extraction.processor.merge import merge_or_valid_new_memos
+from lindormmemobase.core.extraction.processor.event_summary import tag_event
+from lindormmemobase.core.extraction.processor.process_blobs import truncate_chat_blobs, process_profile_res, process_event_res
+from lindormmemobase.core.extraction.processor.organize import organize_profiles, deduplicate_profiles
+from lindormmemobase.core.extraction.processor.summary import re_summary, summary_memo
 
 
 def print_section(title: str, content: str = "", width: int = 80):
@@ -235,7 +235,7 @@ class TestProcessingFunctions:
         ]
         profiles = []  # No existing profiles
         
-        from ..models.profile_topic import UserProfileTopic
+        from lindormmemobase.models.profile_topic import UserProfileTopic
         total_profiles = [
             UserProfileTopic(
                 topic="interests",
@@ -547,7 +547,7 @@ class TestProcessingFunctions:
         """Test profile organization functionality."""
         # Create test profile data that exceeds max_profile_subtopics
         from uuid import uuid4
-        from ..models.types import MergeAddResult
+        from lindormmemobase.models.types import MergeAddResult
         
         # Create many profiles for the same topic to trigger organization
         test_profiles = []

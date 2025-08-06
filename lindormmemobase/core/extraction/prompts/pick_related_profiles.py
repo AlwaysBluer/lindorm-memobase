@@ -1,4 +1,4 @@
-from ....models.response import OpenAICompatibleMessage
+from ....models.blob import OpenAICompatibleMessage
 
 ADD_KWARGS = {
     "prompt_id": "pick_related_profiles",
