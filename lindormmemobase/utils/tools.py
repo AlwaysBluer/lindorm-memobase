@@ -148,3 +148,13 @@ def is_valid_profile_config(profile_config: str | None) -> Promise[None]:
         return Promise.reject(CODE.BAD_REQUEST, f"Invalid profile config: {e}")
     except ValidationError as e:
         return Promise.reject(CODE.BAD_REQUEST, f"Invalid profile config: {e}")
+
+def find_list_int_or_none(content: str) -> list[int] | None:
+    result = LIST_INT_REGEX.findall(content)
+    if not result:
+        return None
+    result = result[0]
+    ids = result.strip("[]").strip()
+    if not ids:
+        return []
+    return [int(i.strip()) for i in ids.split(",")]

@@ -1,11 +1,24 @@
-from config import Config
+import json
+import re
+from config import Config, TRACE_LOG
+from core.extraction.prompts import pick_related_profiles as pick_prompt
+from llm.complete import llm_complete
 from models.blob import OpenAICompatibleMessage
-from models.response import UserProfilesData
-
+from models.response import UserProfilesData, CODE
 from utils.promise import Promise
-from utils.tools import get_encoded_tokens
+from utils.tools import get_encoded_tokens, truncate_string, find_list_int_or_none
 
 from storage.user_profiles import get_user_profiles
+
+
+JSON_BODY_REGEX = re.compile(r"({[\s\S]*})")
+
+def try_json_reason(content: str) -> str | None:
+    try:
+        return json.loads(JSON_BODY_REGEX.search(content).group(1))["reason"]
+    except Exception:
+        return None
+
 
 async def truncate_profiles(
     profiles: UserProfilesData,
@@ -130,11 +143,12 @@ async def filter_profiles_with_chats(
     user_id: str,
     profiles: UserProfilesData,
     chats: list[OpenAICompatibleMessage],
+    global_config: Config,
     only_topics: list[str] | None = None,
     max_value_token_size: int = 10,
     max_previous_chats: int = 4,
     max_filter_num: int = 10,
-) -> Promise[FilterProfilesResult]:
+) -> Promise[dict]:
     """Filter profiles with chats"""
     if not len(chats) or not len(profiles.profiles):
         return Promise.reject(CODE.BAD_REQUEST, "No chats or profiles to filter")
@@ -158,16 +172,14 @@ async def filter_profiles_with_chats(
     system_prompt = pick_prompt.get_prompt(max_num=max_filter_num)
     input_prompt = pick_prompt.get_input(chats, topics_index)
     r = await llm_complete(
-        project_id,
         input_prompt,
         system_prompt=system_prompt,
         temperature=0.2,  # precise
-        model=CONFIG.summary_llm_model,
+        model=global_config.summary_llm_model,
         **pick_prompt.get_kwargs(),
     )
     if not r.ok():
         TRACE_LOG.error(
-            project_id,
             user_id,
             f"Failed to pick related profiles: {r.msg()}",
         )
@@ -176,7 +188,6 @@ async def filter_profiles_with_chats(
     reason = try_json_reason(r.data())
     if found_ids is None:
         TRACE_LOG.error(
-            project_id,
             user_id,
             f"Failed to pick related profiles: {r.data()}",
         )
@@ -186,7 +197,6 @@ async def filter_profiles_with_chats(
     ids = [i for i in found_ids if i < len(topics_index)]
     profiles = [profiles.profiles[topics_index[i]["index"]] for i in ids]
     TRACE_LOG.info(
-        project_id,
         user_id,
         f"Filter profiles with chats: {reason}, {found_ids}",
     )
