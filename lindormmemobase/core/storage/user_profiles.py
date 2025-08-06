@@ -74,7 +74,7 @@ class LindormTableStorage:
                         INSERT INTO user_profiles (user_id, profile_id, content, attributes, created_at, updated_at)
                         VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (user_id, profile_id, content, attributes, now, now)
+                        (user_id, profile_id, content, json.dumps(attributes), now, now)
                     )
                     profile_ids.append(profile_id)
                 conn.commit()
@@ -113,7 +113,7 @@ class LindormTableStorage:
                             SET content = %s, attributes = %s, updated_at = %s
                             WHERE user_id = %s AND profile_id = %s
                             """,
-                            (content, attributes, now, user_id, profile_id)  # attributes现在是JSON类型，不需要json.dumps
+                            (content, json.dumps(attributes), now, user_id, profile_id)  # attributes现在是JSON类型，不需要json.dumps
                         )
                     else:
                         cursor.execute(
@@ -203,11 +203,11 @@ class LindormTableStorage:
                 profiles = []
                 for row in results:
                     profiles.append({
-                        'id': row['profile_id'],  # 使用 profile_id 作为 id
+                        'id': row['profile_id'],  
                         'content': row['content'],
-                        'attributes': row['attributes'],  # JSON类型会自动解析为dict/list
-                        'created_at': row['created_at'].isoformat() if row['created_at'] else None,  # 转换TIMESTAMP为ISO字符串
-                        'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None   # 转换TIMESTAMP为ISO字符串
+                        'attributes': json.loads(row['attributes']) if row['attributes'] else None,  # 解析JSON字符串
+                        'created_at': row['created_at'].isoformat() if row['created_at'] else None,  
+                        'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None  
                     })
                 return profiles
             finally:
@@ -222,13 +222,13 @@ class LindormTableStorage:
             return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get profiles: {str(e)}")
 
 # mysql_storage will be initialized when needed with config
-mysql_storage = None
+lindorm_table_storage = None
 
 def _get_mysql_storage(config):
-    global mysql_storage
-    if mysql_storage is None:
-        mysql_storage = LindormTableStorage(config)
-    return mysql_storage
+    global lindorm_table_storage
+    if lindorm_table_storage is None:
+        lindorm_table_storage = LindormTableStorage(config)
+    return lindorm_table_storage
 
 async def add_user_profiles(
     user_id: str, 

@@ -122,3 +122,16 @@ class UserEventData(BaseModel):
 class ContextData(BaseModel):
     context: str = Field(..., description="Context string")
 
+class UserEventGistData(BaseModel):
+    id: UUID = Field(..., description="The event gist's unique identifier")
+    gist_data: EventGistData = Field(None, description="User event gist data")
+    created_at: datetime = Field(
+        None, description="Timestamp when the event gist was created"
+    )
+    updated_at: datetime = Field(
+        None, description="Timestamp when the event gist was last updated"
+    )
+    similarity: Optional[float] = Field(None, description="Similarity score")
+
+class UserEventGistsData(BaseModel):
+    gists: list[UserEventGistData] = Field(..., description="List of user event gists")

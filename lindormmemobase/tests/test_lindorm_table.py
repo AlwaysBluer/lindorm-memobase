@@ -19,9 +19,9 @@ import pytest
 from datetime import datetime
 from typing import List, Dict, Any
 
-from ..config import Config
-from ..core.storage.user_profiles import LindormTableStorage
-from ..utils.promise import Promise
+from lindormmemobase.config import Config
+from lindormmemobase.core.storage.user_profiles import LindormTableStorage
+from lindormmemobase.utils.promise import Promise
 
 
 class TestLindormTableStorage:
@@ -30,7 +30,30 @@ class TestLindormTableStorage:
     @classmethod
     def setup_class(cls):
         """Setup test class with configuration."""
-        cls.config = Config.load_config()
+        try:
+            cls.config = Config.load_config()
+        except AssertionError as e:
+            # If LLM API key is missing, create a minimal config for testing
+            import os
+            print(f"⚠️ Config validation failed: {e}")
+            print("⚠️ Using test configuration (no real LLM API key required)")
+            
+            # Create config with minimal required settings
+            cls.config = Config.__new__(Config)  # Skip __post_init__
+            
+            # Set MySQL configuration from environment or defaults
+            cls.config.mysql_host = os.getenv("MEMOBASE_MYSQL_HOST", "localhost")
+            cls.config.mysql_port = int(os.getenv("MEMOBASE_MYSQL_PORT", "3306"))
+            cls.config.mysql_username = os.getenv("MEMOBASE_MYSQL_USERNAME", "root")
+            cls.config.mysql_password = os.getenv("MEMOBASE_MYSQL_PASSWORD")
+            cls.config.mysql_database = os.getenv("MEMOBASE_MYSQL_DATABASE", "memobase")
+            
+            # Set minimal required fields (even though we won't use them for storage tests)
+            cls.config.llm_api_key = "test-key-for-storage-test"
+            cls.config.language = "en"
+            cls.config.best_llm_model = "gpt-4o-mini"
+            cls.config.enable_event_embedding = False  # Disable to avoid embedding validation
+            
         cls.storage = LindormTableStorage(cls.config)
         cls.test_user_id = "test_user_lindorm_table"
         cls.test_profile_ids = []  # Keep track of created profiles for cleanup

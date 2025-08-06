@@ -249,3 +249,11 @@ class ProjectLogger:
 
 
 TRACE_LOG = ProjectLogger(LOG)
+
+# Config should be loaded by users, not globally
+# But some legacy code still expects a global CONFIG, so provide a fallback
+try:
+    CONFIG = Config.load_config()
+except Exception:
+    # If no config file exists or API key is missing, create a minimal config
+    CONFIG = None

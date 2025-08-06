@@ -1,17 +1,21 @@
 from functools import partial
 
 
-from config import Config
+from config import Config, TRACE_LOG
 
 from models.response import CODE
 from models.response import response as res
 from models.blob import OpenAICompatibleMessage
 from models.response import ContextData
 from models.profile_topic import ProfileConfig
-
 from core.extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
 
 from utils.promise import Promise
+from utils.tools import get_encoded_tokens
+
+from .events import get_user_event_gists_data, truncate_event_gists
+from .user_profiles import get_user_profiles_data
+
 
 def customize_context_prompt_func(
     context_prompt: str, profile_section: str, event_section: str
@@ -117,7 +121,6 @@ async def get_user_context(
     event_section_tokens = len(get_encoded_tokens(event_section))
 
     TRACE_LOG.info(
-        project_id,
         user_id,
         f"Retrieved {len(use_profiles)} profiles({profile_section_tokens} tokens), {len(user_event_gists.gists)} event gists({event_section_tokens} tokens)",
     )
