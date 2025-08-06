@@ -6,7 +6,7 @@ from traceback import format_exc
 from ..config import LOG
 from typing import Literal
 
-from ..utils.promise import Promise
+from ..models.promise import Promise
 from ..models.response import CODE
 
 _global_openai_async_client = None

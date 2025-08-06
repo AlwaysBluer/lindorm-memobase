@@ -20,7 +20,7 @@ from typing import List, Dict, Any
 
 from lindormmemobase.config import Config
 from lindormmemobase.core.storage.events import LindormSearchStorage
-from lindormmemobase.utils.promise import Promise
+from lindormmemobase.models.promise import Promise
 
 
 class TestLindormSearchStorage:

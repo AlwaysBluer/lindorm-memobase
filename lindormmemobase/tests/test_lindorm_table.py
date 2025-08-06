@@ -21,7 +21,7 @@ from typing import List, Dict, Any
 
 from lindormmemobase.config import Config
 from lindormmemobase.core.storage.user_profiles import LindormTableStorage
-from lindormmemobase.utils.promise import Promise
+from lindormmemobase.models.promise import Promise
 
 
 class TestLindormTableStorage:

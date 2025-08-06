@@ -1,7 +1,7 @@
 import asyncio
 from ....config import TRACE_LOG
 
-from ....utils.promise import Promise
+from ....models.promise import Promise
 from ....utils.tools import get_encoded_tokens, truncate_string
 
 from ....models.types import AddProfile, UpdateProfile

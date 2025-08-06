@@ -7,7 +7,7 @@ from ...models.response import ContextData
 from ...models.profile_topic import ProfileConfig
 from ..extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
 
-from ...utils.promise import Promise
+from ...models.promise import Promise
 from ...utils.tools import get_encoded_tokens
 
 from .events import get_user_event_gists_data, truncate_event_gists

@@ -3,7 +3,7 @@ import numpy as np
 from traceback import format_exc
 
 from ..config import LOG
-from ..utils.promise import Promise
+from ..models.promise import Promise
 
 from ..models.response import CODE
 

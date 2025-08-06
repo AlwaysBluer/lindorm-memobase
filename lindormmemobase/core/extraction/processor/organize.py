@@ -15,7 +15,7 @@ from ....core.extraction.prompts.utils import (
 from ....llm.complete import llm_complete
 
 
-from ....utils.promise import Promise
+from ....models.promise import Promise
 
 
 async def organize_profiles(

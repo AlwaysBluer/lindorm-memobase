@@ -11,7 +11,7 @@ from .config import Config
 from .models.profile_topic import ProfileConfig
 from .models.blob import Blob
 from .models.types import FactResponse, MergeAddResult, Profile, ProfileEntry
-from .utils.promise import Promise
+from .models.promise import Promise
 from .core.extraction.processor.process_blobs import process_blobs
 
 

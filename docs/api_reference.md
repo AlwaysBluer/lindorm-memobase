@@ -508,7 +508,7 @@ config = Config.load_config()
 ### Error Handling
 
 ```python
-from utils.promise import Promise, CODE
+from models.promise import Promise, CODE
 from utils.errors import MemobaseError
 
 async def safe_processing():

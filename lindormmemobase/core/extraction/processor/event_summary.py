@@ -8,7 +8,7 @@ from ....core.extraction.prompts.utils import(
 from ....core.extraction.prompts.profile_init_utils import read_out_event_tags 
 from ....core.extraction.prompts import event_tagging as event_tagging_prompt
 
-from ....utils.promise import Promise
+from ....models.promise import Promise
 from ....llm.complete import llm_complete
 
 

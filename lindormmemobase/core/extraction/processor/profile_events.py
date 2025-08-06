@@ -6,7 +6,7 @@ from ....models.types import MergeAddResult
 from ....models.response import IdsData, EventData, CODE
 from ....embedding import get_embedding
 
-from ....utils.promise import Promise
+from ....models.promise import Promise
 from ....utils.tools import event_embedding_str
 
 from ....core.storage.events import store_event_with_embedding, store_event_gist_with_embedding

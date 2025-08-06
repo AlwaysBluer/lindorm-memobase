@@ -1,8 +1,7 @@
-from enum import IntEnum
 from dataclasses import dataclass
 from typing import TypeVar, Optional, Type, Generic
 from pydantic import ValidationError
-from ..models.response import BaseResponse, CODE
+from .response import BaseResponse, CODE
 from ..config import LOG
 
 

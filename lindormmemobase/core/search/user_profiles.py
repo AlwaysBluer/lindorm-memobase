@@ -5,7 +5,7 @@ from ..extraction.prompts import pick_related_profiles as pick_prompt
 from ...llm.complete import llm_complete
 from ...models.blob import OpenAICompatibleMessage
 from ...models.response import UserProfilesData, CODE
-from ...utils.promise import Promise
+from ...models.promise import Promise
 from ...utils.tools import get_encoded_tokens, truncate_string, find_list_int_or_none
 
 from ..storage.user_profiles import get_user_profiles

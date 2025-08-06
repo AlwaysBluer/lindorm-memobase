@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from opensearchpy import OpenSearch
 from typing import Optional, Dict, List, Any
-from ...utils.promise import Promise, CODE
+from ...models.promise import Promise, CODE
 from ...config import Config
 
 # Global storage instance cache

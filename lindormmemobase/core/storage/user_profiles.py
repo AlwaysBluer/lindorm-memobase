@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 from mysql.connector import pooling
 
 from ...models.response import UserProfilesData
-from ...utils.promise import Promise, CODE
+from ...models.promise import Promise, CODE
 
 # mysql_storage will be initialized when needed with config
 lindorm_table_storage = None

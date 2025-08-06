@@ -2,7 +2,7 @@ import asyncio
 import uuid
 
 from ....utils.tools import get_blob_str, get_encoded_tokens
-from ....utils.promise import Promise
+from ....models.promise import Promise
 
 from ....config import Config
 from ....models.blob import Blob

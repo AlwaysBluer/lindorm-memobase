@@ -1,7 +1,7 @@
 from ...config import Config, TRACE_LOG
 from ...models.response import UserEventGistsData, CODE
 from ...models.blob import OpenAICompatibleMessage
-from ...utils.promise import Promise
+from ...models.promise import Promise
 from ...utils.tools import get_encoded_tokens
 from ..storage.events import get_lindorm_search_storage
 from ...embedding import get_embedding
