@@ -5,6 +5,18 @@ from typing import Optional, Dict, List, Any
 from ...utils.promise import Promise, CODE
 from ...config import Config
 
+# Global storage instance cache
+_lindorm_search_storage = None
+
+def get_lindorm_search_storage(config: Config) -> 'LindormSearchStorage':
+    """Get or create a global LindormSearchStorage instance."""
+    global _lindorm_search_storage
+    if _lindorm_search_storage is None and config is None:
+        raise Exception("requre configurations to set lindorm connection")
+    elif _lindorm_search_storage is None:
+        _lindorm_search_storage = LindormSearchStorage(config)
+    return _lindorm_search_storage
+
 # class OpenSearchEventStorage:
 # Lindorm is compatible with Opensearch .
 class LindormSearchStorage:

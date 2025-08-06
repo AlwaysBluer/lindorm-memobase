@@ -8,6 +8,17 @@ from mysql.connector import pooling
 from ...models.response import UserProfilesData
 from ...utils.promise import Promise, CODE
 
+# mysql_storage will be initialized when needed with config
+lindorm_table_storage = None
+
+def get_lindorm_table_storage(config):
+    global lindorm_table_storage
+    if lindorm_table_storage is None and config is None:
+        raise Exception("require configuration to connect to lindorm")
+    elif lindorm_table_storage is None:
+        lindorm_table_storage = LindormTableStorage(config)
+    return lindorm_table_storage
+
 
 # class MySQLProfileStorage:
 # Lindorm 宽表部分兼容Mysql协议
@@ -221,14 +232,6 @@ class LindormTableStorage:
         except Exception as e:
             return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get profiles: {str(e)}")
 
-# mysql_storage will be initialized when needed with config
-lindorm_table_storage = None
-
-def _get_mysql_storage(config):
-    global lindorm_table_storage
-    if lindorm_table_storage is None:
-        lindorm_table_storage = LindormTableStorage(config)
-    return lindorm_table_storage
 
 async def add_user_profiles(
     user_id: str, 
@@ -236,7 +239,7 @@ async def add_user_profiles(
     attributes_list: List[Dict[str, Any]],
     config
 ) -> Promise[List[str]]:
-    storage = _get_mysql_storage(config)
+    storage = get_lindorm_table_storage(config)
     return await storage.add_profiles(user_id, profiles, attributes_list)
 
 async def update_user_profiles(
@@ -246,7 +249,7 @@ async def update_user_profiles(
     attributes_list: List[Optional[Dict[str, Any]]],
     config
 ) -> Promise[List[str]]:
-    storage = _get_mysql_storage(config)
+    storage = get_lindorm_table_storage(config)
     return await storage.update_profiles(user_id, profile_ids, contents, attributes_list)
 
 async def delete_user_profiles(
@@ -254,15 +257,11 @@ async def delete_user_profiles(
     profile_ids: List[str],
     config
 ) -> Promise[int]:
-    storage = _get_mysql_storage(config)
+    storage = get_lindorm_table_storage(config)
     return await storage.delete_profiles(user_id, profile_ids)
 
 async def get_user_profiles(user_id: str, config=None) -> Promise[UserProfilesData]:
-    if config is None:
-        # For testing/demo purposes, return empty profiles when no config
-        return Promise.resolve(UserProfilesData(profiles=[]))
-    
-    storage = _get_mysql_storage(config)
+    storage = get_lindorm_table_storage(config)
     result = await storage.get_user_profiles(user_id)
     
     if result.ok():

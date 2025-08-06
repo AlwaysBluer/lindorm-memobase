@@ -3,12 +3,14 @@ from ...models.response import UserEventGistsData, CODE
 from ...models.blob import OpenAICompatibleMessage
 from ...utils.promise import Promise
 from ...utils.tools import get_encoded_tokens
-from ..storage.events import LindormSearchStorage
+from ..storage.events import get_lindorm_search_storage
 from ...embedding import get_embedding
 from datetime import datetime, timedelta
 
+
 def pack_latest_chat(chats: list[OpenAICompatibleMessage], chat_num: int = 3) -> str:
     return "\n".join([f"{m.content}" for m in chats[-chat_num:]])
+
 
 async def truncate_event_gists(
     events: UserEventGistsData,
@@ -65,7 +67,7 @@ async def get_user_event_gists(
 ) -> Promise[UserEventGistsData]:
     """Get user event gists from Lindorm Search without vector search."""
     try:
-        storage = LindormSearchStorage(config)
+        storage = get_lindorm_search_storage(config)
         
         # Calculate time cutoff
         time_cutoff = datetime.utcnow() - timedelta(days=time_range_in_days)
@@ -139,7 +141,7 @@ async def search_user_event_gists(
         query_embedding = query_embeddings.data()[0]
         
         time_cutoff = datetime.utcnow() - timedelta(days=time_range_in_days)
-        storage = LindormSearchStorage(config)
+        storage = get_lindorm_search_storage(config)
         
         search_query = {
             "size": topk,
