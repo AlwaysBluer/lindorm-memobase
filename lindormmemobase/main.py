@@ -9,10 +9,15 @@ the memory extraction system using their own configuration.
 from typing import Optional, List
 from .config import Config
 from .models.profile_topic import ProfileConfig
-from .models.blob import Blob
+from .models.blob import Blob, OpenAICompatibleMessage
 from .models.types import FactResponse, MergeAddResult, Profile, ProfileEntry
 from .models.promise import Promise
+from .models.response import CODE
 from .core.extraction.processor.process_blobs import process_blobs
+from .core.search.context import get_user_context
+from .core.search.events import get_user_event_gists, search_user_event_gists
+from .core.search.user_profiles import get_user_profiles_data, filter_profiles_with_chats
+from .core.storage.user_profiles import get_user_profiles
 
 
 class LindormMemobase:
@@ -94,62 +99,290 @@ class LindormMemobase:
         """
         return await self.process_user_blobs(user_id, blobs, profile_config)
     
-    async def get_user_profiles(self, user_id: str) -> Promise[List[Profile]]:
+    async def get_user_profiles(self, user_id: str, topics: Optional[List[str]] = None) -> Promise[List[Profile]]:
         """
         Get user profiles from storage.
         
         Args:
             user_id: Unique identifier for the user
+            topics: Optional list of topics to filter by
             
         Returns:
             Promise containing list of user profiles
         """
-        # TODO: Implement profile retrieval from storage
-        return Promise.resolve([])
+        try:
+            profiles_result = await get_user_profiles(user_id, self.config)
+            if not profiles_result.ok():
+                return profiles_result
+                
+            raw_profiles = profiles_result.data()
+            
+            # Convert ProfileData to Profile format
+            profiles = []
+            topic_groups = {}
+            
+            # Group profiles by topic
+            for profile_data in raw_profiles.profiles:
+                topic = profile_data.attributes.get("topic", "general")
+                subtopic = profile_data.attributes.get("sub_topic", "general")
+                
+                if topics and topic not in topics:
+                    continue
+                    
+                if topic not in topic_groups:
+                    topic_groups[topic] = {}
+                    
+                topic_groups[topic][subtopic] = ProfileEntry(
+                    content=profile_data.content,
+                    last_updated=profile_data.updated_at.timestamp() if profile_data.updated_at else None
+                )
+            
+            # Convert to Profile objects
+            for topic, subtopics in topic_groups.items():
+                profiles.append(Profile(
+                    topic=topic,
+                    subtopics=subtopics
+                ))
+                
+            return Promise.resolve(profiles)
+        except Exception as e:
+            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get user profiles: {str(e)}")
     
     
     
     async def get_events(
         self, 
         user_id: str, 
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
+        time_range_in_days: int = 21,
         limit: int = 100
     ) -> Promise[List[dict]]:
         """
-        Get events from storage.
+        Get recent events from storage.
         
         Args:
             user_id: Unique identifier for the user
-            start_time: Start timestamp filter (optional)
-            end_time: End timestamp filter (optional)
+            time_range_in_days: Number of days to look back (default: 21)
             limit: Maximum number of events to return
             
         Returns:
             Promise containing matching events
         """
-        # TODO: Implement event retrieval
-        return Promise.resolve([])
+        try:
+            result = await get_user_event_gists(
+                user_id=user_id,
+                config=self.config,
+                topk=limit,
+                time_range_in_days=time_range_in_days
+            )
+            
+            if not result.ok():
+                return result
+                
+            events_data = result.data()
+            events = []
+            
+            for gist in events_data.gists:
+                events.append({
+                    "id": gist.get("id"),
+                    "content": gist.get("gist_data", {}).get("content", ""),
+                    "created_at": gist.get("created_at"),
+                    "updated_at": gist.get("updated_at")
+                })
+                
+            return Promise.resolve(events)
+        except Exception as e:
+            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get events: {str(e)}")
     
     async def search_events(
         self, 
         user_id: str, 
         query: str, 
-        limit: int = 10
+        limit: int = 10,
+        similarity_threshold: float = 0.2,
+        time_range_in_days: int = 21
     ) -> Promise[List[dict]]:
         """
-        Search events by query.
+        Search events by query using vector similarity.
         
         Args:
             user_id: Unique identifier for the user
             query: Search query string
             limit: Maximum number of results to return
+            similarity_threshold: Minimum similarity score (0.0-1.0)
+            time_range_in_days: Number of days to look back
             
         Returns:
-            Promise containing matching events
+            Promise containing matching events with similarity scores
         """
-        # TODO: Implement event search functionality
-        return Promise.resolve([])
+        try:
+            result = await search_user_event_gists(
+                user_id=user_id,
+                query=query,
+                config=self.config,
+                topk=limit,
+                similarity_threshold=similarity_threshold,
+                time_range_in_days=time_range_in_days
+            )
+            
+            if not result.ok():
+                return result
+                
+            events_data = result.data()
+            events = []
+            
+            for gist in events_data.gists:
+                events.append({
+                    "id": gist.get("id"),
+                    "content": gist.get("gist_data", {}).get("content", ""),
+                    "created_at": gist.get("created_at"),
+                    "updated_at": gist.get("updated_at"),
+                    "similarity": gist.get("similarity", 0.0)
+                })
+                
+            return Promise.resolve(events)
+        except Exception as e:
+            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to search events: {str(e)}")
+    
+    async def get_relevant_profiles(
+        self,
+        user_id: str,
+        conversation: List[OpenAICompatibleMessage],
+        topics: Optional[List[str]] = None,
+        max_profiles: int = 10
+    ) -> Promise[List[Profile]]:
+        """
+        Get profiles relevant to current conversation using LLM-based filtering.
+        
+        Args:
+            user_id: Unique identifier for the user
+            conversation: List of chat messages to analyze
+            topics: Optional list of topics to consider
+            max_profiles: Maximum number of relevant profiles to return
+            
+        Returns:
+            Promise containing relevant profiles ranked by relevance
+        """
+        try:
+            result = await get_user_profiles_data(
+                user_id=user_id,
+                max_profile_token_size=4000,
+                prefer_topics=None,
+                only_topics=topics,
+                max_subtopic_size=None,
+                topic_limits={},
+                chats=conversation,
+                full_profile_and_only_search_event=False,
+                global_config=self.config
+            )
+            
+            if not result.ok():
+                return result
+                
+            profile_section, raw_profiles = result.data()
+            
+            # Convert to Profile format
+            profiles = []
+            topic_groups = {}
+            
+            for profile_data in raw_profiles[:max_profiles]:
+                topic = profile_data.attributes.get("topic", "general")
+                subtopic = profile_data.attributes.get("sub_topic", "general")
+                
+                if topic not in topic_groups:
+                    topic_groups[topic] = {}
+                    
+                topic_groups[topic][subtopic] = ProfileEntry(
+                    content=profile_data.content,
+                    last_updated=profile_data.updated_at.timestamp() if profile_data.updated_at else None
+                )
+            
+            for topic, subtopics in topic_groups.items():
+                profiles.append(Profile(
+                    topic=topic,
+                    subtopics=subtopics
+                ))
+                
+            return Promise.resolve(profiles)
+        except Exception as e:
+            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get relevant profiles: {str(e)}")
+    
+    async def get_conversation_context(
+        self,
+        user_id: str,
+        conversation: List[OpenAICompatibleMessage],
+        profile_config: Optional[ProfileConfig] = None,
+        max_tokens: int = 2000,
+        prefer_topics: Optional[List[str]] = None,
+        time_range_days: int = 30
+    ) -> Promise[str]:
+        """
+        Generate comprehensive context for conversation including relevant profiles and events.
+        
+        Args:
+            user_id: Unique identifier for the user
+            conversation: Current conversation messages
+            profile_config: Profile configuration to use
+            max_tokens: Maximum tokens for context
+            prefer_topics: Topics to prioritize
+            time_range_days: Days to look back for events
+            
+        Returns:
+            Promise containing formatted context string
+        """
+        try:
+            if profile_config is None:
+                profile_config = ProfileConfig()
+                
+            result = await get_user_context(
+                user_id=user_id,
+                profile_config=profile_config,
+                global_config=self.config,
+                max_token_size=max_tokens,
+                prefer_topics=prefer_topics,
+                chats=conversation,
+                time_range_in_days=time_range_days,
+                event_similarity_threshold=0.2,
+                profile_event_ratio=0.6
+            )
+            
+            if not result.ok():
+                return result
+                
+            context_data = result.data()
+            return Promise.resolve(context_data.context)
+        except Exception as e:
+            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get conversation context: {str(e)}")
+    
+    async def search_profiles(
+        self,
+        user_id: str,
+        query: str,
+        topics: Optional[List[str]] = None,
+        max_results: int = 10
+    ) -> Promise[List[Profile]]:
+        """
+        Search profiles by text query using conversation context.
+        
+        Args:
+            user_id: Unique identifier for the user
+            query: Search query text
+            topics: Optional topic filter
+            max_results: Maximum number of results
+            
+        Returns:
+            Promise containing matching profiles
+        """
+        # Create a mock conversation with the query to leverage existing filtering
+        mock_conversation = [
+            OpenAICompatibleMessage(role="user", content=query)
+        ]
+        
+        return await self.get_relevant_profiles(
+            user_id=user_id,
+            conversation=mock_conversation,
+            topics=topics,
+            max_profiles=max_results
+        )
 
 
 # Convenience functions for users who want simple interfaces
