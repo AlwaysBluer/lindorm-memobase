@@ -19,9 +19,9 @@ import pytest
 from datetime import datetime
 from typing import List, Dict, Any
 
-from config import Config
-from core.storage.user_profiles import LindormTableStorage
-from utils.promise import Promise
+from ..config import Config
+from ..core.storage.user_profiles import LindormTableStorage
+from ..utils.promise import Promise
 
 
 class TestLindormTableStorage:

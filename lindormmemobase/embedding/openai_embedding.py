@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Literal
 from .utils import get_openai_async_client_instance
-from config import LOG
+from ..config import LOG
 
 async def openai_embedding(
     model: str, texts: list[str], phase: Literal["query", "document"] = "document", config=None

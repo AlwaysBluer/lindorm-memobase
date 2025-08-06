@@ -1,13 +1,13 @@
 import asyncio
-from config import TRACE_LOG
+from ....config import TRACE_LOG
 
-from utils.promise import Promise
-from utils.tools import get_encoded_tokens, truncate_string
+from ....utils.promise import Promise
+from ....utils.tools import get_encoded_tokens, truncate_string
 
-from models.types import AddProfile, UpdateProfile
+from ....models.types import AddProfile, UpdateProfile
 
-from llm.complete import llm_complete
-from core.extraction.prompts import summary_profile
+from ....llm.complete import llm_complete
+from ....core.extraction.prompts import summary_profile
 
 
 

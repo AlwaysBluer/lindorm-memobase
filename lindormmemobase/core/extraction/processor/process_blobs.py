@@ -1,14 +1,14 @@
 import asyncio
 import uuid
 
-from utils.tools import get_blob_str, get_encoded_tokens
-from utils.promise import Promise
+from ....utils.tools import get_blob_str, get_encoded_tokens
+from ....utils.promise import Promise
 
-from config import Config
-from models.blob import Blob
-from models.response import ChatModalResponse, CODE
-from models.types import MergeAddResult
-from models.profile_topic import ProfileConfig
+from ....config import Config
+from ....models.blob import Blob
+from ....models.response import ChatModalResponse, CODE
+from ....models.types import MergeAddResult
+from ....models.profile_topic import ProfileConfig
 
 from .extract import extract_topics
 from .merge import merge_or_valid_new_memos

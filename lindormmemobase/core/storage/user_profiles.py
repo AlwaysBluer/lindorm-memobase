@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from mysql.connector import pooling
 
-from models.response import UserProfilesData
-from utils.promise import Promise, CODE
+from ...models.response import UserProfilesData
+from ...utils.promise import Promise, CODE
 
 
 # class MySQLProfileStorage:

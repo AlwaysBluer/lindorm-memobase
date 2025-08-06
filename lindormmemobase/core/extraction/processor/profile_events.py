@@ -1,16 +1,16 @@
 from pydantic import ValidationError
 
-from config import TRACE_LOG, Config
+from ....config import TRACE_LOG, Config
 
-from models.types import MergeAddResult
-from models.response import IdsData, EventData, CODE
-from embedding import get_embedding
+from ....models.types import MergeAddResult
+from ....models.response import IdsData, EventData, CODE
+from ....embedding import get_embedding
 
-from utils.promise import Promise
-from utils.tools import event_embedding_str
+from ....utils.promise import Promise
+from ....utils.tools import event_embedding_str
 
-from core.storage.events import store_event_with_embedding, store_event_gist_with_embedding
-from core.storage.user_profiles import add_user_profiles, update_user_profiles, delete_user_profiles
+from ....core.storage.events import store_event_with_embedding, store_event_gist_with_embedding
+from ....core.storage.user_profiles import add_user_profiles, update_user_profiles, delete_user_profiles
 
 async def handle_session_event(
     user_id: str,

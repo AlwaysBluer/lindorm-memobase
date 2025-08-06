@@ -1,8 +1,8 @@
 import asyncio
 import time
-from config import LOG
-from utils.tools import Promise, CODE
-from core.extraction.prompts.utils import convert_response_to_json
+from ..config import LOG
+from ..utils.tools import Promise, CODE
+from ..core.extraction.prompts.utils import convert_response_to_json
 from . import FACTORIES
 
 

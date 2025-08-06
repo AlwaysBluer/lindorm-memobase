@@ -1,4 +1,4 @@
-from models.profile_topic import ProfileConfig, UserProfileTopic
+from ..models.profile_topic import ProfileConfig, UserProfileTopic
 
 
 def read_out_profile_config(config: ProfileConfig, default_profiles: list):

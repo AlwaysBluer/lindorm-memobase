@@ -3,8 +3,8 @@ import uuid
 from datetime import datetime
 from opensearchpy import OpenSearch
 from typing import Optional, Dict, List, Any
-from utils.promise import Promise, CODE
-from config import Config
+from ...utils.promise import Promise, CODE
+from ...config import Config
 
 # class OpenSearchEventStorage:
 # Lindorm is compatible with Opensearch .

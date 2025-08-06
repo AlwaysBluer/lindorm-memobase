@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Literal
-from utils.errors import ExternalAPIError
-from config import LOG, CONFIG
+from ..utils.errors import ExternalAPIError
+from ..config import LOG, CONFIG
 from .utils import get_jina_async_client_instance
 
 JINA_TASK = {

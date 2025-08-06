@@ -9,7 +9,7 @@ from .import (
     zh_merge_profile,
     zh_summary_entry_chats,
 )
-from models.types import UpdateResponse
+from ....models.types import UpdateResponse
 
 
 

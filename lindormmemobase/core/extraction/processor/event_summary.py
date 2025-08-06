@@ -1,15 +1,15 @@
 from typing import Optional
-from models.profile_topic import ProfileConfig
+from ....models.profile_topic import ProfileConfig
 
-from core.extraction.prompts.utils import(
+from ....core.extraction.prompts.utils import(
     parse_string_into_subtopics,
     attribute_unify
 )
-from core.extraction.prompts.profile_init_utils import read_out_event_tags 
-from core.extraction.prompts import event_tagging as event_tagging_prompt
+from ....core.extraction.prompts.profile_init_utils import read_out_event_tags 
+from ....core.extraction.prompts import event_tagging as event_tagging_prompt
 
-from utils.promise import Promise
-from llm.complete import llm_complete
+from ....utils.promise import Promise
+from ....llm.complete import llm_complete
 
 
 async def tag_event(

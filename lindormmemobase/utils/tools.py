@@ -5,11 +5,11 @@ from typing import cast
 from datetime import  datetime
 from functools import wraps
 from pydantic import ValidationError
-from config import ENCODER, LOG
-from models.profile_topic import ProfileConfig
-from models.blob import Blob, BlobType, ChatBlob, DocBlob, OpenAICompatibleMessage
-from models.response import UserEventData, EventData
-from utils.promise import Promise, CODE
+from ..config import ENCODER, LOG
+from ..models.profile_topic import ProfileConfig
+from ..models.blob import Blob, BlobType, ChatBlob, DocBlob, OpenAICompatibleMessage
+from ..models.response import UserEventData, EventData
+from ..utils.promise import Promise, CODE
 
 LIST_INT_REGEX = re.compile(r"\[\s*(?:\d+(?:\s*,\s*\d+)*\s*)?\]")
 

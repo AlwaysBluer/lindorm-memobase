@@ -22,3 +22,19 @@ MergeAddResult = TypedDict(
         "before_profiles": list[ProfileData],  # Add missing field
     },
 )
+
+# Profile models for the main API
+@dataclass
+class ProfileEntry:
+    """A single entry in a user profile."""
+    content: str
+    confidence: float = 1.0
+    last_updated: Optional[float] = None
+
+
+@dataclass  
+class Profile:
+    """A user profile organized by topics and subtopics."""
+    topic: str
+    subtopics: dict[str, ProfileEntry] = field(default_factory=dict)
+    metadata: dict = field(default_factory=dict)

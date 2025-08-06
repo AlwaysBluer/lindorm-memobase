@@ -1,15 +1,15 @@
-from config import Config
-from models.profile_topic import ProfileConfig
-from llm.openai_model_llm import openai_complete
-from models.blob import Blob, BlobType
+from ....config import Config
+from ....models.profile_topic import ProfileConfig
+from ....llm.openai_model_llm import openai_complete
+from ....models.blob import Blob, BlobType
 
-from core.extraction.prompts.router import PROMPTS
-from core.extraction.prompts.utils import tag_chat_blobs_in_order_xml
-from core.extraction.prompts.profile_init_utils import read_out_event_tags
-from core.extraction.prompts.profile_init_utils import read_out_profile_config
+from ....core.extraction.prompts.router import PROMPTS
+from ....core.extraction.prompts.utils import tag_chat_blobs_in_order_xml
+from ....core.extraction.prompts.profile_init_utils import read_out_event_tags
+from ....core.extraction.prompts.profile_init_utils import read_out_profile_config
 
-from llm.complete import llm_complete
-from utils.tools import Promise
+from ....llm.complete import llm_complete
+from ....utils.tools import Promise
 
 
 async def entry_chat_summary(
@@ -17,7 +17,7 @@ async def entry_chat_summary(
 ) -> Promise[str]:
     assert all(b.type == BlobType.chat for b in blobs), "All blobs must be chat blobs"
     USE_LANGUAGE = profile_config.language or config.language
-    from core.extraction.prompts.user_profile_topics import get_candidate_profile_topics
+    from ....core.extraction.prompts.user_profile_topics import get_candidate_profile_topics
     
     project_profiles_slots = read_out_profile_config(
         profile_config, get_candidate_profile_topics(config)
@@ -31,7 +31,7 @@ async def entry_chat_summary(
     event_attriubtes_str = "\n".join(
         [f"- {et.name}({et.description})" for et in event_tags]
     )
-    from core.extraction.prompts.user_profile_topics import get_prompt
+    from ....core.extraction.prompts.user_profile_topics import get_prompt
     profile_topics_str = get_prompt(project_profiles_slots)
     blob_strs = tag_chat_blobs_in_order_xml(blobs)
     r = await llm_complete(

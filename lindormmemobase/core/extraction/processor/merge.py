@@ -1,13 +1,13 @@
 import asyncio
-from config import TRACE_LOG 
-from core.constants import ConstantsTable
-from core.extraction.prompts.utils import parse_string_into_merge_action
-from core.extraction.prompts.router import PROMPTS, UpdateResponse
-from models.profile_topic import UserProfileTopic, SubTopic, ProfileConfig
-from llm.complete import llm_complete
-from utils.promise import Promise, CODE
-from models.response import ProfileData
-from models.types import MergeAddResult
+from ....config import TRACE_LOG 
+from ....core.constants import ConstantsTable
+from ....core.extraction.prompts.utils import parse_string_into_merge_action
+from ....core.extraction.prompts.router import PROMPTS, UpdateResponse
+from ....models.profile_topic import UserProfileTopic, SubTopic, ProfileConfig
+from ....llm.complete import llm_complete
+from ....utils.promise import Promise, CODE
+from ....models.response import ProfileData
+from ....models.types import MergeAddResult
 
 
 async def merge_or_valid_new_memos(

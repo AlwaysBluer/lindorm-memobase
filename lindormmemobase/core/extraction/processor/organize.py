@@ -1,21 +1,21 @@
 import asyncio
 from collections import defaultdict
-from config import TRACE_LOG
+from ....config import TRACE_LOG
 
-from core.extraction.prompts.router import PROMPTS
-from core.extraction.prompts.profile_init_utils import get_specific_subtopics
-from models.types import MergeAddResult, ProfileData, AddProfile
-from models.profile_topic import ProfileConfig
-from core.constants import ConstantsTable
-from core.extraction.prompts.utils import (
+from ....core.extraction.prompts.router import PROMPTS
+from ....core.extraction.prompts.profile_init_utils import get_specific_subtopics
+from ....models.types import MergeAddResult, ProfileData, AddProfile
+from ....models.profile_topic import ProfileConfig
+from ....core.constants import ConstantsTable
+from ....core.extraction.prompts.utils import (
     parse_string_into_subtopics,
     attribute_unify,
 )
 
-from llm.complete import llm_complete
+from ....llm.complete import llm_complete
 
 
-from utils.promise import Promise
+from ....utils.promise import Promise
 
 
 async def organize_profiles(

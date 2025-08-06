@@ -2,10 +2,10 @@ from typing import Literal
 import numpy as np
 from traceback import format_exc
 
-from config import LOG
-from utils.promise import Promise
+from ..config import LOG
+from ..utils.promise import Promise
 
-from models.response import CODE
+from ..models.response import CODE
 
 from .openai_embedding import openai_embedding
 from .jina_embedding import jina_embedding

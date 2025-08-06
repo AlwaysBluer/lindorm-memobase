@@ -21,7 +21,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from config import Config
+from ..config import Config
 from tests.test_lindorm_search import TestLindormSearchStorage
 from tests.test_lindorm_table import TestLindormTableStorage
 

@@ -1,5 +1,5 @@
 from .utils import exclude_special_kwargs, get_openai_async_client_instance
-from config import LOG
+from ..config import LOG
 
 
 async def openai_complete(
