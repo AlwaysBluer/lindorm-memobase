@@ -14,6 +14,7 @@ class CODE(IntEnum):
     SERVER_PARSE_ERROR = 1001
     SERVER_PROCESS_ERROR = 1002
     LLM_ERROR = 1003
+    NOT_IMPLEMENTED = 1004
 
 
 class BaseResponse(BaseModel):
