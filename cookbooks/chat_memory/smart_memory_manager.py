@@ -1,445 +1,243 @@
 """
-Smart Memory Manager for Performance-Optimized Context Retrieval
-==============================================================
+Simple Memory Manager with Context Buffer
+========================================
 
-This module implements a layered caching strategy to dramatically improve
-the performance of memory-enhanced context retrieval by separating:
+A simplified memory manager that maintains a context buffer and refreshes
+it periodically. This provides fast context access with minimal complexity.
 
-- Profile data (cached, updated periodically)
-- Event data (real-time search for relevance) 
-- Session data (conversation history)
-
-Key Performance Improvements:
-- Reduces response time from 3-5s to 0.5s (90% improvement)
-- Eliminates blocking LLM calls for profile filtering
-- Maintains accuracy through real-time event search
-- Provides intelligent background cache updates
+Key Features:
+- In-memory context buffer for instant access
+- Periodic refresh every 5-6 seconds 
+- Background task management
+- Simple cache statistics
 """
 
 import asyncio
 import time
-import re
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Set
-from dataclasses import dataclass
 import logging
+from datetime import datetime
+from typing import List, Optional, Dict
+from dataclasses import dataclass
 
 from lindormmemobase.models.blob import OpenAICompatibleMessage
-from lindormmemobase.models.types import Profile
-from lindormmemobase.models.promise import Promise
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class CachedProfile:
-    """Cached profile data with metadata."""
-    topic: str
-    subtopic: str
-    content: str
-    relevance_keywords: List[str]  # For fast keyword matching
-    last_accessed: float
-    access_count: int
-
-
-@dataclass 
-class ContextComponents:
-    """Components of the context that will be assembled."""
-    profiles: List[CachedProfile]
-    events: List[Dict]
-    session_summary: str
-    token_count: int
+class CacheStats:
+    """Simple cache statistics."""
+    buffer_hits: int = 0
+    buffer_misses: int = 0
+    last_refresh: Optional[datetime] = None
+    refresh_count: int = 0
+    average_response_time: float = 0.0
 
 
 class SmartMemoryManager:
     """
-    Intelligent memory management with layered caching strategy.
+    Simple memory manager with context buffer and periodic refresh.
     
-    Architecture:
-    - Layer 1: Profile Cache (slow update, fast access)
-    - Layer 2: Event Search (real-time, contextual)  
-    - Layer 3: Session Memory (conversation history)
+    Maintains a single context buffer that gets refreshed every 5-6 seconds
+    in the background. Provides instant access to cached context.
     """
     
-    def __init__(self, user_id: str, memobase, max_cache_size: int = 100):
+    def __init__(self, user_id: str, memobase, refresh_interval: int = 10):
         self.user_id = user_id
         self.memobase = memobase
-        self.max_cache_size = max_cache_size
+        self.refresh_interval = refresh_interval  # seconds
         
-        # Profile caching system
-        self.profile_cache: Dict[str, CachedProfile] = {}
-        self.profile_last_update: Optional[float] = None
-        self.profile_update_interval = 600  # 10 minutes
-        self.profile_refresh_in_progress = False
+        # Context buffer
+        self.context_buffer: str = ""
+        self.buffer_last_update: Optional[float] = None
+        
+        # Recent conversation cache for context generation
+        self.recent_conversations: List[OpenAICompatibleMessage] = []
+        self.max_conversation_history = 8  # Keep last 4 exchanges (8 messages)
         
         # Background task management
-        self.background_tasks: Set[asyncio.Task] = set()
-        self.cache_stats = {
-            "cache_hits": 0,
-            "cache_misses": 0,
-            "profile_refreshes": 0,
-            "average_response_time": 0
-        }
+        self.refresh_task: Optional[asyncio.Task] = None
+        self.is_refreshing = False
+        self.should_stop = False
         
-        # Keyword extraction patterns
-        self.keyword_patterns = [
-            r'\b\w+ing\b',      # Actions (playing, working, etc.)
-            r'\b\w{4,}\b',      # Longer words (more meaningful)
-            r'\b[A-Z][a-z]+\b'  # Proper nouns
-        ]
+        # Statistics
+        self.stats = CacheStats()
         
         logger.info(f"SmartMemoryManager initialized for user: {user_id}")
-    
-    async def get_enhanced_context(
-        self, 
-        user_message: str, 
-        conversation_history: List[OpenAICompatibleMessage],
-        max_tokens: int = 2000
-    ) -> str:
-        """
-        Get enhanced context with optimized caching strategy.
+        logger.info(f"Context refresh interval: {refresh_interval}s")
         
-        Performance target: <0.5s response time after initial load.
+        # Start background refresh task
+        self.refresh_task = asyncio.create_task(self._background_refresh_worker())
+    
+    def update_conversation_history(self, user_message: str, assistant_message: str):
+        """Update the recent conversation history for context generation."""
+        # Add new messages
+        self.recent_conversations.append(
+            OpenAICompatibleMessage(role="user", content=user_message)
+        )
+        self.recent_conversations.append(
+            OpenAICompatibleMessage(role="assistant", content=assistant_message)
+        )
+        
+        # Keep only recent messages (last N exchanges)
+        if len(self.recent_conversations) > self.max_conversation_history:
+            self.recent_conversations = self.recent_conversations[-self.max_conversation_history:]
+        
+        logger.debug(f"Updated conversation history for user {self.user_id}: {len(self.recent_conversations)} messages")
+    
+    async def get_enhanced_context(self) -> str:
+        """
+        Get enhanced context from buffer (instant access).
+        
+        Returns cached context from buffer or empty string if not available.
         """
         start_time = time.time()
         
         try:
-            # 1. Get cached profiles (fast: ~0.01s)
-            relevant_profiles = await self.get_relevant_profiles(user_message, conversation_history)
+            if self.context_buffer:
+                self.stats.buffer_hits += 1
+                logger.debug(f"Context buffer hit for user: {self.user_id}")
+                context = self.context_buffer
+                logger.info(f"Context: {context}")
+            else:
+                self.stats.buffer_misses += 1
+                logger.debug(f"Context buffer miss for user: {self.user_id}")
+                context = ""
             
-            # 2. Search real-time events (moderate: ~0.5s) 
-            relevant_events = await self.search_relevant_events(user_message)
-            
-            # 3. Build session summary (fast: ~0.01s)
-            session_summary = self.build_session_summary(conversation_history)
-            
-            # 4. Assemble context (fast: ~0.01s)
-            context = self.build_context(relevant_profiles, relevant_events, session_summary, max_tokens)
-            
-            # 5. Schedule background profile refresh if needed (non-blocking)
-            if self.should_refresh_profiles():
-                self.schedule_profile_refresh()
-            
-            # Update stats
+            # Update response time stats
             response_time = time.time() - start_time
-            self.cache_stats["average_response_time"] = (
-                (self.cache_stats["average_response_time"] * 0.9) + (response_time * 0.1)
+            self.stats.average_response_time = (
+                (self.stats.average_response_time * 0.9) + (response_time * 0.1)
             )
             
-            logger.info(f"Context retrieved in {response_time:.3f}s")
+            logger.debug(f"Context retrieved in {response_time:.3f}s")
             return context
             
         except Exception as e:
-            logger.error(f"Error in get_enhanced_context: {e}")
-            return "\n[Memory context unavailable due to error]\n"
+            logger.error(f"Error getting enhanced context: {e}")
+            return ""
     
-    async def get_relevant_profiles(
-        self, 
-        user_message: str, 
-        conversation_history: List[OpenAICompatibleMessage]
-    ) -> List[CachedProfile]:
-        """
-        Get relevant profiles using cached data and keyword matching.
-        No LLM calls = super fast!
-        """
+    async def _background_refresh_worker(self):
+        """Background worker that periodically refreshes the context buffer."""
         try:
-            # Ensure profile cache is loaded
-            if not self.profile_cache:
-                await self.refresh_profiles_sync()
+            logger.info(f"Background context refresh started for user: {self.user_id}")
             
-            # Extract keywords from user message and recent conversation
-            message_keywords = self.extract_keywords(user_message)
-            
-            # Add keywords from recent conversation context
-            if len(conversation_history) > 0:
-                recent_messages = conversation_history[-4:]  # Last 2 exchanges
-                for msg in recent_messages:
-                    message_keywords.extend(self.extract_keywords(msg.content))
-            
-            message_keywords = list(set(message_keywords))  # Remove duplicates
-            
-            # Match profiles using cached keywords (no LLM needed!)
-            relevant_profiles = []
-            for profile_key, cached_profile in self.profile_cache.items():
-                relevance_score = self.calculate_keyword_relevance(message_keywords, cached_profile)
-                
-                if relevance_score > 0.3:  # Relevance threshold
-                    cached_profile.last_accessed = time.time()
-                    cached_profile.access_count += 1
-                    relevant_profiles.append((cached_profile, relevance_score))
-            
-            # Sort by relevance and return top matches
-            relevant_profiles.sort(key=lambda x: x[1], reverse=True)
-            top_profiles = [p[0] for p in relevant_profiles[:10]]
-            
-            self.cache_stats["cache_hits"] += 1
-            logger.debug(f"Found {len(top_profiles)} relevant profiles using cached data")
-            
-            return top_profiles
-            
+            while not self.should_stop:
+                try:
+                    # Wait for refresh interval, but check stop signal more frequently
+                    for i in range(self.refresh_interval):
+                        if self.should_stop:
+                            logger.info("Background refresh worker received stop signal")
+                            return
+                        await asyncio.sleep(1)  # Check every second
+                    
+                    if self.should_stop:
+                        break
+                    
+                    # Refresh context buffer
+                    await self._refresh_context_buffer()
+                    
+                except asyncio.CancelledError:
+                    logger.info("Background refresh worker cancelled")
+                    return
+                except Exception as e:
+                    logger.error(f"Error in background refresh worker: {e}")
+                    # Wait a bit before retrying to avoid tight error loop
+                    if not self.should_stop:
+                        await asyncio.sleep(2)
+                    
+        except asyncio.CancelledError:
+            logger.info("Background refresh worker stopped by cancellation")
+            return
         except Exception as e:
-            logger.error(f"Error getting relevant profiles: {e}")
-            self.cache_stats["cache_misses"] += 1
-            return []
+            logger.error(f"Background refresh worker crashed: {e}")
+        finally:
+            logger.info(f"Background refresh worker finished for user: {self.user_id}")
     
-    async def search_relevant_events(self, user_message: str) -> List[Dict]:
-        """
-        Search for relevant events in real-time to maintain accuracy.
-        """
+    async def _refresh_context_buffer(self):
+        """Refresh the context buffer with latest user context."""
+        if self.is_refreshing:
+            logger.debug("Context refresh already in progress, skipping")
+            return
+            
+        self.is_refreshing = True
+        start_time = time.time()
+        
         try:
-            result = await self.memobase.search_events(
+            logger.debug(f"Refreshing context buffer for user: {self.user_id}")
+            
+            # Use recent conversation history for better context
+            conversation_for_context = self.recent_conversations[-4:] if len(self.recent_conversations) > 4 else self.recent_conversations
+            
+            # Get user context using memobase
+            context = await self.memobase.get_conversation_context(
                 user_id=self.user_id,
-                query=user_message,
-                limit=5,
-                similarity_threshold=0.2,
+                conversation=conversation_for_context,  # Use recent conversation history
+                max_token_size=2000,
                 time_range_in_days=30
             )
             
-            if result.ok():
-                events = result.data()
-                logger.debug(f"Found {len(events)} relevant events")
-                return events
-            else:
-                logger.warning(f"Event search failed: {result.msg()}")
-                return []
-                
-        except Exception as e:
-            logger.error(f"Error searching events: {e}")
-            return []
-    
-    def build_session_summary(self, conversation_history: List[OpenAICompatibleMessage]) -> str:
-        """Build a summary of the current session for context."""
-        if not conversation_history:
-            return ""
-        
-        # Take last few messages for immediate context
-        recent_messages = conversation_history[-6:]  # Last 3 exchanges
-        
-        summary_parts = []
-        for msg in recent_messages:
-            role = "User" if msg.role == "user" else "Assistant"
-            content = msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
-            summary_parts.append(f"{role}: {content}")
-        
-        return "\n".join(summary_parts)
-    
-    def build_context(
-        self, 
-        profiles: List[CachedProfile],
-        events: List[Dict],
-        session_summary: str,
-        max_tokens: int
-    ) -> str:
-        """
-        Build the final context string with token management.
-        """
-        try:
-            context_parts = []
-            
-            # Add memory header
-            context_parts.append("---")
-            context_parts.append("# Memory")
-            context_parts.append("Unless the user has relevant queries, do not actively mention those memories in the conversation.")
-            
-            # Add profile section
-            if profiles:
-                context_parts.append("## User Current Profile:")
-                for profile in profiles:
-                    context_parts.append(f"- {profile.topic}::{profile.subtopic}: {profile.content}")
-            
-            # Add events section  
-            if events:
-                context_parts.append("\n## Past Events:")
-                for event in events:
-                    content = event.get('content', '')
-                    # Truncate long events
-                    if len(content) > 150:
-                        content = content[:150] + "..."
-                    context_parts.append(content)
-            
-            # Add session context
-            if session_summary:
-                context_parts.append("\n## Current Session Context:")
-                context_parts.append(session_summary)
-            
-            context_parts.append("---")
-            
-            full_context = "\n".join(context_parts)
-            
-            # Token management - truncate if needed
-            if len(full_context) > max_tokens * 4:  # Rough token estimation
-                truncated_context = full_context[:max_tokens * 4]
-                truncated_context += "\n[Context truncated due to length]"
-                return truncated_context
-            
-            return full_context
-            
-        except Exception as e:
-            logger.error(f"Error building context: {e}")
-            return "\n[Context building failed]\n"
-    
-    async def refresh_profiles_sync(self):
-        """Synchronous profile refresh for initial loading."""
-        if self.profile_refresh_in_progress:
-            # Wait for ongoing refresh
-            max_wait = 10  # seconds
-            waited = 0
-            while self.profile_refresh_in_progress and waited < max_wait:
-                await asyncio.sleep(0.1)
-                waited += 0.1
-            return
-        
-        await self.refresh_profiles()
-    
-    async def refresh_profiles(self):
-        """
-        Refresh the profile cache by fetching all user profiles.
-        This is the only place that might be slow, but runs in background.
-        """
-        if self.profile_refresh_in_progress:
-            return
-        
-        self.profile_refresh_in_progress = True
-        
-        try:
-            logger.info("Refreshing profile cache...")
-            start_time = time.time()
-            
-            # Get all user profiles (this might be slow first time)
-            profiles_result = await self.memobase.get_user_profiles(self.user_id)
-            
-            if profiles_result.ok():
-                profiles = profiles_result.data()
-                new_cache = {}
-                
-                for profile in profiles:
-                    for subtopic, entry in profile.subtopics.items():
-                        cache_key = f"{profile.topic}::{subtopic}"
-                        
-                        # Extract keywords for fast matching
-                        keywords = self.extract_keywords(entry.content)
-                        keywords.extend([profile.topic, subtopic])
-                        
-                        cached_profile = CachedProfile(
-                            topic=profile.topic,
-                            subtopic=subtopic,
-                            content=entry.content,
-                            relevance_keywords=keywords,
-                            last_accessed=time.time(),
-                            access_count=0
-                        )
-                        
-                        new_cache[cache_key] = cached_profile
-                
-                self.profile_cache = new_cache
-                self.profile_last_update = time.time()
-                self.cache_stats["profile_refreshes"] += 1
+            if context and context.strip():
+                self.context_buffer = context.strip()
+                self.buffer_last_update = time.time()
+                self.stats.refresh_count += 1
+                self.stats.last_refresh = datetime.now()
                 
                 refresh_time = time.time() - start_time
-                logger.info(f"Profile cache refreshed: {len(new_cache)} profiles in {refresh_time:.2f}s")
-                
+                logger.info(f"Context buffer refreshed for user {self.user_id} in {refresh_time:.2f}s")
+                logger.debug(f"Context buffer size: {len(self.context_buffer)} chars")
             else:
-                logger.warning(f"Failed to refresh profiles: {profiles_result.msg()}")
+                # Clear buffer if no context available
+                if self.context_buffer:
+                    logger.info(f"No context available, clearing buffer for user {self.user_id}")
+                    self.context_buffer = ""
+                    self.buffer_last_update = time.time()
                 
         except Exception as e:
-            logger.error(f"Error refreshing profiles: {e}")
+            logger.error(f"Error refreshing context buffer for user {self.user_id}: {e}")
         finally:
-            self.profile_refresh_in_progress = False
+            self.is_refreshing = False
     
-    def should_refresh_profiles(self) -> bool:
-        """Determine if profile cache should be refreshed."""
-        if not self.profile_last_update:
-            return True
-        
-        time_since_update = time.time() - self.profile_last_update
-        return time_since_update > self.profile_update_interval
-    
-    def schedule_profile_refresh(self):
-        """Schedule background profile refresh (non-blocking)."""
-        if len(self.background_tasks) < 2:  # Limit concurrent tasks
-            task = asyncio.create_task(self.refresh_profiles())
-            self.background_tasks.add(task)
-            task.add_done_callback(self.background_tasks.discard)
-            logger.debug("Scheduled background profile refresh")
-    
-    def extract_keywords(self, text: str) -> List[str]:
-        """Extract meaningful keywords from text for matching."""
-        if not text:
-            return []
-        
-        text_lower = text.lower()
-        keywords = []
-        
-        # Apply extraction patterns
-        for pattern in self.keyword_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            keywords.extend(matches)
-        
-        # Filter out common stop words and short words
-        stop_words = {'the', 'is', 'at', 'which', 'on', 'and', 'or', 'but', 'in', 'with', 'to', 'for', 'of', 'as', 'by'}
-        keywords = [kw.lower() for kw in keywords if len(kw) > 2 and kw.lower() not in stop_words]
-        
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_keywords = []
-        for kw in keywords:
-            if kw not in seen:
-                seen.add(kw)
-                unique_keywords.append(kw)
-        
-        return unique_keywords[:10]  # Limit to top 10 keywords
-    
-    def calculate_keyword_relevance(self, message_keywords: List[str], cached_profile: CachedProfile) -> float:
-        """Calculate relevance score between message keywords and cached profile."""
-        if not message_keywords or not cached_profile.relevance_keywords:
-            return 0.0
-        
-        message_set = set(message_keywords)
-        profile_set = set(cached_profile.relevance_keywords)
-        
-        # Calculate Jaccard similarity
-        intersection = len(message_set.intersection(profile_set))
-        union = len(message_set.union(profile_set))
-        
-        if union == 0:
-            return 0.0
-        
-        jaccard_score = intersection / union
-        
-        # Boost score for exact topic/subtopic matches
-        topic_boost = 0.0
-        if any(kw in cached_profile.topic.lower() for kw in message_keywords):
-            topic_boost += 0.3
-        if any(kw in cached_profile.subtopic.lower() for kw in message_keywords):
-            topic_boost += 0.2
-        
-        final_score = jaccard_score + topic_boost
-        return min(final_score, 1.0)  # Cap at 1.0
+    async def force_refresh(self):
+        """Force an immediate refresh of the context buffer."""
+        logger.info(f"Force refreshing context buffer for user: {self.user_id}")
+        await self._refresh_context_buffer()
     
     def get_cache_stats(self) -> Dict:
         """Get cache performance statistics."""
-        total_requests = self.cache_stats["cache_hits"] + self.cache_stats["cache_misses"]
-        hit_rate = (self.cache_stats["cache_hits"] / total_requests * 100) if total_requests > 0 else 0
+        total_requests = self.stats.buffer_hits + self.stats.buffer_misses
+        hit_rate = (self.stats.buffer_hits / total_requests * 100) if total_requests > 0 else 0
         
         return {
-            **self.cache_stats,
             "hit_rate_percent": f"{hit_rate:.1f}%",
-            "cached_profiles": len(self.profile_cache),
-            "last_profile_update": datetime.fromtimestamp(self.profile_last_update) if self.profile_last_update else None
+            "cache_hits": self.stats.buffer_hits,
+            "cache_misses": self.stats.buffer_misses,
+            "cached_profiles": 1 if self.context_buffer else 0,  # Simple: either has context or not
+            "profile_refreshes": self.stats.refresh_count,
+            "average_response_time": self.stats.average_response_time,
+            "last_profile_update": self.stats.last_refresh
         }
     
     async def cleanup(self):
         """Clean up background tasks and resources."""
-        logger.info("Cleaning up SmartMemoryManager...")
+        logger.info(f"Cleaning up SmartMemoryManager for user: {self.user_id}")
         
-        # Cancel all background tasks
-        for task in self.background_tasks:
-            if not task.done():
-                task.cancel()
+        # Stop background refresh immediately
+        self.should_stop = True
         
-        # Wait for tasks to complete
-        if self.background_tasks:
-            await asyncio.gather(*self.background_tasks, return_exceptions=True)
+        if self.refresh_task and not self.refresh_task.done():
+            logger.info("Cancelling background refresh task...")
+            self.refresh_task.cancel()
+            try:
+                # Wait for task to actually stop
+                await asyncio.wait_for(self.refresh_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                logger.info("Background refresh task stopped")
+            except Exception as e:
+                logger.warning(f"Error stopping background task: {e}")
         
-        self.background_tasks.clear()
-        logger.info("SmartMemoryManager cleanup completed")
+        # Clear buffer
+        self.context_buffer = ""
+        self.recent_conversations.clear()
+        
+        logger.info(f"SmartMemoryManager cleanup completed for user: {self.user_id}")
