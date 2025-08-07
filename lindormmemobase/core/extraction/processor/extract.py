@@ -98,7 +98,7 @@ async def extract_topics(
             strict_mode=STRICT_MODE,
         ),
         system_prompt=PROMPTS[USE_LANGUAGE]["extract"].get_prompt(
-            PROMPTS[USE_LANGUAGE]["profile"].get_prompt(project_profiles_slots)
+            PROMPTS[USE_LANGUAGE]["profile"].get_prompt(project_profiles_slots), config
         ),
         temperature=0.2,  # precise
         config=config,

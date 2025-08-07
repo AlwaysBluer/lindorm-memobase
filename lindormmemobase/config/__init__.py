@@ -30,13 +30,11 @@ class Config:
     ] = None
 
     system_prompt: str = None
-    buffer_flush_interval: int = 60 * 60  # 1 hour
-    max_chat_blob_buffer_token_size: int = 1024
-    max_chat_blob_buffer_process_token_size: int = 16384
     max_profile_subtopics: int = 15
     max_pre_profile_token_size: int = 128
     llm_tab_separator: str = "::"
-    cache_user_profiles_ttl: int = 60 * 20  # 20 minutes
+
+    max_chat_blob_buffer_process_token_size: int = 16384
 
     # LLM
     language: Literal["en", "zh"] = "en"
@@ -67,12 +65,9 @@ class Config:
 
     minimum_chats_token_size_for_event_summary: int = 256
     event_tags: list[dict] = field(default_factory=list)
-    # Telemetry
-    telemetry_deployment_environment: str = "local"
-    
     # LindormSearch配置
     lindorm_search_host: str = "localhost"
-    lindorm_search_port: int = 9200
+    lindorm_search_port: int = 30070
     lindorm_search_use_ssl: bool = False
     lindorm_search_username: str = None
     lindorm_search_password: str = None
@@ -81,7 +76,7 @@ class Config:
 
     # Lindorm宽表 MySQL协议配置
     lindorm_table_host: str = "localhost"
-    lindorm_table_port: int = 3306
+    lindorm_table_port: int = 33060
     lindorm_table_username: str = "root"
     lindorm_table_password: str = None
     lindorm_table_database: str = "memobase"

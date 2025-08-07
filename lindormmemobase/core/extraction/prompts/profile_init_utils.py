@@ -6,13 +6,15 @@ from ....models.profile_topic import UserProfileTopic, EventTag
 
 def formate_profile_topic(topic: UserProfileTopic) -> str:
     if not topic.sub_topics:
-        return f"- {topic.topic}"
-    return f"- {topic.topic} ({topic.description or ''})\n" + "\n".join(
+        return f"topic: {topic.topic}"
+    return (f"topic: {topic.topic} ({topic.description or ''})\n" +
+            "  subtopics:\n" +
+            "\n".join(
         [
-            f"  - {sp.name}" + (f"({sp.description})" if sp.description else "")
+            f"    - {sp.name}" + (f"({sp.description})" if sp.description else "")
             for sp in topic.sub_topics
         ]
-    )
+    ))
 
 
 def modify_default_user_profile(CANDIDATE_PROFILE_TOPICS, config):

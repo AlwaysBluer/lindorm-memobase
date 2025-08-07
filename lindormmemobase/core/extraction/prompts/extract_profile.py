@@ -191,8 +191,8 @@ def get_default_profiles() -> str:
     return user_profile_topics.get_prompt()
 
 
-def get_prompt(topic_examples: str) -> str:
-    sys_prompt = CONFIG.system_prompt or DEFAULT_JOB
+def get_prompt(topic_examples: str, config) -> str:
+    sys_prompt = config.system_prompt or DEFAULT_JOB
     examples = "\n\n".join(
         [
             f"""<example>
@@ -208,7 +208,7 @@ def get_prompt(topic_examples: str) -> str:
     return FACT_RETRIEVAL_PROMPT.format(
         system_prompt=sys_prompt,
         examples=examples,
-        tab=CONFIG.llm_tab_separator,
+        tab=config.llm_tab_separator,
         topic_examples=topic_examples,
     )
 
