@@ -92,9 +92,21 @@ async def get_user_event_gists(
             routing=user_id
         )
         
+        # Debug logging to understand response structure
+        if not response or 'hits' not in response or 'hits' not in response['hits']:
+            TRACE_LOG.error(user_id, f"Invalid search response structure: {response}")
+            return Promise.resolve(UserEventGistsData(gists=[]))
+        
         gists = []
         for hit in response['hits']['hits']:
+            if '_source' not in hit:
+                TRACE_LOG.error(user_id, f"Missing _source in search hit: {hit.keys()}")
+                continue
             source = hit['_source']
+            # Check if required fields exist in source
+            if 'gist_data' not in source or 'created_at' not in source:
+                TRACE_LOG.error(user_id, f"Missing required fields in _source: {source.keys()}")
+                continue
             gists.append({
                 "id": hit['_id'],
                 "gist_data": source['gist_data'],
@@ -139,12 +151,16 @@ async def search_user_event_gists(
             return query_embeddings
         
         query_embedding = query_embeddings.data()[0]
+        # Convert ndarray to list if necessary
+        if hasattr(query_embedding, 'tolist'):
+            query_embedding = query_embedding.tolist()
         
         time_cutoff = datetime.utcnow() - timedelta(days=time_range_in_days)
         storage = get_lindorm_search_storage(config)
         
         search_query = {
             "size": topk,
+            "_source": True,
             "query": {
                 "knn": {
                     "embedding":  {
@@ -170,10 +186,22 @@ async def search_user_event_gists(
             routing=user_id
         )
         
+        # Debug logging to understand response structure
+        if not response or 'hits' not in response or 'hits' not in response['hits']:
+            TRACE_LOG.error(user_id, f"Invalid search response structure: {response}")
+            return Promise.resolve(UserEventGistsData(gists=[]))
+        
         gists = []
         for hit in response['hits']['hits']:
+            if '_source' not in hit:
+                TRACE_LOG.error(user_id, f"Missing _source in search hit: {hit.keys()}")
+                continue
             source = hit['_source']
-            similarity = hit['_score']
+            # Check if required fields exist in source
+            if 'gist_data' not in source or 'created_at' not in source:
+                TRACE_LOG.error(user_id, f"Missing required fields in _source: {source.keys()}")
+                continue
+            similarity = hit.get('_score', 0.0)
             gists.append({
                 "id": hit['_id'],
                 "gist_data": source['gist_data'],

@@ -26,11 +26,6 @@ async def organize_profiles(
 ) -> Promise[None]:
     profiles = profile_options["before_profiles"]
     USE_LANGUAGE = config.language or main_config.language
-    STRICT_MODE = (
-        config.profile_strict_mode
-        if config.profile_strict_mode is not None
-        else main_config.profile_strict_mode
-    )
     topic_groups = defaultdict(list)
     for p in profiles:
         topic_groups[p.attributes[ConstantsTable.topic]].append(p)

@@ -79,13 +79,13 @@ class LindormTableStorage:
                 cursor = conn.cursor()
                 for content, attributes in zip(profiles, attributes_list):
                     profile_id = str(uuid.uuid4())
-                    now = datetime.utcnow()  # 使用datetime对象而不是ISO字符串
+                    now = datetime.utcnow()
                     cursor.execute(
                         """
                         INSERT INTO user_profiles (user_id, profile_id, content, attributes, created_at, updated_at)
                         VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (user_id, profile_id, content, json.dumps(attributes), now, now)
+                        (str(user_id), str(profile_id), str(content), json.dumps(attributes), now, now)
                     )
                     profile_ids.append(profile_id)
                 conn.commit()
@@ -116,7 +116,7 @@ class LindormTableStorage:
             try:
                 cursor = conn.cursor()
                 for profile_id, content, attributes in zip(profile_ids, contents, attributes_list):
-                    now = datetime.utcnow()  # 使用datetime对象而不是ISO字符串
+                    now = datetime.utcnow()
                     if attributes is not None:
                         cursor.execute(
                             """
@@ -124,7 +124,7 @@ class LindormTableStorage:
                             SET content = %s, attributes = %s, updated_at = %s
                             WHERE user_id = %s AND profile_id = %s
                             """,
-                            (content, json.dumps(attributes), now, user_id, profile_id)  # attributes现在是JSON类型，不需要json.dumps
+                            (str(content), json.dumps(attributes), now, str(user_id), str(profile_id))
                         )
                     else:
                         cursor.execute(
@@ -133,7 +133,7 @@ class LindormTableStorage:
                             SET content = %s, updated_at = %s
                             WHERE user_id = %s AND profile_id = %s
                             """,
-                            (content, now, user_id, profile_id)
+                            (str(content), now, str(user_id), str(profile_id))
                         )
                     
                     if cursor.rowcount > 0:
@@ -169,7 +169,7 @@ class LindormTableStorage:
                     DELETE FROM user_profiles 
                     WHERE profile_id IN ({placeholders}) AND user_id = %s 
                     """,
-                    (*profile_ids, user_id)
+                    (*[str(pid) for pid in profile_ids], str(user_id))
                 )
                 deleted_count = cursor.rowcount
                 conn.commit()
@@ -208,7 +208,7 @@ class LindormTableStorage:
                     query += " LIMIT %s"
                     params.append(limit)
                 
-                cursor.execute(query, params)
+                cursor.execute(query, [str(user_id)] + ([limit] if limit else []))
                 results = cursor.fetchall()
                 
                 profiles = []

@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """
-Simple Memory Chatbot for Debugging
-===================================
+Simple Memory Chatbot
+====================
 
-A minimal implementation of memory-enhanced chatbot without optimizations.
-Perfect for debugging the core lindormmemobase functionality.
+A minimal implementation of memory-enhanced chatbot with streaming output.
 
 Features:
 - Direct lindormmemobase API calls
-- No caching or optimization
+- Streaming response output
 - Simple memory extraction
 - Basic memory search
 - Clear error handling
-- Detailed logging for debugging
 
 Usage:
-    python cookbooks/simple_chatbot/simple_chatbot.py --user_id debug_user
+    python cookbooks/simple_chatbot/simple_chatbot.py --user_id user123
 """
 
 import asyncio
@@ -42,22 +40,14 @@ from lindormmemobase import LindormMemobase, Config
 from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
 from lindormmemobase.models.profile_topic import ProfileConfig
 
-# Setup detailed logging for debugging
-logging.basicConfig(
-    level=logging.ERROR, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('simple_chatbot_debug.log')
-    ]
-)
+# Setup basic logging
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
 class SimpleChatbot:
     """
-    A simple chatbot implementation for debugging lindormmemobase functionality.
-    No optimizations, no caching - just direct API calls for easy debugging.
+    A simple chatbot implementation with streaming response output.
     """
     
     def __init__(self, user_id: str, config: Optional[Config] = None):
@@ -89,21 +79,18 @@ class SimpleChatbot:
         self.auto_extract = True
         self.extract_every_n_messages = 2  # Extract after every 2 exchanges
         
-        print(f"\n🔧 Simple Debug Chatbot initialized for user: {user_id}")
+        print(f"\n🔧 Simple Chatbot initialized for user: {user_id}")
         print(f"📝 Auto memory extraction: {'ON' if self.auto_extract else 'OFF'}")
-        print(f"🔍 Debug logging: ON (check simple_chatbot_debug.log)")
         print("=" * 60)
     
     async def chat_loop(self):
         """Main chat loop - simple and straightforward."""
-        print("\n🎯 Starting Simple Debug Chat Session")
-        print("Available commands:")
+        print("\n🎯 Starting Simple Chat Session")
+        print(f"Available commands:")
         print("  /extract   - Manually extract memories")
         print("  /memories  - Show stored memories") 
         print("  /search    - Search memories")
-        print("  /context   - Get current context")
         print("  /clear     - Clear conversation history")
-        print("  /debug     - Show debug info")
         print("  /quit      - Exit")
         print("\nType normally to chat!\n")
         
@@ -135,7 +122,6 @@ class SimpleChatbot:
         print(f"\n📊 Session Summary:")
         print(f"   Messages: {len(self.conversation_history)}")
         print(f"   Duration: {datetime.now() - self.session_start}")
-        print(f"   Debug log: simple_chatbot_debug.log")
     
     async def process_message(self, user_message: str):
         """Process a regular chat message."""
@@ -144,9 +130,11 @@ class SimpleChatbot:
         try:
             # Generate response with memory context
             context = await self.get_memory_context(user_message)
-            response = self.generate_simple_response(user_message, context)
             
-            print(f"\n🤖 Bot: {response}")
+            # Stream response
+            print(f"\n🤖 Bot: ", end="", flush=True)
+            response = await self.generate_streaming_response(user_message, context)
+            print()  # New line after streaming
             
             # Add to conversation history
             self.conversation_history.extend([
@@ -191,15 +179,65 @@ class SimpleChatbot:
             logger.error(f"Error getting memory context: {e}", exc_info=True)
             return ""
     
-    def generate_simple_response(self, user_message: str, context: str) -> str:
-        """Generate a simple response showing the memory context."""
-        logger.debug("Generating simple response...")
+    async def generate_streaming_response(self, user_message: str, context: str) -> str:
+        """Generate a streaming response using LLM with memory context."""
+        logger.debug("Generating streaming LLM response...")
         
-        # Show the memory context information directly
+        try:
+            # Import LLM streaming completion function
+            from lindormmemobase.llm.complete import llm_complete
+            
+            # Build system prompt with context
+            system_prompt = """你是一个友好、有用的AI助手。你能够记住用户的信息并基于这些信息进行个性化回复。
+
+请注意：
+- 用自然的方式回复，不要提及技术细节
+- 如果有用户的历史信息，请适当地引用但不要过于明显
+- 保持对话自然流畅
+- 用中文回复"""
+
+            if context.strip():
+                system_prompt += f"\n\n用户背景信息：\n{context}"
+            
+            # Create user prompt
+            user_prompt = user_message
+            
+            # Generate LLM response
+            response_result = await llm_complete(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=0.7,
+                config=self.memobase.config,
+                model=self.memobase.config.best_llm_model
+            )
+            
+            if response_result.ok():
+                full_response = response_result.data()
+                print(full_response, end="", flush=True)
+            else:
+                logger.error(f"LLM completion error: {response_result.msg()}")
+                full_response = ""
+            
+            if full_response:
+                logger.debug(f"Streaming response generated successfully: {len(full_response)} chars")
+                return full_response.strip()
+            else:
+                fallback = self._fallback_response(user_message, context)
+                print(fallback, end="", flush=True)
+                return fallback
+                
+        except Exception as e:
+            logger.error(f"Error generating streaming response: {e}", exc_info=True)
+            fallback = self._fallback_response(user_message, context)
+            print(fallback, end="", flush=True)
+            return fallback
+    
+    def _fallback_response(self, user_message: str, context: str) -> str:
+        """Generate a fallback response when LLM is not available."""
         if context.strip():
-            return f"Based on what I know about you:\n\n{context}\n\n---\nYour message: '{user_message}'"
+            return f"我了解您的一些信息，正在为您提供帮助。关于您的问题：{user_message}"
         else:
-            return f"I don't have much context about you yet, but I'm learning!\n\nYour message: '{user_message}'"
+            return f"我正在了解您，感谢您的问题：{user_message}"
     
     async def handle_command(self, command: str) -> bool:
         """Handle debug commands."""
@@ -225,16 +263,7 @@ class SimpleChatbot:
             elif cmd == "context":
                 await self.show_current_context()
                 return True
-                
-            elif cmd == "clear":
-                self.conversation_history.clear()
-                print("🗑️ Conversation history cleared")
-                return True
-                
-            elif cmd == "debug":
-                self.show_debug_info()
-                return True
-                
+
             elif cmd == "quit":
                 return False
                 
@@ -257,7 +286,7 @@ class SimpleChatbot:
         
         try:
             # Create blob from recent conversation
-            recent_messages = self.conversation_history[-4:]  # Last 2 exchanges
+            recent_messages = self.conversation_history[-2:]  # Last 2 exchanges
             
             blob = ChatBlob(
                 id=f"debug_chat_{self.user_id}_{int(datetime.now().timestamp())}",
@@ -410,10 +439,10 @@ class SimpleChatbot:
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Simple Debug Chatbot")
+    parser = argparse.ArgumentParser(description="Simple Chatbot")
     parser.add_argument(
         "--user_id",
-        default="debug_user",
+        default="user123",
         help="User ID for memory management"
     )
     parser.add_argument(
@@ -425,22 +454,12 @@ def parse_args():
         action="store_true",
         help="Disable automatic memory extraction"
     )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging"
-    )
     return parser.parse_args()
 
 
 async def main():
     """Main entry point."""
     args = parse_args()
-    
-    # Set logging level based on debug flag
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-        print("🐛 Debug logging enabled")
     
     try:
         # Load configuration
@@ -455,7 +474,7 @@ async def main():
             else:
                 config = Config.load_config()
         
-        print("🔧 Initializing Simple Debug Chatbot...")
+        print("🔧 Initializing Simple Chatbot...")
         logger.info("Starting simple chatbot session")
         
         # Create chatbot
@@ -472,7 +491,6 @@ async def main():
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
         print(f"\n💥 Fatal error: {e}")
-        print("Check simple_chatbot_debug.log for details")
         sys.exit(1)
 
 

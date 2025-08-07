@@ -172,10 +172,17 @@ class LindormMemobase:
         
         Args:
             user_id: Unique identifier for the user
-            topics: Optional list of topics to filter by
+            topics: Optional list of topics to filter by. If provided, only profiles 
+                   with matching topics will be returned.
             
         Returns:
-            Promise containing list of user profiles
+            List of user profiles grouped by topic and subtopic
+            
+        Raises:
+            LindormMemobaseError: If profile retrieval fails
+            
+        Example:
+            profiles = await memobase.get_user_profiles("user123", topics=["interests", "preferences"])
         """
         try:
             profiles_result = await get_user_profiles(user_id, self.config)
@@ -227,11 +234,17 @@ class LindormMemobase:
         
         Args:
             user_id: Unique identifier for the user
-            time_range_in_days: Number of days to look back (default: 21)
-            limit: Maximum number of events to return
+            time_range_in_days: Number of days to look back for events (default: 21)
+            limit: Maximum number of events to return (default: 100)
             
         Returns:
-            Promise containing matching events
+            List of event dictionaries containing id, content, created_at, updated_at
+            
+        Raises:
+            LindormMemobaseError: If event retrieval fails
+            
+        Example:
+            events = await memobase.get_events("user123", time_range_in_days=30, limit=50)
         """
         try:
             result = await get_user_event_gists(
@@ -272,13 +285,19 @@ class LindormMemobase:
         
         Args:
             user_id: Unique identifier for the user
-            query: Search query string
-            limit: Maximum number of results to return
-            similarity_threshold: Minimum similarity score (0.0-1.0)
-            time_range_in_days: Number of days to look back
+            query: Search query string to find relevant events
+            limit: Maximum number of results to return (default: 10)
+            similarity_threshold: Minimum similarity score (0.0-1.0, default: 0.2)
+            time_range_in_days: Number of days to look back (default: 21)
             
         Returns:
-            Promise containing matching events with similarity scores
+            List of event dictionaries with similarity scores, sorted by relevance
+            
+        Raises:
+            LindormMemobaseError: If search fails
+            
+        Example:
+            events = await memobase.search_events("user123", "travel plans", limit=5, similarity_threshold=0.3)
         """
         try:
             result = await search_user_event_gists(
@@ -298,11 +317,11 @@ class LindormMemobase:
             
             for gist in events_data.gists:
                 events.append({
-                    "id": gist.get("id"),
-                    "content": gist.get("gist_data", {}).get("content", ""),
-                    "created_at": gist.get("created_at"),
-                    "updated_at": gist.get("updated_at"),
-                    "similarity": gist.get("similarity", 0.0)
+                    "id": str(gist.id),
+                    "content": gist.gist_data.content if gist.gist_data else "",
+                    "created_at": gist.created_at.isoformat() if gist.created_at else None,
+                    "updated_at": gist.updated_at.isoformat() if gist.updated_at else None,
+                    "similarity": gist.similarity if gist.similarity is not None else 0.0
                 })
                 
             return events
@@ -325,12 +344,26 @@ class LindormMemobase:
         
         Args:
             user_id: Unique identifier for the user
-            conversation: List of chat messages to analyze
-            topics: Optional list of topics to consider
-            max_profiles: Maximum number of relevant profiles to return
+            conversation: List of chat messages to analyze for relevance
+            topics: Optional list of topics to consider (filters profiles by topic)
+            max_profiles: Maximum number of relevant profiles to return (default: 10)
+            max_profile_token_size: Maximum token size for profile content (default: 4000)
+            max_subtopic_size: Optional limit on subtopic content size
+            topic_limits: Optional dictionary mapping topics to their individual limits
+            full_profile_and_only_search_event: If True, returns full profiles and searches events only
             
         Returns:
-            Promise containing relevant profiles ranked by relevance
+            List of Profile objects ranked by relevance to the conversation
+            
+        Raises:
+            LindormMemobaseError: If profile filtering fails
+            
+        Example:
+            conversation = [
+                OpenAICompatibleMessage(role="user", content="I want to plan my vacation"),
+                OpenAICompatibleMessage(role="assistant", content="Where would you like to go?")
+            ]
+            profiles = await memobase.get_relevant_profiles("user123", conversation, topics=["travel"])
         """
         try:
             result = await get_user_profiles_data(
@@ -399,14 +432,37 @@ class LindormMemobase:
         
         Args:
             user_id: Unique identifier for the user
-            conversation: Current conversation messages
-            profile_config: Profile configuration to use
-            max_tokens: Maximum tokens for context
-            prefer_topics: Topics to prioritize
-            time_range_days: Days to look back for events
+            conversation: Current conversation messages to analyze for context
+            profile_config: Profile configuration to use (uses default if None)
+            max_token_size: Maximum tokens for the generated context (default: 2000)
+            prefer_topics: Topics to prioritize when selecting context
+            time_range_in_days: Days to look back for relevant events (default: 30)
+            event_similarity_threshold: Minimum similarity for event inclusion (default: 0.2)
+            profile_event_ratio: Ratio of profile vs event content (default: 0.6)
+            only_topics: Restrict context to only these topics
+            max_subtopic_size: Maximum size per subtopic
+            topic_limits: Per-topic token limits
+            require_event_summary: Whether to include event summaries
+            customize_context_prompt: Custom prompt for context generation
+            full_profile_and_only_search_event: Use full profiles, search events only
+            fill_window_with_events: Fill remaining token budget with events
             
         Returns:
-            Promise containing formatted context string
+            Formatted context string ready for use in conversation
+            
+        Raises:
+            LindormMemobaseError: If context generation fails
+            
+        Example:
+            conversation = [
+                OpenAICompatibleMessage(role="user", content="What should I cook tonight?")
+            ]
+            context = await memobase.get_conversation_context(
+                "user123", 
+                conversation, 
+                prefer_topics=["cooking", "dietary_preferences"],
+                max_token_size=1500
+            )
         """
         try:
             if profile_config is None:
@@ -449,14 +505,28 @@ class LindormMemobase:
         """
         Search profiles by text query using conversation context.
         
+        This method creates a mock conversation with the query to leverage the existing
+        profile filtering system that analyzes conversation relevance.
+        
         Args:
             user_id: Unique identifier for the user
-            query: Search query text
-            topics: Optional topic filter
-            max_results: Maximum number of results
+            query: Search query text to find relevant profiles
+            topics: Optional topic filter to restrict search scope
+            max_results: Maximum number of results to return (default: 10)
             
         Returns:
-            Promise containing matching profiles
+            List of Profile objects matching the query, ranked by relevance
+            
+        Raises:
+            LindormMemobaseError: If search fails
+            
+        Example:
+            profiles = await memobase.search_profiles(
+                "user123", 
+                "favorite restaurants", 
+                topics=["food", "dining"],
+                max_results=5
+            )
         """
         # Create a mock conversation with the query to leverage existing filtering
         mock_conversation = [
