@@ -1,60 +1,32 @@
+language: zh
+enable_event_embedding: true
+profile_strict_mode: true
+
 event_tags:
-  - name: "mental_health"
+  - name: "心理健康"
     description: |
-      You need to look at user's mental health status and pick the most relevant tag from the following list:
-      - depression
-      - anxiety
-      - stress
-      - anger
-      - sadness
-      - happiness
+      您需要观察用户的心理健康状态，从以下列表中选择最相关的标签：
+      - 焦虑
+      - 愤怒
+      - 悲伤
+      - 快乐
     
 overwrite_user_profiles:
-  - topic: "basic_info"
+  - topic: "基本信息"
     sub_topics:
-      - name: "name"
-      - name: "age"
-      - name: "gender"
-      - name: "occupation"
-        description: "user's professional background"
-      - name: "location"
-      - name: "languages"
-        description: "languages the user speaks"
-      - name: "timezone"
-        description: "user's local timezone for scheduling"
+      - name: "姓名"
+      - name: "年龄"
+      - name: "性别"
+      - name: "职业"
+      - name: "地点"
+      - name: "时区"
+        description: "用户的本地时区，用于时间安排"
 
-  - topic: "companion_preferences"
+  - topic: "AI伴侣偏好"
     sub_topics:
-      - name: "companion_type"
-        description: "preferred ai companion personality type"
-      - name: "interaction_style"
-        description: "formal, casual, friendly, professional etc."
-      - name: "communication_freq"
-        description: "how often they want to interact with the ai"
-      - name: "interest_topics"
-        description: "preferred conversation topics"
-      - name: "learning_goals"
-        description: "what they want to learn or achieve"
-      - name: "privacy_prefs"
-        description: "data sharing and storage preferences"
-
-  - topic: "interaction_history"
-    sub_topics:
-      - name: "convo_count"
-      - name: "favorite_topics"
-      - name: "active_projects"
-      - name: "saved_convos"
-      - name: "feedback_hist"
-        description: "user's previous feedback on interactions"
-
-  - topic: "personalization"
-    description: "tags for customizing ai behavior"
-    sub_topics:
-      - name: "humor_pref"
-        description: "whether they enjoy jokes and casual banter"
-      - name: "response_len"
-        description: "preferred length of ai responses"
-      - name: "tech_depth"
-        description: "preferred level of technical detail"
-      - name: "learn_style"
-        description: "visual, verbal, practical, etc."
+      - name: "交互风格"
+        description: "正式、随意、友好、专业等"
+      - name: "感兴趣话题"
+        description: "偏好的对话主题"
+      - name: "学习目标"
+        description: "想要学习或实现的目标"

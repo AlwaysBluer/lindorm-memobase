@@ -22,6 +22,7 @@ import asyncio
 import argparse
 import os
 import sys
+import yaml
 from datetime import datetime
 from typing import List, Optional
 import logging
@@ -30,13 +31,20 @@ import logging
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
+# Load environment variables from cookbooks directory
+from dotenv import load_dotenv
+cookbooks_env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+if os.path.exists(cookbooks_env_path):
+    load_dotenv(cookbooks_env_path, override=True)
+    print(f"✅ Loaded environment variables from cookbooks/.env")
+
 from lindormmemobase import LindormMemobase, Config
-from lindormmemobase.models.blob import Blob, BlobType, OpenAICompatibleMessage
+from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
 from lindormmemobase.models.profile_topic import ProfileConfig
 
 # Setup detailed logging for debugging
 logging.basicConfig(
-    level=logging.DEBUG, 
+    level=logging.ERROR, 
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
@@ -61,15 +69,25 @@ class SimpleChatbot:
         # Initialize lindormmemobase
         try:
             self.memobase = LindormMemobase(config)
-            self.profile_config = ProfileConfig()
+            # Load ProfileConfig from the same config file or extract from main config
+            cookbooks_config_path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+            if os.path.exists(cookbooks_config_path):
+                self.profile_config = ProfileConfig.load_from_file(cookbooks_config_path)
+                print(f"✅ Using ProfileConfig from cookbooks/config.yaml")
+            else:
+                # Fallback: extract profile-related settings from main config
+                self.profile_config = ProfileConfig.load_from_config(config)
+                print(f"✅ Using ProfileConfig extracted from main Config")
+                
             logger.info(f"LindormMemobase initialized successfully for user: {user_id}")
+            logger.info(f"ProfileConfig language: {self.profile_config.language}, overwrite_profiles: {bool(self.profile_config.overwrite_user_profiles)}")
         except Exception as e:
             logger.error(f"Failed to initialize LindormMemobase: {e}")
             raise
         
         # Simple settings
         self.auto_extract = True
-        self.extract_every_n_messages = 4  # Extract after every 2 exchanges
+        self.extract_every_n_messages = 2  # Extract after every 2 exchanges
         
         print(f"\n🔧 Simple Debug Chatbot initialized for user: {user_id}")
         print(f"📝 Auto memory extraction: {'ON' if self.auto_extract else 'OFF'}")
@@ -162,36 +180,26 @@ class SimpleChatbot:
                 user_id=self.user_id,
                 conversation=current_conversation,
                 profile_config=self.profile_config,
-                max_tokens=1500,
-                time_range_days=30
+                max_token_size=1500,
+                time_range_in_days=30
             )
             
-            if context_result.ok():
-                context = context_result.data()
-                logger.debug(f"Context retrieved: {len(context)} characters")
-                return context
-            else:
-                logger.warning(f"Context retrieval failed: {context_result.msg()}")
-                return ""
+            logger.debug(f"Context retrieved: {len(context_result)} characters")
+            return context_result
                 
         except Exception as e:
             logger.error(f"Error getting memory context: {e}", exc_info=True)
             return ""
     
     def generate_simple_response(self, user_message: str, context: str) -> str:
-        """Generate a simple response (fallback since we can't rely on external LLM)."""
+        """Generate a simple response showing the memory context."""
         logger.debug("Generating simple response...")
         
-        # Simple response logic for debugging
+        # Show the memory context information directly
         if context.strip():
-            if "tennis" in user_message.lower() and "tennis" in context.lower():
-                return "I see you're interested in tennis! Based on what I remember about you, that's definitely something you enjoy."
-            elif "food" in user_message.lower() or "eat" in user_message.lower():
-                return "Let me think about your food preferences based on what I know about you..."
-            else:
-                return f"I'm processing your message with the context I have about you. You said: '{user_message}'"
+            return f"Based on what I know about you:\n\n{context}\n\n---\nYour message: '{user_message}'"
         else:
-            return f"I understand you're saying: '{user_message}'. I don't have much context about you yet, but I'm learning!"
+            return f"I don't have much context about you yet, but I'm learning!\n\nYour message: '{user_message}'"
     
     async def handle_command(self, command: str) -> bool:
         """Handle debug commands."""
@@ -249,19 +257,16 @@ class SimpleChatbot:
         
         try:
             # Create blob from recent conversation
-            conversation_text = "\n".join([
-                f"{msg.role.capitalize()}: {msg.content}" 
-                for msg in self.conversation_history[-4:]  # Last 2 exchanges
-            ])
+            recent_messages = self.conversation_history[-4:]  # Last 2 exchanges
             
-            blob = Blob(
+            blob = ChatBlob(
                 id=f"debug_chat_{self.user_id}_{int(datetime.now().timestamp())}",
-                content=conversation_text,
+                messages=recent_messages,
                 type=BlobType.chat,
                 timestamp=int(datetime.now().timestamp())
             )
             
-            logger.debug(f"Created blob with content: {conversation_text[:100]}...")
+            logger.debug(f"Created ChatBlob with {len(recent_messages)} messages")
             
             # Extract memories using lindormmemobase
             result = await self.memobase.extract_memories(
@@ -270,21 +275,15 @@ class SimpleChatbot:
                 profile_config=self.profile_config
             )
             
-            if result.ok():
-                data = result.data()
-                logger.debug(f"Memory extraction result: {data}")
-                print("✅ Memories extracted successfully")
-                
-                # Try to show what was extracted
-                if hasattr(data, 'merge_add_result'):
-                    merge_result = data.merge_add_result
-                    added = len(merge_result.get('add', []))
-                    updated = len(merge_result.get('update', []))
-                    print(f"   📈 {added} new memories, {updated} updated")
-                
-            else:
-                logger.error(f"Memory extraction failed: {result.msg()}")
-                print(f"❌ Memory extraction failed: {result.msg()}")
+            logger.debug(f"Memory extraction result: {result}")
+            print("✅ Memories extracted successfully")
+            
+            # Try to show what was extracted
+            if hasattr(result, 'merge_add_result'):
+                merge_result = result.merge_add_result
+                added = len(merge_result.get('add', []))
+                updated = len(merge_result.get('update', []))
+                print(f"   📈 {added} new memories, {updated} updated")
                 
         except Exception as e:
             logger.error(f"Error in extract_memories: {e}", exc_info=True)
@@ -295,25 +294,18 @@ class SimpleChatbot:
         logger.debug("Retrieving stored memories...")
         
         try:
-            profiles_result = await self.memobase.get_user_profiles(self.user_id)
+            profiles = await self.memobase.get_user_profiles(self.user_id)
             
-            if profiles_result.ok():
-                profiles = profiles_result.data()
+            if profiles:
+                print(f"\n📚 Your Stored Memories ({len(profiles)} topics):")
+                print("-" * 50)
                 
-                if profiles:
-                    print(f"\n📚 Your Stored Memories ({len(profiles)} topics):")
-                    print("-" * 50)
-                    
-                    for profile in profiles:
-                        print(f"\n🏷️  Topic: {profile.topic}")
-                        for subtopic, entry in profile.subtopics.items():
-                            print(f"   └── {subtopic}: {entry.content}")
-                else:
-                    print("📝 No memories stored yet")
-                    
+                for profile in profiles:
+                    print(f"\n🏷️  Topic: {profile.topic}")
+                    for subtopic, entry in profile.subtopics.items():
+                        print(f"   └── {subtopic}: {entry.content}")
             else:
-                logger.error(f"Failed to retrieve memories: {profiles_result.msg()}")
-                print(f"❌ Failed to retrieve memories: {profiles_result.msg()}")
+                print("📝 No memories stored yet")
                 
         except Exception as e:
             logger.error(f"Error showing memories: {e}", exc_info=True)
@@ -328,40 +320,36 @@ class SimpleChatbot:
             print(f"\n🔍 Searching for: '{query}'")
             print("-" * 30)
             
-            profile_result = await self.memobase.search_profiles(
+            profiles = await self.memobase.search_profiles(
                 user_id=self.user_id,
                 query=query,
                 max_results=5
             )
             
-            if profile_result.ok():
-                profiles = profile_result.data()
-                if profiles:
-                    print("📋 Found in Profiles:")
-                    for profile in profiles:
-                        print(f"   • {profile.topic}")
-                        for subtopic, entry in profile.subtopics.items():
-                            print(f"     └── {subtopic}: {entry.content}")
-                else:
-                    print("📋 No matching profiles found")
+            if profiles:
+                print("📋 Found in Profiles:")
+                for profile in profiles:
+                    print(f"   • {profile.topic}")
+                    for subtopic, entry in profile.subtopics.items():
+                        print(f"     └── {subtopic}: {entry.content}")
+            else:
+                print("📋 No matching profiles found")
             
             # Search events
-            event_result = await self.memobase.search_events(
+            events = await self.memobase.search_events(
                 user_id=self.user_id,
                 query=query,
                 limit=5
             )
             
-            if event_result.ok():
-                events = event_result.data()
-                if events:
-                    print("\n📅 Found in Events:")
-                    for event in events:
-                        similarity = event.get('similarity', 0)
-                        content = event['content'][:100] + "..." if len(event['content']) > 100 else event['content']
-                        print(f"   • {content} (similarity: {similarity:.2f})")
-                else:
-                    print("📅 No matching events found")
+            if events:
+                print("\n📅 Found in Events:")
+                for event in events:
+                    similarity = event.get('similarity', 0)
+                    content = event['content'][:100] + "..." if len(event['content']) > 100 else event['content']
+                    print(f"   • {content} (similarity: {similarity:.2f})")
+            else:
+                print("📅 No matching events found")
                     
         except Exception as e:
             logger.error(f"Error searching memories: {e}", exc_info=True)
@@ -437,6 +425,11 @@ def parse_args():
         action="store_true",
         help="Disable automatic memory extraction"
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging"
+    )
     return parser.parse_args()
 
 
@@ -444,12 +437,23 @@ async def main():
     """Main entry point."""
     args = parse_args()
     
+    # Set logging level based on debug flag
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        print("🐛 Debug logging enabled")
+    
     try:
         # Load configuration
         if args.config and os.path.exists(args.config):
             config = Config.load_config(args.config)
         else:
-            config = Config.load_config()
+            # Try to use cookbooks/config.yaml first
+            cookbooks_config_path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+            if os.path.exists(cookbooks_config_path):
+                config = Config.from_yaml_file(cookbooks_config_path)
+                print(f"✅ Using cookbooks/config.yaml")
+            else:
+                config = Config.load_config()
         
         print("🔧 Initializing Simple Debug Chatbot...")
         logger.info("Starting simple chatbot session")

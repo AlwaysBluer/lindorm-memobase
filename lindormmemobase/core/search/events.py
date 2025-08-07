@@ -87,7 +87,7 @@ async def get_user_event_gists(
         }
         
         response = storage.client.search(
-            index=config.opensearch_event_gists_index,
+            index=config.lindorm_search_event_gists_index,
             body=query,
             routing=user_id
         )
@@ -165,7 +165,7 @@ async def search_user_event_gists(
         }
         
         response = storage.client.search(
-            index=config.opensearch_event_gists_index,
+            index=config.lindorm_search_event_gists_index,
             body=search_query,
             routing=user_id
         )

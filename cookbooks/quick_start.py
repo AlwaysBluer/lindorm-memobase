@@ -36,9 +36,25 @@ async def quick_start():
         print("- MEMOBASE_OPENSEARCH_HOST")
         return
     
-    # 初始化Profile配置
-    profile_config = ProfileConfig(language="zh")
-    print("✅ Profile配置初始化完成")
+    # 初始化Profile配置 - 从配置文件加载或从主配置提取
+    try:
+        # 尝试从cookbooks/config.yaml加载ProfileConfig
+        config_path = os.path.join(os.path.dirname(__file__), "config.yaml")
+        if os.path.exists(config_path):
+            profile_config = ProfileConfig.load_from_file(config_path)
+            print("✅ Profile配置从cookbooks/config.yaml加载完成")
+            print(f"   配置语言: {profile_config.language}")
+            print(f"   自定义档案主题: {len(profile_config.overwrite_user_profiles) if profile_config.overwrite_user_profiles else 0} 个")
+            print(f"   事件标签: {len(profile_config.event_tags) if profile_config.event_tags else 0} 个")
+        else:
+            # 回退：从主配置提取profile相关设置
+            profile_config = ProfileConfig.load_from_config(memobase.config)
+            profile_config.language = "zh"  # 确保使用中文
+            print("✅ Profile配置从主配置提取完成")
+    except Exception as e:
+        print(f"⚠️  Profile配置加载失败，使用默认配置: {e}")
+        profile_config = ProfileConfig(language="zh")
+    
     
     # Step 2: 准备测试数据
     print("\nStep 2: 准备用户对话数据...")

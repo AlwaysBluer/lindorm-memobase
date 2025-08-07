@@ -20,7 +20,7 @@ async def entry_chat_summary(
     from ....core.extraction.prompts.user_profile_topics import get_candidate_profile_topics
     
     project_profiles_slots = read_out_profile_config(
-        profile_config, get_candidate_profile_topics(config)
+        profile_config, get_candidate_profile_topics(config), config
     )
     prompt = PROMPTS[USE_LANGUAGE]["entry_summary"]
     event_summary_theme = (
@@ -28,7 +28,7 @@ async def entry_chat_summary(
     )
 
     event_tags = read_out_event_tags(profile_config, config)
-    event_attriubtes_str = "\n".join(
+    event_attributes_str = "\n".join(
         [f"- {et.name}({et.description})" for et in event_tags]
     )
     from ....core.extraction.prompts.user_profile_topics import get_prompt
@@ -38,7 +38,7 @@ async def entry_chat_summary(
         prompt.pack_input(blob_strs),
         system_prompt=prompt.get_prompt(
             profile_topics_str,
-            event_attriubtes_str,
+            event_attributes_str,
             additional_requirements=event_summary_theme,
         ),
         temperature=0.2,  # precise

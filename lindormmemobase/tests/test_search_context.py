@@ -49,20 +49,20 @@ class TestLindormSearchContext:
             cls.config = Config.__new__(Config)  # Skip __post_init__
             
             # Set MySQL/Lindorm Wide Table configuration
-            cls.config.mysql_host = os.getenv("MEMOBASE_MYSQL_HOST", "localhost")
-            cls.config.mysql_port = int(os.getenv("MEMOBASE_MYSQL_PORT", "3306"))
-            cls.config.mysql_username = os.getenv("MEMOBASE_MYSQL_USERNAME", "root")
-            cls.config.mysql_password = os.getenv("MEMOBASE_MYSQL_PASSWORD")
-            cls.config.mysql_database = os.getenv("MEMOBASE_MYSQL_DATABASE", "memobase_test")
+            cls.config.lindorm_table_host = os.getenv("MEMOBASE_LINDORM_TABLE_HOST", "localhost")
+            cls.config.lindorm_table_port = int(os.getenv("MEMOBASE_LINDORM_TABLE_PORT", "3306"))
+            cls.config.lindorm_table_username = os.getenv("MEMOBASE_LINDORM_TABLE_USERNAME", "root")
+            cls.config.lindorm_table_password = os.getenv("MEMOBASE_LINDORM_TABLE_PASSWORD")
+            cls.config.lindorm_table_database = os.getenv("MEMOBASE_LINDORM_TABLE_DATABASE", "memobase_test")
             
             # Set OpenSearch/Lindorm Search configuration
-            cls.config.opensearch_host = os.getenv("MEMOBASE_OPENSEARCH_HOST", "localhost")
-            cls.config.opensearch_port = int(os.getenv("MEMOBASE_OPENSEARCH_PORT", "9200"))
-            cls.config.opensearch_username = os.getenv("MEMOBASE_OPENSEARCH_USERNAME")
-            cls.config.opensearch_password = os.getenv("MEMOBASE_OPENSEARCH_PASSWORD")
-            cls.config.opensearch_use_ssl = os.getenv("MEMOBASE_OPENSEARCH_USE_SSL", "false").lower() == "true"
-            cls.config.opensearch_events_index = os.getenv("MEMOBASE_OPENSEARCH_EVENTS_INDEX", "memobase_events_ctx_test")
-            cls.config.opensearch_event_gists_index = os.getenv("MEMOBASE_OPENSEARCH_EVENT_GISTS_INDEX", "memobase_event_gists_ctx_test")
+            cls.config.lindorm_search_host = os.getenv("MEMOBASE_LINDORM_SEARCH_HOST", "localhost")
+            cls.config.lindorm_search_port = int(os.getenv("MEMOBASE_LINDORM_SEARCH_PORT", "9200"))
+            cls.config.lindorm_search_username = os.getenv("MEMOBASE_LINDORM_SEARCH_USERNAME")
+            cls.config.lindorm_search_password = os.getenv("MEMOBASE_LINDORM_SEARCH_PASSWORD")
+            cls.config.lindorm_search_use_ssl = os.getenv("MEMOBASE_LINDORM_SEARCH_USE_SSL", "false").lower() == "true"
+            cls.config.lindorm_search_events_index = os.getenv("MEMOBASE_LINDORM_SEARCH_EVENTS_INDEX", "memobase_events_ctx_test")
+            cls.config.lindorm_search_event_gists_index = os.getenv("MEMOBASE_LINDORM_SEARCH_EVENT_GISTS_INDEX", "memobase_event_gists_ctx_test")
             
             # Set embedding configuration - disable by default for testing
             cls.config.enable_event_embedding = False  # Disable to avoid API calls and connection issues

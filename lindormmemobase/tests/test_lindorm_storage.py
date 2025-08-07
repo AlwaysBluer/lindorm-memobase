@@ -72,9 +72,9 @@ async def test_configuration():
         print(f"   - LLM Model: {config.best_llm_model}")
         print(f"   - Embedding Model: {config.embedding_model}")
         print(f"   - Embedding Dimension: {config.embedding_dim}")
-        print(f"   - OpenSearch Host: {config.opensearch_host}:{config.opensearch_port}")
-        print(f"   - MySQL Host: {config.mysql_host}:{config.mysql_port}")
-        print(f"   - MySQL Database: {config.mysql_database}")
+        print(f"   - OpenSearch Host: {config.lindorm_search_host}:{config.lindorm_search_port}")
+        print(f"   - MySQL Host: {config.lindorm_table_host}:{config.lindorm_table_port}")
+        print(f"   - MySQL Database: {config.lindorm_table_database}")
         
         return config
     except Exception as e:

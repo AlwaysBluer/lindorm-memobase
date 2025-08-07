@@ -1,3 +1,4 @@
+import uuid
 from pydantic import ValidationError
 
 from ....config import TRACE_LOG, Config
@@ -21,7 +22,7 @@ async def handle_session_event(
 ) -> Promise[str]:
     # Skip event handling if event embedding is disabled
     if not config.enable_event_embedding:
-        return Promise.resolve("mock_event_id")
+        return Promise.resolve(str(uuid.uuid4()))
 
     eid = await append_user_event(
         user_id,

@@ -42,7 +42,7 @@ class TestLindormSearchStorage:
         try:
             for event_id in cls.test_event_ids:
                 cls.storage.client.delete(
-                    index=cls.config.opensearch_events_index,
+                    index=cls.config.lindorm_search_events_index,
                     id=event_id,
                     ignore=[404]
                 )
@@ -65,15 +65,15 @@ class TestLindormSearchStorage:
         try:
             # Check events index
             events_exists = self.storage.client.indices.exists(
-                index=self.config.opensearch_events_index
+                index=self.config.lindorm_search_events_index
             )
-            assert events_exists, f"Events index {self.config.opensearch_events_index} should exist"
+            assert events_exists, f"Events index {self.config.lindorm_search_events_index} should exist"
             
             # Check event gists index  
             gists_exists = self.storage.client.indices.exists(
-                index=self.config.opensearch_event_gists_index
+                index=self.config.lindorm_search_event_gists_index
             )
-            assert gists_exists, f"Event gists index {self.config.opensearch_event_gists_index} should exist"
+            assert gists_exists, f"Event gists index {self.config.lindorm_search_event_gists_index} should exist"
             
             print("✅ Indices exist and are accessible")
         except Exception as e:
@@ -106,7 +106,7 @@ class TestLindormSearchStorage:
         # Verify the event was stored
         try:
             stored_event = self.storage.client.get(
-                index=self.config.opensearch_events_index,
+                index=self.config.lindorm_search_events_index,
                 id=event_id
             )
             assert stored_event['_source']['user_id'] == self.test_user_id
@@ -161,7 +161,7 @@ class TestLindormSearchStorage:
         # Verify the gist was stored using the returned gist_id
         try:
             stored_gist = self.storage.client.get(
-                index=self.config.opensearch_event_gists_index,
+                index=self.config.lindorm_search_event_gists_index,
                 id=gist_id
             )
             assert stored_gist['_source']['user_id'] == self.test_user_id
@@ -175,7 +175,7 @@ class TestLindormSearchStorage:
             await asyncio.sleep(3)
             try:
                 stored_gist = self.storage.client.get(
-                    index=self.config.opensearch_event_gists_index,
+                    index=self.config.lindorm_search_event_gists_index,
                     id=gist_id
                 )
                 print(f"✅ Event gist stored successfully for event: {event_id} (after retry)")

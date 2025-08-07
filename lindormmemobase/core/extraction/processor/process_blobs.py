@@ -66,7 +66,8 @@ async def process_blobs(
     intermediate_profile, delta_profile_data = profile_results.data()
     event_tags = event_results.data()
 
-    if config.test_skip_persist:
+    # Handle session events and user profiles (only skip if test_skip_persist is True)
+    if not config.test_skip_persist:  # Fixed: Changed to NOT config.test_skip_persist
         p = await handle_session_event(
             user_id,
             user_memo_str,
@@ -81,6 +82,9 @@ async def process_blobs(
         p = await handle_user_profile_db(user_id, intermediate_profile, config)
         if not p.ok():
             return p
+    else:
+        # For testing: use mock event ID
+        eid = str(uuid.uuid4())
 
     return Promise.resolve(
         ChatModalResponse(

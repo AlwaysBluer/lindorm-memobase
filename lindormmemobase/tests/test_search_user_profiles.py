@@ -52,11 +52,11 @@ class TestLindormSearchUserProfiles:
             cls.config = Config.__new__(Config)  # Skip __post_init__
             
             # Set MySQL/Lindorm configuration from environment or defaults
-            cls.config.mysql_host = os.getenv("MEMOBASE_MYSQL_HOST", "localhost")
-            cls.config.mysql_port = int(os.getenv("MEMOBASE_MYSQL_PORT", "3306"))
-            cls.config.mysql_username = os.getenv("MEMOBASE_MYSQL_USERNAME", "root")
-            cls.config.mysql_password = os.getenv("MEMOBASE_MYSQL_PASSWORD")
-            cls.config.mysql_database = os.getenv("MEMOBASE_MYSQL_DATABASE", "memobase_test")
+            cls.config.lindorm_table_host = os.getenv("MEMOBASE_LINDORM_TABLE_HOST", "localhost")
+            cls.config.lindorm_table_port = int(os.getenv("MEMOBASE_LINDORM_TABLE_PORT", "3306"))
+            cls.config.lindorm_table_username = os.getenv("MEMOBASE_LINDORM_TABLE_USERNAME", "root")
+            cls.config.lindorm_table_password = os.getenv("MEMOBASE_LINDORM_TABLE_PASSWORD")
+            cls.config.lindorm_table_database = os.getenv("MEMOBASE_LINDORM_TABLE_DATABASE", "memobase_test")
             
             # Set minimal required fields
             cls.config.llm_api_key = os.getenv("MEMOBASE_LLM_API_KEY", "test-key-for-profile-test")

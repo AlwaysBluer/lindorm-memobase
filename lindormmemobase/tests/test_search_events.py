@@ -55,13 +55,13 @@ class TestLindormSearchEvents:
             cls.config = Config.__new__(Config)  # Skip __post_init__
             
             # Set OpenSearch/Lindorm Search configuration from environment or defaults
-            cls.config.opensearch_host = os.getenv("MEMOBASE_OPENSEARCH_HOST", "localhost")
-            cls.config.opensearch_port = int(os.getenv("MEMOBASE_OPENSEARCH_PORT", "9200"))
-            cls.config.opensearch_username = os.getenv("MEMOBASE_OPENSEARCH_USERNAME")
-            cls.config.opensearch_password = os.getenv("MEMOBASE_OPENSEARCH_PASSWORD")
-            cls.config.opensearch_use_ssl = os.getenv("MEMOBASE_OPENSEARCH_USE_SSL", "false").lower() == "true"
-            cls.config.opensearch_events_index = os.getenv("MEMOBASE_OPENSEARCH_EVENTS_INDEX", "memobase_events_test")
-            cls.config.opensearch_event_gists_index = os.getenv("MEMOBASE_OPENSEARCH_EVENT_GISTS_INDEX", "memobase_event_gists_test")
+            cls.config.lindorm_search_host = os.getenv("MEMOBASE_LINDORM_SEARCH_HOST", "localhost")
+            cls.config.lindorm_search_port = int(os.getenv("MEMOBASE_LINDORM_SEARCH_PORT", "9200"))
+            cls.config.lindorm_search_username = os.getenv("MEMOBASE_LINDORM_SEARCH_USERNAME")
+            cls.config.lindorm_search_password = os.getenv("MEMOBASE_LINDORM_SEARCH_PASSWORD")
+            cls.config.lindorm_search_use_ssl = os.getenv("MEMOBASE_LINDORM_SEARCH_USE_SSL", "false").lower() == "true"
+            cls.config.lindorm_search_events_index = os.getenv("MEMOBASE_LINDORM_SEARCH_EVENTS_INDEX", "memobase_events_test")
+            cls.config.lindorm_search_event_gists_index = os.getenv("MEMOBASE_LINDORM_SEARCH_EVENT_GISTS_INDEX", "memobase_event_gists_test")
             
             # Set embedding configuration
             cls.config.enable_event_embedding = os.getenv("MEMOBASE_ENABLE_EVENT_EMBEDDING", "true").lower() == "true"
@@ -98,8 +98,8 @@ class TestLindormSearchEvents:
                 # Clean up test events and gists by deleting test indices
                 storage = get_lindorm_search_storage(cls.config)
                 try:
-                    storage.client.indices.delete(index=cls.config.opensearch_events_index, ignore=[400, 404])
-                    storage.client.indices.delete(index=cls.config.opensearch_event_gists_index, ignore=[400, 404])
+                    storage.client.indices.delete(index=cls.config.lindorm_search_events_index, ignore=[400, 404])
+                    storage.client.indices.delete(index=cls.config.lindorm_search_event_gists_index, ignore=[400, 404])
                     print(f"✅ Cleaned up test indices")
                 except Exception as e:
                     print(f"Cleanup warning: {e}")

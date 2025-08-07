@@ -33,11 +33,11 @@ class LindormTableStorage:
                 pool_name="memobase_pool",
                 pool_size=10,
                 pool_reset_session=True,
-                host=self.config.mysql_host,
-                port=self.config.mysql_port,
-                user=self.config.mysql_username,
-                password=self.config.mysql_password,
-                database=self.config.mysql_database,
+                host=self.config.lindorm_table_host,
+                port=self.config.lindorm_table_port,
+                user=self.config.lindorm_table_username,
+                password=self.config.lindorm_table_password,
+                database=self.config.lindorm_table_database,
                 autocommit=False
             )
         return self.pool

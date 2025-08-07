@@ -42,7 +42,7 @@ async def extract_topics(
     )
 
     project_profiles_slots = read_out_profile_config(
-        project_profiles, PROMPTS[USE_LANGUAGE]["profile"].CANDIDATE_PROFILE_TOPICS
+        project_profiles, PROMPTS[USE_LANGUAGE]["profile"].CANDIDATE_PROFILE_TOPICS, config
     )
 
     if STRICT_MODE:

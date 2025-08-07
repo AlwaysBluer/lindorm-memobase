@@ -24,11 +24,11 @@ class LindormSearchStorage:
         self.config = config
         self.client = OpenSearch(
             hosts=[{
-                'host': config.opensearch_host,
-                'port': config.opensearch_port
+                'host': config.lindorm_search_host,
+                'port': config.lindorm_search_port
             }],
-            http_auth=(config.opensearch_username, config.opensearch_password) if config.opensearch_username else None,
-            use_ssl=config.opensearch_use_ssl,
+            http_auth=(config.lindorm_search_username, config.lindorm_search_password) if config.lindorm_search_username else None,
+            use_ssl=config.lindorm_search_use_ssl,
             verify_certs=False,
             ssl_assert_hostname=False,
             ssl_show_warn=False,
@@ -63,8 +63,8 @@ class LindormSearchStorage:
             }
         }
         
-        if not self.client.indices.exists(index=self.config.opensearch_events_index):
-            self.client.indices.create(index=self.config.opensearch_events_index, body=events_setting_mapping)
+        if not self.client.indices.exists(index=self.config.lindorm_search_events_index):
+            self.client.indices.create(index=self.config.lindorm_search_events_index, body=events_setting_mapping)
         
         # 创建event_gists索引
         gists_setting_mapping = {
@@ -95,8 +95,8 @@ class LindormSearchStorage:
             }
         }
         
-        if not self.client.indices.exists(index=self.config.opensearch_event_gists_index):
-            self.client.indices.create(index=self.config.opensearch_event_gists_index, body=gists_setting_mapping)
+        if not self.client.indices.exists(index=self.config.lindorm_search_event_gists_index):
+            self.client.indices.create(index=self.config.lindorm_search_event_gists_index, body=gists_setting_mapping)
 
     async def store_event_with_embedding(
         self, 
@@ -114,7 +114,7 @@ class LindormSearchStorage:
             }
             
             response = self.client.index(
-                index=self.config.opensearch_events_index,
+                index=self.config.lindorm_search_events_index,
                 id=event_id,
                 body=doc,
                 routing=user_id
@@ -142,7 +142,7 @@ class LindormSearchStorage:
             }
             
             response = self.client.index(
-                index=self.config.opensearch_event_gists_index,
+                index=self.config.lindorm_search_event_gists_index,
                 id=gist_id,
                 body=doc,
                 routing=user_id,
@@ -194,7 +194,7 @@ class LindormSearchStorage:
             }
             
             response = self.client.search(
-                index=self.config.opensearch_events_index,
+                index=self.config.lindorm_search_events_index,
                 body=query,
                 routing=user_id  # Add routing for Lindorm Search
             )
@@ -255,7 +255,7 @@ class LindormSearchStorage:
             }
             
             response = self.client.search(
-                index=self.config.opensearch_event_gists_index,
+                index=self.config.lindorm_search_event_gists_index,
                 body=search_query,
                 routing=user_id  # Add routing for Lindorm Search
             )

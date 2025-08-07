@@ -60,7 +60,7 @@ class Config:
     additional_user_profiles: list[dict] = field(default_factory=list)
     overwrite_user_profiles: Optional[list[dict]] = None
     event_theme_requirement: Optional[str] = (
-        "Focus on the user's infos, not its instructions."
+        "Focus on the user's infos, not its instructions. Do not mix up with the bot/assistant's infos"
     )
     profile_strict_mode: bool = False
     profile_validate_mode: bool = True
@@ -70,24 +70,24 @@ class Config:
     # Telemetry
     telemetry_deployment_environment: str = "local"
     
-    # LindorSearch配置
-    opensearch_host: str = "localhost"
-    opensearch_port: int = 9200
-    opensearch_use_ssl: bool = False
-    opensearch_username: str = None
-    opensearch_password: str = None
-    opensearch_events_index: str = "memobase_events"
-    opensearch_event_gists_index: str = "memobase_event_gists"
+    # LindormSearch配置
+    lindorm_search_host: str = "localhost"
+    lindorm_search_port: int = 9200
+    lindorm_search_use_ssl: bool = False
+    lindorm_search_username: str = None
+    lindorm_search_password: str = None
+    lindorm_search_events_index: str = "memobase_events"
+    lindorm_search_event_gists_index: str = "memobase_event_gists"
 
     # Lindorm宽表 MySQL协议配置
-    mysql_host: str = "localhost"
-    mysql_port: int = 3306
-    mysql_username: str = "root"
-    mysql_password: str = None
-    mysql_database: str = "memobase"
+    lindorm_table_host: str = "localhost"
+    lindorm_table_port: int = 3306
+    lindorm_table_username: str = "root"
+    lindorm_table_password: str = None
+    lindorm_table_database: str = "memobase"
 
     # Test option
-    test_skip_persist = True
+    test_skip_persist = False  # Fixed: Changed to False to enable event persistence
 
     @classmethod
     def _process_env_vars(cls, config_dict):
@@ -152,6 +152,23 @@ class Config:
         filtered_config = {k: v for k, v in overwrite_config.items() if k in fields}
         overwrite_config = cls(**filtered_config)
         return overwrite_config
+    
+    @classmethod
+    def from_yaml_file(cls, yaml_file_path: str) -> "Config":
+        """Load Config from a specific YAML file path."""
+        if not os.path.exists(yaml_file_path):
+            overwrite_config = {}
+        else:
+            with open(yaml_file_path) as f:
+                overwrite_config = yaml.safe_load(f) or {}
+
+        # Process environment variables
+        overwrite_config = cls._process_env_vars(overwrite_config)
+
+        # Filter out any keys from overwrite_config that aren't in the dataclass
+        fields = {field.name for field in dataclasses.fields(cls)}
+        filtered_config = {k: v for k, v in overwrite_config.items() if k in fields}
+        return cls(**filtered_config)
 
     def __post_init__(self):
         assert self.llm_api_key is not None, "llm_api_key is required"
