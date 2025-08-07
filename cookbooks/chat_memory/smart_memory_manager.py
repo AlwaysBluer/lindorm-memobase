@@ -98,7 +98,9 @@ class SmartMemoryManager:
                 self.stats.buffer_hits += 1
                 logger.debug(f"Context buffer hit for user: {self.user_id}")
                 context = self.context_buffer
-                logger.info(f"Context: {context}")
+                # Log context info without full content to avoid log spam
+                logger.info(f"Context buffer hit for user {self.user_id}: {len(context)} chars")
+                logger.debug(f"Context content: {context}")
             else:
                 self.stats.buffer_misses += 1
                 logger.debug(f"Context buffer miss for user: {self.user_id}")

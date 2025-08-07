@@ -48,7 +48,9 @@ fi
 
 echo ""
 echo "🚀 Starting Memory-Enhanced Chatbot Web Server..."
+echo "🔄 Context cache will be preloaded for faster first response"
 echo "📱 Web Interface: http://localhost:8000"
+echo "📝 Server logs will show context preloading progress"
 echo "🔄 Press Ctrl+C to stop"
 echo ""
 

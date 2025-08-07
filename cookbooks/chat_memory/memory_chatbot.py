@@ -99,8 +99,12 @@ class MemoryChatbot:
                 context = await self.memory_manager.get_enhanced_context()
 
                 if context.strip():
+                    # Log context retrieval for debugging
+                    logger.info(f"Context retrieved for user {self.user_id}: {len(context)} chars")
+                    logger.debug(f"Context content preview: {context[:300]}{'...' if len(context) > 300 else ''}")
                     return f"\n[OPTIMIZED MEMORY CONTEXT]\n{context}\n[/MEMORY CONTEXT]\n"
                 else:
+                    logger.debug(f"No relevant context found for user {self.user_id}")
                     return "\n[No relevant memories found]\n"
             else:
                 # Fallback to original slower method
@@ -128,8 +132,12 @@ class MemoryChatbot:
             )
 
             if context and context.strip():
+                # Log context retrieval for debugging
+                logger.info(f"Context retrieved (original method) for user {self.user_id}: {len(context)} chars")
+                logger.debug(f"Context content preview: {context[:300]}{'...' if len(context) > 300 else ''}")
                 return f"\n[MEMORY CONTEXT]\n{context}\n[/MEMORY CONTEXT]\n"
             else:
+                logger.debug(f"No relevant context found (original method) for user {self.user_id}")
                 return "\n[No relevant memories found]\n"
 
         except Exception as e:
@@ -170,8 +178,7 @@ Be natural and conversational, and refer to remembered information when appropri
                 system_content = system_prompt + "\n\nConversation history:\n" + \
                                  "\n".join([f"{m['role']}: {m['content']}" for m in messages[1:-1]])
 
-                # Stream the response
-                print(f"\n🤖 Bot: ", end="", flush=True)
+                # Stream the response (removed console printing for cleaner logs)
                 response_parts = []
                 
                 async for chunk in llm_stream_complete(
@@ -180,11 +187,11 @@ Be natural and conversational, and refer to remembered information when appropri
                     temperature=0.7,
                     config=self.memobase.config
                 ):
-                    print(chunk, end="", flush=True)
                     response_parts.append(chunk)
                 
-                print()  # New line after streaming is complete
-                return "".join(response_parts)
+                full_response = "".join(response_parts)
+                logger.debug(f"Generated response for user {self.user_id}: {len(full_response)} chars")
+                return full_response
 
             except Exception as e:
                 logger.warning(f"LLM streaming integration error: {e}")
@@ -193,7 +200,6 @@ Be natural and conversational, and refer to remembered information when appropri
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             error_message = "I'm sorry, I encountered an error while processing your message."
-            print(f"\n🤖 Bot: {error_message}")
             return error_message
 
     def _generate_fallback_response(self, user_message: str, context: str) -> str:
@@ -209,8 +215,9 @@ Be natural and conversational, and refer to remembered information when appropri
         else:
             fallback_response = f"I understand you're asking about: {user_message}. I'm processing this with my memory system to provide the best response."
         
-        # Print the fallback response immediately (simulating streaming)
-        print(f"\n🤖 Bot: {fallback_response}")
+        # Log fallback response usage
+        logger.info(f"Using fallback response for user {self.user_id}")
+        logger.debug(f"Fallback response: {fallback_response}")
         return fallback_response
 
     async def start_memory_worker(self):

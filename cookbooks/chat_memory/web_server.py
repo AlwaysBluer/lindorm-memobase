@@ -49,6 +49,21 @@ app.add_middleware(
 chatbots: Dict[str, MemoryChatbot] = {}
 
 
+async def preload_default_chatbot():
+    """Preload context for default user to ensure fast first response."""
+    default_user_id = "demo_user"
+    default_session_id = "preload_session"
+    
+    logger.info("🔄 Preloading context cache for default user...")
+    try:
+        # Create and preload chatbot for default user
+        await get_or_create_chatbot(default_user_id, default_session_id)
+        logger.info("✅ Default context cache preloaded successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to preload default context cache: {e}")
+        # Don't fail server startup if preload fails
+
+
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "demo_user"
@@ -84,10 +99,14 @@ manager = ConnectionManager()
 
 
 async def get_or_create_chatbot(user_id: str, session_id: str) -> MemoryChatbot:
-    """Get existing chatbot or create a new one."""
+    """Get existing chatbot or create a new one with preloaded context."""
     key = f"{user_id}_{session_id}"
     
     if key not in chatbots:
+        # Check if we have a preloaded chatbot for this user that we can reuse/share memory manager
+        preload_key = f"{user_id}_preload_session"
+        existing_chatbot = chatbots.get(preload_key)
+        
         try:
             # Load configuration
             cookbooks_dir = os.path.dirname(os.path.abspath(__file__))
@@ -99,11 +118,42 @@ async def get_or_create_chatbot(user_id: str, session_id: str) -> MemoryChatbot:
                 config = Config.load_config()
                 
             # Create new chatbot
+            logger.info(f"Creating new chatbot for user: {user_id}, session: {session_id}")
             chatbot = MemoryChatbot(user_id, config)
             await chatbot.start_memory_worker()
-            chatbots[key] = chatbot
             
-            logger.info(f"Created new chatbot for user: {user_id}, session: {session_id}")
+            # If we have an existing chatbot with preloaded context, share the memory manager
+            if existing_chatbot and session_id != "preload_session":
+                logger.info(f"Reusing preloaded memory manager for user: {user_id}")
+                # Share the memory manager to benefit from preloaded context
+                old_manager = chatbot.memory_manager
+                chatbot.memory_manager = existing_chatbot.memory_manager
+                # Clean up the old manager
+                try:
+                    await old_manager.cleanup()
+                except:
+                    pass
+            else:
+                # Preload context cache with empty conversation to prepare context buffer
+                logger.info(f"Preloading context cache for user: {user_id}")
+                try:
+                    # Force initial context refresh with empty conversation
+                    await chatbot.memory_manager.force_refresh()
+                    
+                    # Verify context is available
+                    context = await chatbot.memory_manager.get_enhanced_context()
+                    if context and context.strip():
+                        logger.info(f"Context cache preloaded successfully for user {user_id}: {len(context)} chars")
+                    else:
+                        logger.info(f"No existing memories found for user {user_id}, cache initialized empty")
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to preload context cache for user {user_id}: {e}")
+                    # Don't fail the entire chatbot creation if preload fails
+            
+            chatbots[key] = chatbot
+            logger.info(f"Chatbot ready for user: {user_id}, session: {session_id}")
+            
         except Exception as e:
             logger.error(f"Failed to create chatbot: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to create chatbot: {e}")
@@ -127,6 +177,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for real-time chat."""
     await manager.connect(websocket, session_id)
     
+    # Initialize user_id with default value to avoid UnboundLocalError
+    user_id = "demo_user"
+    
     try:
         while True:
             # Receive message from client
@@ -134,7 +187,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             message_data = json.loads(data)
             
             user_message = message_data.get("message", "")
-            user_id = message_data.get("user_id", "demo_user")
+            user_id = message_data.get("user_id", "demo_user")  # Update user_id from message
             
             if not user_message.strip():
                 continue
@@ -258,16 +311,50 @@ Be natural and conversational, and refer to remembered information when appropri
                 
     except WebSocketDisconnect:
         manager.disconnect(session_id)
-        # Clean up chatbot if needed
+        
+        # Clean up chatbot if needed - search for any chatbots related to this session
+        logger.info(f"WebSocket disconnected for session: {session_id}")
+        
+        # Try to clean up using the known user_id first
         key = f"{user_id}_{session_id}"
         if key in chatbots:
             try:
                 await chatbots[key].stop_memory_worker()
                 await chatbots[key].memory_manager.cleanup()
                 del chatbots[key]
-                logger.info(f"Cleaned up chatbot for session: {session_id}")
+                logger.info(f"Cleaned up chatbot for user: {user_id}, session: {session_id}")
             except Exception as e:
-                logger.error(f"Error cleaning up chatbot: {e}")
+                logger.error(f"Error cleaning up chatbot {key}: {e}")
+        else:
+            # If direct key lookup fails, search for any chatbot with this session_id
+            keys_to_remove = [k for k in chatbots.keys() if k.endswith(f"_{session_id}")]
+            for key in keys_to_remove:
+                try:
+                    await chatbots[key].stop_memory_worker()
+                    await chatbots[key].memory_manager.cleanup()
+                    del chatbots[key]
+                    logger.info(f"Cleaned up orphaned chatbot: {key}")
+                except Exception as e:
+                    logger.error(f"Error cleaning up orphaned chatbot {key}: {e}")
+    
+    except Exception as e:
+        # Handle any other unexpected exceptions
+        logger.error(f"Unexpected error in WebSocket endpoint for session {session_id}: {e}")
+        manager.disconnect(session_id)
+        
+        # Still try to cleanup
+        try:
+            keys_to_remove = [k for k in chatbots.keys() if k.endswith(f"_{session_id}")]
+            for key in keys_to_remove:
+                try:
+                    await chatbots[key].stop_memory_worker()
+                    await chatbots[key].memory_manager.cleanup()
+                    del chatbots[key]
+                    logger.info(f"Cleaned up chatbot after unexpected error: {key}")
+                except Exception as cleanup_error:
+                    logger.error(f"Error in cleanup after unexpected error: {cleanup_error}")
+        except Exception as final_error:
+            logger.error(f"Final cleanup failed: {final_error}")
 
 
 @app.get("/api/memories/{user_id}")
@@ -304,6 +391,47 @@ async def get_user_memories(user_id: str):
         
     except Exception as e:
         logger.error(f"Error getting memories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/context/{user_id}/{session_id}")
+async def get_current_context(user_id: str, session_id: str):
+    """Get current context from memory manager."""
+    key = f"{user_id}_{session_id}"
+    
+    # Try to find any chatbot for this user
+    chatbot = None
+    if key in chatbots:
+        chatbot = chatbots[key]
+    else:
+        # Look for any chatbot with this user_id (including preload session)
+        for chatbot_key, cb in chatbots.items():
+            if chatbot_key.startswith(f"{user_id}_"):
+                chatbot = cb
+                break
+    
+    if not chatbot:
+        raise HTTPException(status_code=404, detail="No active session found for user")
+    
+    try:
+        # Get context from memory manager
+        context = await chatbot.memory_manager.get_enhanced_context()
+        
+        # Get cache stats for additional info
+        cache_stats = chatbot.memory_manager.get_cache_stats()
+        
+        return {
+            "context": context.strip() if context else "",
+            "context_length": len(context.strip()) if context else 0,
+            "has_context": bool(context and context.strip()),
+            "cache_stats": cache_stats,
+            "user_id": user_id,
+            "session_id": session_id,
+            "buffer_last_update": chatbot.memory_manager.buffer_last_update
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting context: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -663,6 +791,7 @@ def get_inline_html():
             </div>
             <div class="toolbar-buttons">
                 <button class="toolbar-btn" onclick="showMemories()">📚 Memories</button>
+                <button class="toolbar-btn" onclick="showContext()">🧠 Context</button>
                 <button class="toolbar-btn" onclick="showStats()">📊 Stats</button>
             </div>
         </div>
@@ -922,6 +1051,160 @@ def get_inline_html():
             }
         }
         
+        async function showContext() {
+            try {
+                const response = await fetch(`/api/context/${chatbot.userId}/${chatbot.sessionId}`);
+                const data = await response.json();
+                
+                let content = '🧠 Current Context Buffer\\n\\n';
+                
+                if (data.has_context) {
+                    content += `Context Length: ${data.context_length} characters\\n`;
+                    content += `Last Updated: ${data.buffer_last_update ? new Date(data.buffer_last_update * 1000).toLocaleString() : 'Never'}\\n`;
+                    content += `Cache Hit Rate: ${data.cache_stats.hit_rate_percent}\\n\\n`;
+                    content += '--- Context Content ---\\n';
+                    content += data.context;
+                } else {
+                    content += 'No context currently available.\\n\\n';
+                    content += 'Context will be generated automatically as you chat and memories are created.';
+                }
+                
+                // Use a custom modal instead of alert for better display of long content
+                showContextModal(content, data);
+            } catch (error) {
+                alert('Error loading context: ' + error.message);
+            }
+        }
+        
+        function showContextModal(content, data) {
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.7);
+                z-index: 10000;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                font-family: inherit;
+            `;
+            
+            // Create modal content
+            const modalContent = document.createElement('div');
+            modalContent.style.cssText = `
+                background: white;
+                border-radius: 15px;
+                padding: 30px;
+                max-width: 80%;
+                max-height: 80%;
+                overflow-y: auto;
+                box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+                position: relative;
+            `;
+            
+            const header = document.createElement('div');
+            header.style.cssText = `
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+                border-bottom: 2px solid #f0f0f0;
+                padding-bottom: 15px;
+            `;
+            
+            const title = document.createElement('h2');
+            title.textContent = '🧠 Current Context Buffer';
+            title.style.cssText = 'margin: 0; color: #333; font-size: 24px;';
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '✕';
+            closeBtn.style.cssText = `
+                background: #f44336;
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 35px;
+                height: 35px;
+                cursor: pointer;
+                font-size: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            `;
+            closeBtn.onclick = () => document.body.removeChild(modal);
+            
+            header.appendChild(title);
+            header.appendChild(closeBtn);
+            
+            const info = document.createElement('div');
+            info.style.cssText = `
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                border-left: 4px solid #4CAF50;
+            `;
+            
+            if (data.has_context) {
+                info.innerHTML = `
+                    <strong>📊 Context Stats:</strong><br>
+                    • Length: ${data.context_length} characters<br>
+                    • Last Updated: ${data.buffer_last_update ? new Date(data.buffer_last_update * 1000).toLocaleString() : 'Never'}<br>
+                    • Cache Hit Rate: ${data.cache_stats.hit_rate_percent}<br>
+                    • Cache Hits: ${data.cache_stats.cache_hits}
+                `;
+            } else {
+                info.innerHTML = `
+                    <strong>ℹ️ No Context Available</strong><br>
+                    Context will be generated automatically as you chat and memories are created.
+                `;
+            }
+            
+            const contextContent = document.createElement('div');
+            contextContent.style.cssText = `
+                background: #f9f9f9;
+                padding: 20px;
+                border-radius: 8px;
+                white-space: pre-wrap;
+                font-family: monospace;
+                font-size: 14px;
+                line-height: 1.4;
+                border: 1px solid #e0e0e0;
+                max-height: 400px;
+                overflow-y: auto;
+            `;
+            
+            if (data.has_context) {
+                contextContent.textContent = data.context;
+            } else {
+                contextContent.innerHTML = '<em style="color: #666;">No context content available</em>';
+            }
+            
+            modalContent.appendChild(header);
+            modalContent.appendChild(info);
+            if (data.has_context) {
+                const contextLabel = document.createElement('h3');
+                contextLabel.textContent = '📝 Context Content:';
+                contextLabel.style.cssText = 'margin: 0 0 10px 0; color: #333;';
+                modalContent.appendChild(contextLabel);
+                modalContent.appendChild(contextContent);
+            }
+            
+            modal.appendChild(modalContent);
+            document.body.appendChild(modal);
+            
+            // Close on background click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                }
+            });
+        }
+        
         async function showStats() {
             try {
                 const response = await fetch(`/api/stats/${chatbot.userId}/${chatbot.sessionId}`);
@@ -957,8 +1240,16 @@ def get_inline_html():
 if __name__ == "__main__":
     import uvicorn
     
+    async def startup_event():
+        """Startup event to preload context cache."""
+        await preload_default_chatbot()
+    
+    # Add startup event
+    app.add_event_handler("startup", startup_event)
+    
     print("🚀 Starting Memory-Enhanced Chatbot Web Server...")
     print("📁 Make sure your config.yaml is in the cookbooks/ directory")
+    print("🔄 Preloading context cache for faster first response...")
     print("🌐 Web interface will be available at: http://localhost:8000")
     
     uvicorn.run(
