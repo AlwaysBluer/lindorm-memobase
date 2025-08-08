@@ -2,14 +2,6 @@
 
 This directory contains practical examples and recipes for using the lindormmemobase package.
 
-## Examples
-
-- `basic_usage.py` - Basic usage of the memory extraction API
-- `profile_management.py` - Managing user profiles and topics
-- `memory_chatbot.py` - **Complete memory-enhanced chatbot application**
-- `embedding_search.py` - Using embedding-based search functionality
-- `async_processing.py` - Asynchronous batch processing examples
-
 ## Featured: Memory-Enhanced Chatbot
 
 The `memory_chatbot.py` is a complete application demonstrating all lindormmemobase capabilities:
