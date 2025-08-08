@@ -10,8 +10,8 @@ from ...utils.tools import get_encoded_tokens, truncate_string, find_list_int_or
 
 from ..storage.user_profiles import get_user_profiles
 
-
 JSON_BODY_REGEX = re.compile(r"({[\s\S]*})")
+
 
 def try_json_reason(content: str) -> str | None:
     try:
@@ -21,13 +21,13 @@ def try_json_reason(content: str) -> str | None:
 
 
 async def truncate_profiles(
-    profiles: UserProfilesData,
-    prefer_topics: list[str] = None,
-    topk: int = None,
-    max_token_size: int = None,
-    only_topics: list[str] = None,
-    max_subtopic_size: int = None,
-    topic_limits: dict[str, int] = None,
+        profiles: UserProfilesData,
+        prefer_topics: list[str] = None,
+        topk: int = None,
+        max_token_size: int = None,
+        only_topics: list[str] = None,
+        max_subtopic_size: int = None,
+        topic_limits: dict[str, int] = None,
 ) -> Promise[UserProfilesData]:
     if not len(profiles.profiles):
         return Promise.resolve(profiles)
@@ -86,15 +86,15 @@ async def truncate_profiles(
 
 
 async def get_user_profiles_data(
-    user_id: str,
-    max_profile_token_size: int,
-    prefer_topics: list[str],
-    only_topics: list[str],
-    max_subtopic_size: int,
-    topic_limits: dict[str, int],
-    chats: list[OpenAICompatibleMessage],
-    full_profile_and_only_search_event: bool,
-    global_config: Config,
+        user_id: str,
+        max_profile_token_size: int,
+        prefer_topics: list[str],
+        only_topics: list[str],
+        max_subtopic_size: int,
+        topic_limits: dict[str, int],
+        chats: list[OpenAICompatibleMessage],
+        full_profile_and_only_search_event: bool,
+        global_config: Config,
 ) -> Promise[tuple[str, list]]:
     """Retrieve and process user profiles."""
     p = await get_user_profiles(user_id, global_config)
@@ -141,19 +141,19 @@ async def get_user_profiles_data(
 
 
 async def filter_profiles_with_chats(
-    user_id: str,
-    profiles: UserProfilesData,
-    chats: list[OpenAICompatibleMessage],
-    global_config: Config,
-    only_topics: list[str] | None = None,
-    max_value_token_size: int = 10,
-    max_previous_chats: int = 4,
-    max_filter_num: int = 10,
+        user_id: str,
+        profiles: UserProfilesData,
+        chats: list[OpenAICompatibleMessage],
+        global_config: Config,
+        only_topics: list[str] | None = None,
+        max_value_token_size: int = 10,
+        max_previous_chats: int = 4,
+        max_filter_num: int = 10,
 ) -> Promise[dict]:
     """Filter profiles with chats"""
     if not len(chats) or not len(profiles.profiles):
         return Promise.reject(CODE.BAD_REQUEST, "No chats or profiles to filter")
-    chats = chats[-(max_previous_chats + 1) :]
+    chats = chats[-(max_previous_chats + 1):]
     if only_topics:
         only_topics = [t.strip() for t in only_topics]
         only_topics = set(only_topics)

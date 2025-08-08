@@ -213,7 +213,7 @@ async def search_user_event_gists(
         user_event_gists_data = UserEventGistsData(gists=gists)
         TRACE_LOG.info(
             user_id,
-            f"Event Query: {query}, Found {len(gists)} results",
+            f"Event Query: {query[:50]}" + ("..." if len(query) > 50 else "") + f" Found {len(gists)} results",
         )
         
         return Promise.resolve(user_event_gists_data)
