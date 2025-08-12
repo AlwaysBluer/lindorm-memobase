@@ -11,6 +11,7 @@
   - [用户档案管理](#用户档案管理)
   - [事件管理](#事件管理)
   - [上下文生成](#上下文生成)
+  - [缓冲区管理](#缓冲区管理)
 - [高级用法](#高级用法)
 - [完整示例](#完整示例)
 
@@ -22,6 +23,7 @@ LindormMemobase 是一个轻量级的记忆提取和用户档案管理系统，�
 - **用户档案管理**：维护和更新用户的长期记忆档案
 - **语义搜索**：基于向量嵌入的相似度搜索
 - **上下文生成**：为对话生成相关的历史上下文
+- **缓冲区管理**：智能的数据缓冲和批量处理机制
 
 ## 安装与配置
 
@@ -100,6 +102,9 @@ embedding_max_token_size: 8192
 max_profile_subtopics: 15  # 每个主题的最大子主题数
 max_chat_blob_buffer_process_token_size: 16384  # 对话缓冲区大小
 minimum_chats_token_size_for_event_summary: 256  # 触发事件摘要的最小token数
+
+# 缓冲区管理配置
+max_chat_blob_buffer_token_size: 8192  # 缓冲区最大token数，达到此值自动触发处理
 
 # 档案管理设置
 profile_strict_mode: false  # 严格模式
@@ -576,6 +581,327 @@ context = await memobase.get_conversation_context(
 print(f"生成的上下文：\n{context}")
 ```
 
+### 缓冲区管理
+
+LindormMemobase 提供智能的缓冲区管理功能，能够自动收集和批量处理对话数据，提高记忆提取的效率。
+
+#### 核心概念
+
+- **缓冲区**: 临时存储待处理的对话数据
+- **批量处理**: 当缓冲区达到一定容量时自动触发处理
+- **状态管理**: 跟踪每个数据块的处理状态（idle、processing、done、failed）
+- **智能调度**: 根据token大小和数据量智能决定处理时机
+
+#### 添加数据到缓冲区
+
+```python
+async def add_blob_to_buffer(
+    user_id: str,
+    blob: Blob,
+    blob_id: Optional[str] = None
+) -> str
+```
+
+**参数说明：**
+- `user_id`: 用户唯一标识符
+- `blob`: 要添加的数据块（ChatBlob、DocBlob等）
+- `blob_id`: 可选的自定义ID，默认生成UUID
+
+**示例：**
+
+```python
+from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
+
+# 创建聊天数据块
+chat_blob = ChatBlob(
+    messages=[
+        OpenAICompatibleMessage(role="user", content="我喜欢喝咖啡"),
+        OpenAICompatibleMessage(role="assistant", content="咖啡是很好的选择！")
+    ],
+    type=BlobType.chat
+)
+
+# 添加到缓冲区
+blob_id = await memobase.add_blob_to_buffer("user123", chat_blob)
+print(f"已添加到缓冲区: {blob_id}")
+```
+
+#### 检测缓冲区状态
+
+```python
+async def detect_buffer_full_or_not(
+    user_id: str,
+    blob_type: BlobType = BlobType.chat
+) -> Dict[str, Any]
+```
+
+**返回格式：**
+```python
+{
+    "is_full": True,  # 是否需要处理
+    "buffer_full_ids": ["blob_id_1", "blob_id_2"],  # 需要处理的数据块ID列表
+    "blob_type": "BlobType.chat"  # 数据块类型
+}
+```
+
+**示例：**
+
+```python
+# 检查缓冲区状态
+status = await memobase.detect_buffer_full_or_not("user123", BlobType.chat)
+
+print(f"缓冲区已满: {status['is_full']}")
+print(f"待处理的数据块数量: {len(status['buffer_full_ids'])}")
+
+if status["is_full"]:
+    print("需要处理缓冲区中的数据")
+```
+
+#### 处理缓冲区数据
+
+```python
+async def process_buffer(
+    user_id: str,
+    blob_type: BlobType = BlobType.chat,
+    profile_config: Optional[ProfileConfig] = None,
+    blob_ids: Optional[List[str]] = None
+) -> Optional[Any]
+```
+
+**参数说明：**
+- `user_id`: 用户标识符
+- `blob_type`: 处理的数据类型
+- `profile_config`: 档案配置（可选）
+- `blob_ids`: 指定要处理的数据块ID列表，为None时处理所有未处理的数据
+
+**示例：**
+
+```python
+# 处理所有未处理的聊天数据
+result = await memobase.process_buffer("user123", BlobType.chat)
+if result:
+    print("缓冲区处理完成")
+
+# 处理特定的数据块
+result = await memobase.process_buffer(
+    user_id="user123",
+    blob_type=BlobType.chat,
+    blob_ids=["blob_id_1", "blob_id_2"],
+    profile_config=ProfileConfig(language="zh")
+)
+```
+
+#### 自动化工作流程示例
+
+```python
+async def smart_chat_processing(user_id: str, user_messages: List[str]):
+    """智能对话处理流程，集成缓冲区管理"""
+    
+    for message_content in user_messages:
+        # 1. 创建聊天数据块
+        chat_blob = ChatBlob(
+            messages=[OpenAICompatibleMessage(role="user", content=message_content)],
+            type=BlobType.chat
+        )
+        
+        # 2. 添加到缓冲区
+        blob_id = await memobase.add_blob_to_buffer(user_id, chat_blob)
+        print(f"消息已缓冲: {blob_id}")
+        
+        # 3. 检查缓冲区状态
+        status = await memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
+        
+        # 4. 自动处理满载的缓冲区
+        if status["is_full"]:
+            print(f"缓冲区已满，开始处理 {len(status['buffer_full_ids'])} 个数据块...")
+            
+            result = await memobase.process_buffer(
+                user_id=user_id,
+                blob_type=BlobType.chat,
+                blob_ids=status["buffer_full_ids"]
+            )
+            
+            if result:
+                print("✓ 缓冲区处理完成，记忆已提取")
+            else:
+                print("✗ 缓冲区处理失败")
+
+# 使用示例
+messages = [
+    "我是李四，在上海工作",
+    "我喜欢跑步和看电影", 
+    "最近在学习Python编程",
+    "周末计划去博物馆"
+]
+
+await smart_chat_processing("user456", messages)
+```
+
+#### 批量对话处理与缓冲区集成
+
+```python
+class BufferedConversationProcessor:
+    """带缓冲区的对话处理器"""
+    
+    def __init__(self, memobase: LindormMemobase):
+        self.memobase = memobase
+        self.pending_messages = {}  # 用户ID -> 消息列表
+    
+    async def add_message(self, user_id: str, role: str, content: str):
+        """添加单条消息到处理队列"""
+        if user_id not in self.pending_messages:
+            self.pending_messages[user_id] = []
+        
+        self.pending_messages[user_id].append(
+            OpenAICompatibleMessage(role=role, content=content)
+        )
+        
+        # 每积累5条消息就添加到缓冲区
+        if len(self.pending_messages[user_id]) >= 5:
+            await self._flush_to_buffer(user_id)
+    
+    async def _flush_to_buffer(self, user_id: str):
+        """将积累的消息添加到缓冲区"""
+        if user_id not in self.pending_messages or not self.pending_messages[user_id]:
+            return
+        
+        # 创建聊天数据块
+        chat_blob = ChatBlob(
+            messages=self.pending_messages[user_id],
+            type=BlobType.chat
+        )
+        
+        # 添加到缓冲区
+        blob_id = await self.memobase.add_blob_to_buffer(user_id, chat_blob)
+        print(f"对话块已添加到缓冲区: {blob_id}")
+        
+        # 清空待处理消息
+        self.pending_messages[user_id] = []
+        
+        # 检查是否需要处理缓冲区
+        await self._check_and_process_buffer(user_id)
+    
+    async def _check_and_process_buffer(self, user_id: str):
+        """检查并处理缓冲区"""
+        status = await self.memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
+        
+        if status["is_full"]:
+            print(f"开始处理用户 {user_id} 的缓冲区...")
+            result = await self.memobase.process_buffer(
+                user_id=user_id,
+                blob_type=BlobType.chat,
+                blob_ids=status["buffer_full_ids"]
+            )
+            
+            if result:
+                print(f"✓ 用户 {user_id} 缓冲区处理完成")
+                return True
+            else:
+                print(f"✗ 用户 {user_id} 缓冲区处理失败")
+                return False
+        return False
+    
+    async def force_process_all(self, user_id: str):
+        """强制处理用户的所有数据"""
+        # 先将待处理消息刷入缓冲区
+        await self._flush_to_buffer(user_id)
+        
+        # 处理所有缓冲区数据
+        result = await self.memobase.process_buffer(user_id, BlobType.chat)
+        return result is not None
+
+# 使用示例
+processor = BufferedConversationProcessor(memobase)
+
+# 模拟实时对话
+await processor.add_message("user789", "user", "你好，我是新用户")
+await processor.add_message("user789", "assistant", "欢迎！很高兴认识您")
+await processor.add_message("user789", "user", "我想了解一下这个系统")
+# ... 更多消息
+
+# 强制处理所有待处理数据
+await processor.force_process_all("user789")
+```
+
+#### 缓冲区配置优化
+
+**config.yaml 配置：**
+
+```yaml
+# 缓冲区大小配置
+max_chat_blob_buffer_token_size: 8192  # 缓冲区最大token数，建议根据实际使用调整
+
+# 处理限制配置  
+max_chat_blob_buffer_process_token_size: 16384  # 单次处理最大token数
+
+# 根据不同场景调整：
+# - 低频对话场景：可设置较小的缓冲区大小（如4096）
+# - 高频对话场景：可设置较大的缓冲区大小（如16384）
+# - 实时响应场景：设置较小的缓冲区确保及时处理
+# - 批处理场景：设置较大的缓冲区提高处理效率
+```
+
+#### 错误处理与监控
+
+```python
+async def robust_buffer_processing(user_id: str, messages: List[str]):
+    """带错误处理的缓冲区处理"""
+    
+    for i, message in enumerate(messages):
+        try:
+            # 添加消息到缓冲区
+            chat_blob = ChatBlob(
+                messages=[OpenAICompatibleMessage(role="user", content=message)],
+                type=BlobType.chat
+            )
+            
+            blob_id = await memobase.add_blob_to_buffer(user_id, chat_blob)
+            print(f"[{i+1}/{len(messages)}] 消息已缓冲: {blob_id}")
+            
+            # 检查缓冲区状态
+            status = await memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
+            
+            if status["is_full"]:
+                print(f"处理缓冲区中的 {len(status['buffer_full_ids'])} 个数据块...")
+                
+                # 处理缓冲区
+                result = await memobase.process_buffer(
+                    user_id=user_id,
+                    blob_type=BlobType.chat,
+                    blob_ids=status["buffer_full_ids"]
+                )
+                
+                if result:
+                    print("✓ 缓冲区处理成功")
+                else:
+                    print("⚠️ 缓冲区处理返回空结果")
+                    
+        except Exception as e:
+            print(f"✗ 处理消息 {i+1} 时出错: {e}")
+            # 记录错误但继续处理下一条消息
+            continue
+    
+    # 最终检查是否还有未处理的数据
+    try:
+        final_status = await memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
+        if final_status["buffer_full_ids"]:
+            print("处理剩余缓冲区数据...")
+            await memobase.process_buffer(user_id, BlobType.chat)
+    except Exception as e:
+        print(f"最终处理出错: {e}")
+
+# 使用示例
+test_messages = [
+    "我叫王五，在深圳工作",
+    "我是一名数据科学家",
+    "喜欢研究机器学习算法", 
+    "业余时间喜欢踢足球",
+    "最近在关注大语言模型的发展"
+]
+
+await robust_buffer_processing("user_wang", test_messages)
+```
+
 ## 高级用法
 
 ### 自定义档案配置
@@ -726,8 +1052,9 @@ async def safe_extract_memories(memobase, user_id, blobs):
 
 ```python
 import asyncio
+from typing import List
 from lindormmemobase import LindormMemobase
-from lindormmemobase.models.blob import ChatBlob, OpenAICompatibleMessage
+from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
 from lindormmemobase.models.profile_topic import ProfileConfig
 
 class MemoryEnabledChatbot:
@@ -805,21 +1132,50 @@ class MemoryEnabledChatbot:
         return f"理解了您的需求。基于您的档案信息，我了解到：{context[:100]}..."
     
     async def _extract_memories_async(self, user_id: str):
-        """异步提取记忆"""
-        # 创建对话块
+        """使用缓冲区异步提取记忆"""
+        # 创建对话块并添加到缓冲区
         blob = ChatBlob(
             messages=self.conversation_history[-4:]  # 最近2轮对话
         )
         
         try:
-            result = await self.memobase.extract_memories(
-                user_id=user_id,
-                blobs=[blob],
-                profile_config=self.profile_config
-            )
-            print(f"记忆提取完成: {result}")
+            # 添加到缓冲区
+            blob_id = await self.memobase.add_blob_to_buffer(user_id, blob)
+            print(f"对话已添加到缓冲区: {blob_id}")
+            
+            # 检查是否需要处理缓冲区
+            status = await self.memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
+            
+            if status["is_full"]:
+                print(f"缓冲区已满，开始处理 {len(status['buffer_full_ids'])} 个数据块...")
+                result = await self.memobase.process_buffer(
+                    user_id=user_id,
+                    blob_type=BlobType.chat,
+                    profile_config=self.profile_config,
+                    blob_ids=status["buffer_full_ids"]
+                )
+                
+                if result:
+                    print("✓ 缓冲区处理完成，记忆已提取")
+                else:
+                    print("⚠️ 缓冲区处理返回空结果")
+                    
         except Exception as e:
-            print(f"记忆提取失败: {e}")
+            print(f"缓冲区处理失败: {e}")
+    
+    async def force_extract_all_memories(self, user_id: str):
+        """强制处理所有缓冲区数据"""
+        try:
+            result = await self.memobase.process_buffer(user_id, BlobType.chat)
+            if result:
+                print("✓ 所有缓冲区数据已处理完成")
+                return True
+            else:
+                print("⚠️ 没有待处理的缓冲区数据")
+                return False
+        except Exception as e:
+            print(f"强制处理缓冲区失败: {e}")
+            return False
     
     async def get_user_summary(self, user_id: str) -> str:
         """获取用户档案摘要"""
@@ -856,6 +1212,10 @@ async def main():
         print(f"助手: {reply}")
         await asyncio.sleep(1)  # 模拟对话间隔
     
+    # 强制处理所有剩余缓冲区数据
+    print("\n=== 处理剩余缓冲区数据 ===")
+    await chatbot.force_extract_all_memories(user_id)
+    
     # 查看用户档案
     print("\n=== 用户档案摘要 ===")
     summary = await chatbot.get_user_summary(user_id)
@@ -870,12 +1230,140 @@ async def main():
     )
     for event in events:
         print(f"- {event['content']}")
+    
+    # 演示缓冲区状态检查
+    print("\n=== 缓冲区状态检查 ===")
+    status = await chatbot.memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
+    print(f"缓冲区已满: {status['is_full']}")
+    print(f"待处理数据块数量: {len(status['buffer_full_ids'])}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### 示例 2：批量数据导入
+### 示例 2：缓冲区管理专用示例
+
+```python
+import asyncio
+from typing import List
+from lindormmemobase import LindormMemobase
+from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
+
+async def buffer_management_demo():
+    """完整的缓冲区管理演示"""
+    
+    # 初始化
+    memobase = LindormMemobase()
+    user_id = "buffer_demo_user"
+    
+    print("=== 缓冲区管理演示 ===\n")
+    
+    # 1. 准备测试对话数据
+    conversations = [
+        ["user", "我是张三，在北京从事AI研发工作"],
+        ["assistant", "您好张三！AI研发是很有前景的领域。"],
+        ["user", "我平时喜欢阅读技术书籍和跑步"],
+        ["assistant", "阅读和跑步都是很好的习惯！"],
+        ["user", "最近在研究大语言模型的应用"],
+        ["assistant", "LLM确实是当前的热点技术。"],
+        ["user", "我希望能在这个领域有所突破"],
+        ["assistant", "相信您一定可以的！"],
+        ["user", "周末计划去图书馆学习新技术"],
+        ["assistant", "充实的周末安排！"]
+    ]
+    
+    # 2. 批量添加对话到缓冲区
+    print("1. 批量添加对话到缓冲区...")
+    blob_ids = []
+    
+    for i in range(0, len(conversations), 2):  # 每2条消息一个对话块
+        if i + 1 < len(conversations):
+            # 创建对话块
+            chat_blob = ChatBlob(
+                messages=[
+                    OpenAICompatibleMessage(role=conversations[i][0], content=conversations[i][1]),
+                    OpenAICompatibleMessage(role=conversations[i+1][0], content=conversations[i+1][1])
+                ],
+                type=BlobType.chat
+            )
+            
+            # 添加到缓冲区
+            blob_id = await memobase.add_blob_to_buffer(user_id, chat_blob)
+            blob_ids.append(blob_id)
+            print(f"   ✓ 对话块 {len(blob_ids)} 已添加: {blob_id}")
+            
+            # 每添加一个对话块就检查缓冲区状态
+            status = await memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
+            print(f"   - 缓冲区状态: {'已满' if status['is_full'] else '未满'} "
+                  f"(待处理: {len(status['buffer_full_ids'])} 个)")
+            
+            if status["is_full"]:
+                print(f"   🔄 缓冲区已满，自动处理 {len(status['buffer_full_ids'])} 个数据块...")
+                result = await memobase.process_buffer(
+                    user_id=user_id,
+                    blob_type=BlobType.chat,
+                    blob_ids=status["buffer_full_ids"]
+                )
+                
+                if result:
+                    print(f"   ✅ 缓冲区处理完成")
+                else:
+                    print(f"   ⚠️ 缓冲区处理返回空结果")
+            
+            print()  # 空行分隔
+    
+    # 3. 处理剩余的缓冲区数据
+    print("2. 检查并处理剩余缓冲区数据...")
+    final_status = await memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
+    
+    if final_status["buffer_full_ids"]:
+        print(f"   发现 {len(final_status['buffer_full_ids'])} 个未处理的数据块")
+        result = await memobase.process_buffer(user_id, BlobType.chat)
+        if result:
+            print("   ✅ 剩余数据处理完成")
+    else:
+        print("   ℹ️ 没有剩余的未处理数据")
+    
+    # 4. 验证处理结果
+    print("\n3. 验证处理结果...")
+    
+    # 获取用户档案
+    profiles = await memobase.get_user_profiles(user_id)
+    print(f"   生成用户档案: {len(profiles)} 个主题")
+    
+    for profile in profiles:
+        print(f"   📝 主题: {profile.topic}")
+        for subtopic, entry in profile.subtopics.items():
+            print(f"      └── {subtopic}: {entry.content}")
+    
+    # 获取事件
+    events = await memobase.get_events(user_id, time_range_in_days=7, limit=10)
+    print(f"\n   生成事件记录: {len(events)} 条")
+    for event in events[:3]:  # 只显示前3条
+        print(f"   📅 {event['content']}")
+    
+    # 5. 演示搜索功能
+    print("\n4. 搜索相关记忆...")
+    search_results = await memobase.search_events(
+        user_id=user_id,
+        query="技术学习",
+        limit=3,
+        similarity_threshold=0.1
+    )
+    
+    print(f"   找到 {len(search_results)} 条相关记录:")
+    for result in search_results:
+        similarity = result.get('similarity', 0)
+        print(f"   🔍 (相似度: {similarity:.2f}) {result['content']}")
+    
+    print(f"\n✨ 缓冲区管理演示完成！用户 {user_id} 的记忆系统已建立")
+
+# 运行演示
+if __name__ == "__main__":
+    asyncio.run(buffer_management_demo())
+```
+
+### 示例 3：批量数据导入
 
 ```python
 import asyncio

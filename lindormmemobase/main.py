@@ -8,17 +8,28 @@ the memory extraction system using their own configuration.
 
 import os
 import yaml
+import uuid
 from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
 from .config import Config
 from .models.profile_topic import ProfileConfig
-from .models.blob import Blob, OpenAICompatibleMessage
+from .models.blob import Blob, BlobType, OpenAICompatibleMessage
 from .models.types import  Profile, ProfileEntry
 from .core.extraction.processor.process_blobs import process_blobs
 from .core.search.context import get_user_context
 from .core.search.events import get_user_event_gists, search_user_event_gists
 from .core.search.user_profiles import get_user_profiles_data, filter_profiles_with_chats
 from .core.storage.user_profiles import get_user_profiles
+from .core.buffer.buffer import (
+    get_lindorm_buffer_storage, 
+    get_buffer_capacity, 
+    insert_blob_to_buffer,
+    detect_buffer_full_or_not,
+    get_unprocessed_buffer_ids,
+    flush_buffer_by_ids,
+    flush_buffer
+)
+from .core.constants import BufferStatus
 
 
 class LindormMemobaseError(Exception):
@@ -539,57 +550,175 @@ class LindormMemobase:
             topics=topics,
             max_profiles=max_results
         )
-    
 
+    # ===== Buffer Management Methods =====
 
-def create_config(**kwargs) -> Config:
-    """
-    Create a Config object with custom parameters.
-    
-    Args:
-        **kwargs: Configuration parameters to override defaults
+    async def add_blob_to_buffer(
+        self,
+        user_id: str,
+        blob: Blob,
+        blob_id: Optional[str] = None
+    ) -> str:
+        """
+        Add a blob to the processing buffer.
         
-    Returns:
-        Config object with user-specified parameters
+        This method queues a blob for processing in the buffer system. The blob will be
+        processed automatically when the buffer reaches capacity or when manually flushed.
         
-    Raises:
-        ConfigurationError: If configuration parameters are invalid
-        
-    Example:
-        config = create_config(
-            language="zh",
-            llm_api_key="your-api-key",
-            best_llm_model="gpt-4"
-        )
-    """
-    try:
-        # Start with an empty config dict and add user parameters
-        config_dict = {}
-        
-        # Add user parameters
-        config_dict.update(kwargs)
-        
-        # Load any additional config from files if they exist, but don't fail if they don't
+        Args:
+            user_id: Unique identifier for the user
+            blob: The data blob to add to the buffer (ChatBlob, DocBlob, etc.)
+            blob_id: Optional custom ID for the blob. If None, generates a UUID.
+            
+        Returns:
+            The blob ID assigned to the added blob
+            
+        Raises:
+            LindormMemobaseError: If blob insertion fails
+            
+        Example:
+            from lindormmemobase.models.blob import ChatBlob, OpenAICompatibleMessage
+            
+            chat_blob = ChatBlob(
+                messages=[OpenAICompatibleMessage(role="user", content="Hello world!")],
+                type=BlobType.chat
+            )
+            blob_id = await memobase.add_blob_to_buffer("user123", chat_blob)
+        """
         try:
-            if os.path.exists("config.yaml"):
-                with open("config.yaml", 'r', encoding='utf-8') as f:
-                    base_config = yaml.safe_load(f) or {}
-                # User parameters take precedence over file config
-                base_config.update(config_dict)
-                config_dict = base_config
-        except Exception:
-            # If loading config file fails, just use user parameters
-            pass
+            if blob_id is None:
+                blob_id = str(uuid.uuid4())
+                
+            result = await insert_blob_to_buffer(
+                user_id=user_id,
+                blob_id=blob_id,
+                blob_data=blob,
+                config=self.config
+            )
+            
+            if not result.ok():
+                raise LindormMemobaseError(f"Failed to add blob to buffer: {result.msg()}")
+                
+            return blob_id
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to add blob to buffer: {str(e)}") from e
+
+    async def detect_buffer_full_or_not(
+        self,
+        user_id: str,
+        blob_type: BlobType = BlobType.chat
+    ) -> Dict[str, Any]:
+        """
+        Get comprehensive buffer status information.
+
+        Args:
+            user_id: Unique identifier for the user
+            blob_type: Type of blobs to check (default: BlobType.chat)
+
+        Returns:
+            Dictionary containing:
+            - is_full: Whether buffer should be flushed
+            - buffer_full_ids: List of blob IDs if buffer is over capacity
+
+        Raises:
+            LindormMemobaseError: If buffer status check fails
+
+        Example:
+            status = await memobase.get_buffer_status("user123", BlobType.chat)
+            print(f"Buffer has {status['capacity']} items, full: {status['is_full']}")
+        """
+        try:
+            # Check if buffer is full
+            full_result = await detect_buffer_full_or_not(
+                user_id=user_id,
+                blob_type=blob_type,
+                config=self.config
+            )
+
+            if not full_result.ok():
+                raise LindormMemobaseError(f"Failed to detect buffer full status: {full_result.msg()}")
+
+            buffer_full_ids = full_result.data()
+            is_full = len(buffer_full_ids) > 0
+
+            return {
+                "is_full": is_full,
+                "buffer_full_ids": buffer_full_ids,
+                "blob_type": str(blob_type)
+            }
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to get buffer status: {str(e)}") from e
+
+    async def process_buffer(
+        self,
+        user_id: str,
+        blob_type: BlobType = BlobType.chat,
+        profile_config: Optional[ProfileConfig] = None,
+        blob_ids: Optional[List[str]] = None
+    ) -> Optional[Any]:
+        """
+        Process blobs in the buffer and extract memories.
         
-        # Process environment variables
-        config_dict = Config._process_env_vars(config_dict)
+        This method processes either all unprocessed blobs in the buffer or specific
+        blob IDs, extracting user profiles and generating events based on the content.
         
-        # Create Config object with the merged parameters
-        # Filter out any keys that aren't in the dataclass fields
-        import dataclasses
-        fields = {field.name for field in dataclasses.fields(Config)}
-        filtered_config = {k: v for k, v in config_dict.items() if k in fields}
-        
-        return Config(**filtered_config)
-    except Exception as e:
-        raise ConfigurationError(f"Failed to create configuration: {str(e)}") from e
+        Args:
+            user_id: Unique identifier for the user
+            blob_type: Type of blobs to process (default: BlobType.chat)
+            profile_config: Profile configuration for extraction. Uses default if None.
+            blob_ids: Specific blob IDs to process. If None, processes all unprocessed blobs.
+            
+        Returns:
+            Processing result data if successful, None if no blobs to process
+            
+        Raises:
+            LindormMemobaseError: If buffer processing fails
+            
+        Example:
+            # Process all unprocessed chat blobs
+            result = await memobase.process_buffer("user123", BlobType.chat)
+            
+            # Process specific blob IDs with custom profile config
+            custom_profile = ProfileConfig(language="zh")
+            result = await memobase.process_buffer(
+                "user123", 
+                BlobType.chat, 
+                profile_config=custom_profile,
+                blob_ids=["blob-id-1", "blob-id-2"]
+            )
+        """
+        try:
+            if profile_config is None:
+                profile_config = ProfileConfig()
+                
+            if blob_ids is not None:
+                # Process specific blob IDs
+                result = await flush_buffer_by_ids(
+                    user_id=user_id,
+                    blob_type=blob_type,
+                    buffer_ids=blob_ids,
+                    config=self.config,
+                    select_status=BufferStatus.idle,
+                    profile_config=profile_config
+                )
+            else:
+                # Process all unprocessed blobs
+                result = await flush_buffer(
+                    user_id=user_id,
+                    blob_type=blob_type,
+                    config=self.config,
+                    profile_config=profile_config
+                )
+                
+            if not result.ok():
+                raise LindormMemobaseError(f"Buffer processing failed: {result.msg()}")
+                
+            return result.data()
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to process buffer: {str(e)}") from e
