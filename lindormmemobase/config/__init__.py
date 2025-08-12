@@ -260,7 +260,6 @@ class ProjectLogger:
             exc_info=exc_info,
         )
 
-
 TRACE_LOG = ProjectLogger(LOG)
 
 # Config should be loaded by users, not globally

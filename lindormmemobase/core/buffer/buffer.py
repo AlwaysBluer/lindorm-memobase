@@ -304,9 +304,9 @@ class LindormBufferStorage:
                     )
                     return None
                 
-                # 获取所有blob_ids
-                blob_ids = [row[0] for row in buffer_data]
-                blob_ids_placeholder = ','.join(['%s'] * len(blob_ids))
+                # 获取所有blob_ids from buffer_data
+                retrieved_blob_ids = [row[0] for row in buffer_data]
+                retrieved_blob_ids_placeholder = ','.join(['%s'] * len(retrieved_blob_ids))
                 
                 # 再查询blob_content表
                 query_blob = f"""
@@ -316,9 +316,9 @@ class LindormBufferStorage:
                         created_at
                     FROM blob_content
                     WHERE user_id = %s 
-                        AND blob_id IN ({blob_ids_placeholder})
+                        AND blob_id IN ({retrieved_blob_ids_placeholder})
                 """
-                cursor.execute(query_blob, [str(user_id)] + blob_ids)
+                cursor.execute(query_blob, [str(user_id)] + retrieved_blob_ids)
                 blob_content_data = cursor.fetchall()
                 
                 # 创建blob_id到blob_data的映射
@@ -360,16 +360,19 @@ class LindormBufferStorage:
                     # 解析blob_data
                     blob_data = json.loads(blob_data_json)
                     
+                    # 确保使用数据库中的 created_at
+                    blob_data['created_at'] = created_at
+                    
                     # 根据blob_type创建相应的Blob对象
                     if blob_type == BlobType.chat:
                         from ...models.blob import ChatBlob
-                        blob = ChatBlob(**blob_data, created_at=created_at)
+                        blob = ChatBlob(**blob_data)
                     elif blob_type == BlobType.doc:
                         from ...models.blob import DocBlob
-                        blob = DocBlob(**blob_data, created_at=created_at)
+                        blob = DocBlob(**blob_data)
                     elif blob_type == BlobType.code:
                         from ...models.blob import CodeBlob
-                        blob = CodeBlob(**blob_data, created_at=created_at)
+                        blob = CodeBlob(**blob_data)
                     else:
                         # 其他类型暂时不支持
                         raise Exception(f"Unsupported blob type: {blob_type}")

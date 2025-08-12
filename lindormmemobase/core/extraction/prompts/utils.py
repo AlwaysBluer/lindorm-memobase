@@ -140,7 +140,8 @@ def convert_response_to_json(response: str) -> dict:
 
 
 def pack_merge_action_into_string(action: dict) -> str:
-    return f"- {action['action']}{CONFIG.llm_tab_separator}{action['memo']}"
+    separator = CONFIG.llm_tab_separator if CONFIG else "::"
+    return f"- {action['action']}{separator}{action['memo']}"
 
 
 def parse_string_into_merge_action(results: str) -> dict | None:
@@ -149,7 +150,8 @@ def parse_string_into_merge_action(results: str) -> dict | None:
     if not len(lines):
         return None
     line = lines[0][2:]
-    parts = line.split(CONFIG.llm_tab_separator)
+    separator = CONFIG.llm_tab_separator if CONFIG else "::"
+    parts = line.split(separator)
     if not len(parts) == 2:
         return None
     return {
@@ -159,8 +161,9 @@ def parse_string_into_merge_action(results: str) -> dict | None:
 
 
 def pack_profiles_into_string(profiles: AIUserProfiles) -> str:
+    separator = CONFIG.llm_tab_separator if CONFIG else "::"
     lines = [
-        f"- {attribute_unify(p.topic)}{CONFIG.llm_tab_separator}{attribute_unify(p.sub_topic)}{CONFIG.llm_tab_separator}{p.memo.strip()}"
+        f"- {attribute_unify(p.topic)}{separator}{attribute_unify(p.sub_topic)}{separator}{p.memo.strip()}"
         for p in profiles.facts
     ]
     if not len(lines):
@@ -190,7 +193,8 @@ def parse_line_into_profile(line: str) -> AIUserProfile | None:
     if not line.startswith("- "):
         return None
     line = line[2:]
-    parts = line.split(CONFIG.llm_tab_separator)
+    separator = CONFIG.llm_tab_separator if CONFIG else "::"
+    parts = line.split(separator)
     if not len(parts) == 3:
         return None
     topic, sub_topic, memo = parts
@@ -215,7 +219,8 @@ def parse_line_into_subtopic(line: str) -> dict:
     if not line.startswith("- "):
         return None
     line = line[2:]
-    parts = line.split(CONFIG.llm_tab_separator)
+    separator = CONFIG.llm_tab_separator if CONFIG else "::"
+    parts = line.split(separator)
     if not len(parts) == 2:
         return None
     if meaningless_profile_memo(parts[1].strip()):
