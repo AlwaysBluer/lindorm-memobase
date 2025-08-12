@@ -69,7 +69,6 @@ class LindormBufferStorage:
             # Buffer Zone 表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS buffer_zone (
-                    id VARCHAR(255) NOT NULL,
                     user_id VARCHAR(255) NOT NULL,
                     blob_id VARCHAR(255) NOT NULL,
                     created_at TIMESTAMP,
@@ -77,18 +76,18 @@ class LindormBufferStorage:
                     status VARCHAR(50) NOT NULL,
                     blob_type VARCHAR(50) NOT NULL,
                     token_size INT,
-                    PRIMARY KEY(id)
+                    PRIMARY KEY(user_id, blob_id)
                 )
             """)
             # Blob Content 表 - 存储具体内容
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS blob_content (
-                    blob_id VARCHAR(255) NOT NULL,
                     user_id VARCHAR(255) NOT NULL,
+                    blob_id VARCHAR(255) NOT NULL,
                     blob_data VARCHAR(65535) NOT NULL,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP,
-                    PRIMARY KEY(blob_id)
+                    PRIMARY KEY(user_id, blob_id)
                 )
             """)
             conn.commit()
@@ -112,28 +111,26 @@ class LindormBufferStorage:
             try:
                 cursor = conn.cursor()
                 now = datetime.utcnow()
-                buffer_id = str(uuid.uuid4())
                 
                 # 插入到buffer_zone表
                 cursor.execute(
                     """
-                    INSERT INTO buffer_zone (id, user_id, blob_id, created_at, updated_at, status, blob_type, token_size)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO buffer_zone (user_id, blob_id, created_at, updated_at, status, blob_type, token_size)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (buffer_id, str(user_id), str(blob_id), now, now, BufferStatus.idle, str(blob_data.type), get_blob_token_size(blob_data))
+                    (str(user_id), str(blob_id), now, now, BufferStatus.idle, str(blob_data.type), get_blob_token_size(blob_data))
                 )
                 
                 # 插入到blob_content表
                 cursor.execute(
                     """
-                    INSERT INTO blob_content (blob_id, user_id, blob_data, created_at, updated_at)
+                    INSERT INTO blob_content (user_id, blob_id, blob_data, created_at, updated_at)
                     VALUES (%s, %s, %s, %s, %s)
                     """,
-                    (str(blob_id), str(user_id), json.dumps(blob_data.dict()), now, now)
+                    (str(user_id), str(blob_id), json.dumps(blob_data.model_dump(), default=str), now, now)
                 )
-                
                 conn.commit()
-                return buffer_id
+                return blob_id
             except Exception as e:
                 conn.rollback()
                 raise e
@@ -160,7 +157,7 @@ class LindormBufferStorage:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT COUNT(*) as count FROM buffer_zone 
+                    SELECT COUNT(*) FROM buffer_zone 
                     WHERE user_id = %s AND blob_type = %s AND status = %s
                     """,
                     (str(user_id), str(blob_type), BufferStatus.idle)
@@ -182,7 +179,7 @@ class LindormBufferStorage:
             return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get buffer capacity: {str(e)}")
     
     async def detect_buffer_full_or_not(self, user_id: str, blob_type: BlobType, global_config: Config) -> Promise[List[str]]:
-        """检测buffer是否已满，返回buffer_ids列表"""
+        """检测buffer是否已满，返回blob_ids列表"""
         def _detect_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
@@ -192,7 +189,7 @@ class LindormBufferStorage:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT id, token_size FROM buffer_zone 
+                    SELECT blob_id, token_size FROM buffer_zone 
                     WHERE user_id = %s AND blob_type = %s AND status = %s
                     """,
                     (str(user_id), str(blob_type), BufferStatus.idle)
@@ -202,7 +199,7 @@ class LindormBufferStorage:
                 if not results:
                     return []
                 
-                buffer_ids = [row[0] for row in results]
+                blob_ids = [row[0] for row in results]
                 total_token_size = sum(row[1] for row in results if row[1])
                 
                 if total_token_size > global_config.max_chat_blob_buffer_token_size:
@@ -210,7 +207,7 @@ class LindormBufferStorage:
                         user_id,
                         f"Flush {blob_type} buffer due to reach maximum token size({total_token_size} > {global_config.max_chat_blob_buffer_token_size})"
                     )
-                    return buffer_ids
+                    return blob_ids
                 
                 return []
             except Exception as e:
@@ -227,8 +224,8 @@ class LindormBufferStorage:
         except Exception as e:
             return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get unprocessed buffer ids: {str(e)}")
     
-    async def get_unprocessed_buffer_ids(self, user_id: str, blob_type: BlobType, select_status: str = BufferStatus.idle) -> Promise[List[str]]:
-        """获取未处理的buffer ids"""
+    async def get_unprocessed_blob_ids(self, user_id: str, blob_type: BlobType, select_status: str = BufferStatus.idle) -> Promise[List[str]]:
+        """获取未处理的blob ids"""
         def _get_ids_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
@@ -238,7 +235,7 @@ class LindormBufferStorage:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT id FROM buffer_zone 
+                    SELECT blob_id FROM buffer_zone 
                     WHERE user_id = %s AND blob_type = %s AND status = %s
                     """,
                     (str(user_id), str(blob_type), select_status)
@@ -263,14 +260,14 @@ class LindormBufferStorage:
         self,
         user_id: str,
         blob_type: BlobType,
-        buffer_ids: list[str],
+        blob_ids: list[str],
         select_status: str = BufferStatus.idle,
         profile_config=None,
     ) -> Promise[ChatModalResponse | None]:
         """刷新指定的buffer ids"""
         if blob_type not in BLOBS_PROCESS:
             return Promise.reject(CODE.BAD_REQUEST, f"Blob type {blob_type} not supported")
-        if not len(buffer_ids):
+        if not len(blob_ids):
             return Promise.resolve(None)
 
         def _flush_sync():
@@ -282,23 +279,22 @@ class LindormBufferStorage:
                 cursor = conn.cursor()
                 
                 # 1. 查询buffer数据（不使用JOIN，因为Lindorm不支持）
-                buffer_ids_placeholder = ','.join(['%s'] * len(buffer_ids))
+                buffer_ids_placeholder = ','.join(['%s'] * len(blob_ids))
                 
                 # 先查询buffer_zone表
                 query_buffer = f"""
                     SELECT 
-                        id as buffer_id,
                         blob_id,
                         token_size,
-                        created_at as buffer_created_at
+                        created_at
                     FROM buffer_zone
                     WHERE user_id = %s 
                         AND blob_type = %s 
                         AND status = %s 
-                        AND id IN ({buffer_ids_placeholder})
+                        AND blob_id IN ({buffer_ids_placeholder})
                     ORDER BY created_at
                 """
-                cursor.execute(query_buffer, [str(user_id), str(blob_type), select_status] + buffer_ids)
+                cursor.execute(query_buffer, [str(user_id), str(blob_type), select_status] + blob_ids)
                 buffer_data = cursor.fetchall()
                 
                 if not buffer_data:
@@ -309,7 +305,7 @@ class LindormBufferStorage:
                     return None
                 
                 # 获取所有blob_ids
-                blob_ids = [row[1] for row in buffer_data]
+                blob_ids = [row[0] for row in buffer_data]
                 blob_ids_placeholder = ','.join(['%s'] * len(blob_ids))
                 
                 # 再查询blob_content表
@@ -331,10 +327,10 @@ class LindormBufferStorage:
                 # 合并buffer和blob数据
                 buffer_blob_data = []
                 for buffer_row in buffer_data:
-                    buffer_id, blob_id, token_size, buffer_created_at = buffer_row
+                    blob_id, token_size, buffer_created_at = buffer_row
                     if blob_id in blob_map:
                         blob_data, created_at = blob_map[blob_id]
-                        buffer_blob_data.append((buffer_id, blob_id, token_size, buffer_created_at, blob_data, created_at))
+                        buffer_blob_data.append((blob_id, token_size, buffer_created_at, blob_data, created_at))
                 
                 if not buffer_blob_data:
                     TRACE_LOG.info(
@@ -343,22 +339,22 @@ class LindormBufferStorage:
                     )
                     return None
                 
-                # 获取实际需要处理的buffer_ids
-                process_buffer_ids = [row[0] for row in buffer_blob_data]
+                # 获取实际需要处理的blob_ids
+                process_blob_ids = [row[0] for row in buffer_blob_data]
                 
                 # 2. 更新buffer状态为processing
                 if select_status != BufferStatus.processing:
-                    update_placeholder = ','.join(['%s'] * len(process_buffer_ids))
-                    cursor.execute(
-                        f"UPDATE buffer_zone SET status = %s WHERE id IN ({update_placeholder})",
-                        [BufferStatus.processing] + process_buffer_ids
-                    )
+                    for blob_id in process_blob_ids:
+                        cursor.execute(
+                            "UPDATE buffer_zone SET status = %s WHERE user_id = %s AND blob_id = %s",
+                            (BufferStatus.processing, str(user_id), blob_id)
+                        )
                 
                 # 构建blobs数据
                 blobs = []
                 total_token_size = 0
                 for row in buffer_blob_data:
-                    buffer_id, blob_id, token_size, buffer_created_at, blob_data_json, created_at = row
+                    blob_id, token_size, buffer_created_at, blob_data_json, created_at = row
                     total_token_size += token_size if token_size else 0
                     
                     # 解析blob_data
@@ -389,8 +385,8 @@ class LindormBufferStorage:
                 
                 return {
                     'blobs': blobs,
-                    'process_buffer_ids': process_buffer_ids,
-                    'blob_ids': [row[1] for row in buffer_blob_data]
+                    'process_blob_ids': process_blob_ids,
+                    'blob_ids': [row[0] for row in buffer_blob_data]
                 }
                 
             except Exception as e:
@@ -422,12 +418,12 @@ class LindormBufferStorage:
                     
                     if success:
                         # 更新buffer状态为done
-                        process_buffer_ids = flush_data['process_buffer_ids']
-                        update_placeholder = ','.join(['%s'] * len(process_buffer_ids))
-                        cursor.execute(
-                            f"UPDATE buffer_zone SET status = %s WHERE id IN ({update_placeholder})",
-                            [BufferStatus.done] + process_buffer_ids
-                        )
+                        process_blob_ids = flush_data['process_blob_ids']
+                        for blob_id in process_blob_ids:
+                            cursor.execute(
+                                "UPDATE buffer_zone SET status = %s WHERE user_id = %s AND blob_id = %s",
+                                (BufferStatus.done, str(user_id), blob_id)
+                            )
                         
                         
                         TRACE_LOG.info(
@@ -436,12 +432,12 @@ class LindormBufferStorage:
                         )
                     else:
                         # 更新buffer状态为failed
-                        process_buffer_ids = flush_data['process_buffer_ids']
-                        update_placeholder = ','.join(['%s'] * len(process_buffer_ids))
-                        cursor.execute(
-                            f"UPDATE buffer_zone SET status = %s WHERE id IN ({update_placeholder})",
-                            [BufferStatus.failed] + process_buffer_ids
-                        )
+                        process_blob_ids = flush_data['process_blob_ids']
+                        for blob_id in process_blob_ids:
+                            cursor.execute(
+                                "UPDATE buffer_zone SET status = %s WHERE user_id = %s AND blob_id = %s",
+                                (BufferStatus.failed, str(user_id), blob_id)
+                            )
                     
                     conn.commit()
                     
@@ -478,7 +474,7 @@ class LindormBufferStorage:
         blob_type: BlobType
     ) -> Promise[ChatModalResponse | None]:
         """刷新buffer中所有未处理的数据"""
-        p = await self.get_unprocessed_buffer_ids(user_id, blob_type)
+        p = await self.get_unprocessed_blob_ids(user_id, blob_type)
         if not p.ok():
             return p
         
@@ -525,7 +521,7 @@ async def get_unprocessed_buffer_ids(
     select_status: str = BufferStatus.idle,
 ) -> Promise[List[str]]:
     storage = get_lindorm_buffer_storage(config)
-    return await storage.get_unprocessed_buffer_ids(user_id, blob_type, select_status)
+    return await storage.get_unprocessed_blob_ids(user_id, blob_type, select_status)
 
 async def flush_buffer_by_ids(
     user_id: str,

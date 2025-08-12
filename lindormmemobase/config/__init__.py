@@ -34,6 +34,7 @@ class Config:
     max_pre_profile_token_size: int = 128
     llm_tab_separator: str = "::"
 
+    max_chat_blob_buffer_token_size: int = 8192
     max_chat_blob_buffer_process_token_size: int = 16384
 
     # LLM
