@@ -1,0 +1,70 @@
+# LindormMemobase 配置模板文件
+# 复制此文件为 config.yaml 并填入实际值
+
+# === 基础配置 ===
+language: zh  # 语言设置：zh（中文）或 en（英文）
+use_timezone: Asia/Shanghai  # 时区设置
+
+# === LLM API 配置 ===
+llm_style: openai  # LLM样式：openai 或 doubao_cache
+llm_api_key: sk-your-actual-openai-api-key-here  # 必填：OpenAI API密钥
+llm_base_url: null  # 可选：自定义API端点，如 https://your-custom-api.com/v1
+best_llm_model: gpt-4o-mini  # 主要模型
+thinking_llm_model: o4-mini  # 思考链模型
+summary_llm_model: null  # 摘要模型（可选）
+
+# === 嵌入配置 ===
+enable_event_embedding: true
+embedding_provider: openai  # 可选：openai 或 jina
+embedding_api_key: null  # 可选：嵌入API密钥，为null时使用llm_api_key
+embedding_base_url: null  # 可选：嵌入API端点
+embedding_model: text-embedding-3-small
+embedding_dim: 1536
+embedding_max_token_size: 8192
+
+# === Lindorm Table (MySQL协议) 配置 ===
+lindorm_table_host: your-lindorm-table-host  # Lindorm Table主机地址
+lindorm_table_port: 33060  # Lindorm Table端口
+lindorm_table_username: your-username  # 用户名
+lindorm_table_password: your-table-password  # 密码
+lindorm_table_database: memobase  # 数据库名
+
+# === Lindorm Search 配置 ===
+lindorm_search_host: your-lindorm-search-host  # Lindorm Search主机地址
+lindorm_search_port: 30070  # Lindorm Search端口
+lindorm_search_use_ssl: false  # 是否使用SSL
+lindorm_search_username: null  # 用户名（可选，如果启用了认证）
+lindorm_search_password: null  # 密码（可选，如果启用了认证）
+lindorm_search_events_index: memobase_events  # 事件索引名称
+lindorm_search_event_gists_index: memobase_event_gists  # 事件摘要索引名称
+
+# === 记忆提取配置 ===
+max_profile_subtopics: 15  # 每个主题的最大子主题数
+minimum_chats_token_size_for_event_summary: 256  # 触发事件摘要的最小token数
+
+# === 缓冲区管理配置 ===
+max_chat_blob_buffer_token_size: 8192  # 缓冲区最大token数，达到此值自动触发处理
+max_chat_blob_buffer_process_token_size: 16384  # 单次处理最大token数
+
+# === 档案管理设置 ===
+profile_strict_mode: false  # 严格模式
+profile_validate_mode: true  # 验证模式
+event_theme_requirement: "Focus on the user's infos, not its instructions. Do not mix up with the bot/assistant's infos"
+
+# === 高级配置 ===
+persistent_chat_blobs: false  # 是否持久化对话数据
+llm_tab_separator: "::"  # LLM 输出分隔符
+max_pre_profile_token_size: 128  # 预处理档案的最大token数
+system_prompt: null  # 自定义系统提示（可选）
+
+# === 用户档案自定义 ===
+additional_user_profiles: []  # 额外的用户档案配置
+overwrite_user_profiles: null  # 覆盖默认用户档案（可选）
+event_tags: []  # 事件标签配置
+
+# === OpenAI 配置自定义 ===
+llm_openai_default_query: null  # OpenAI默认查询参数
+llm_openai_default_header: null  # OpenAI默认请求头
+
+# === 测试选项 ===
+test_skip_persist: false  # 测试时是否跳过持久化
