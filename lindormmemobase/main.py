@@ -104,7 +104,7 @@ class LindormMemobase:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_dict = yaml.safe_load(f) or {}
                 
-            config = create_config(**config_dict)
+            config = Config.from_yaml_file(config_path)
             return cls(config)
         except yaml.YAMLError as e:
             raise ConfigurationError(f"Invalid YAML in configuration file: {str(e)}") from e
@@ -133,7 +133,16 @@ class LindormMemobase:
             )
         """
         try:
-            config = create_config(**kwargs)
+            # Load configuration using Config.from_yaml_file approach
+            config_dict = {}
+            config_dict.update(kwargs)
+            
+            # Create Config with all fields from kwargs, filling in missing values from Config defaults
+            from dataclasses import fields
+            valid_fields = {f.name for f in fields(Config)}
+            filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_fields}
+            
+            config = Config(**filtered_kwargs)
             return cls(config)
         except Exception as e:
             raise ConfigurationError(f"Failed to create configuration from parameters: {str(e)}") from e

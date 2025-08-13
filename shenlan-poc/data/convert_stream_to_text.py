@@ -122,8 +122,8 @@ def convert_csv_streaming_to_text(input_file: str, output_file: str):
 
 def main():
     """主函数"""
-    input_file = "./data/shenlandata.csv"
-    output_file = "./data/shenlandata_converted.csv"
+    input_file = "./shenlandata.csv"
+    output_file = "./shenlandata_converted.csv"
     
     print("开始转换CSV文件...")
     print(f"输入文件: {input_file}")

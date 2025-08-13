@@ -18,7 +18,8 @@ class ConversationMemoryProcessor:
     def __init__(self, config_path: Optional[str] = None):
         """Initialize processor"""
         if config_path:
-            self.memobase = LindormMemobase.from_yaml_file(config_path)
+            # Load config from YAML file manually and pass to LindormMemobase
+            self.memobase = LindormMemobase.from_yaml_file("./config.yaml")
         else:
             # Use default config, auto-load from config.yaml and env vars
             self.memobase = LindormMemobase()
@@ -29,7 +30,6 @@ class ConversationMemoryProcessor:
     async def process_csv_conversations(
         self, 
         csv_file_path: str, 
-        user_id: str = "test_user_1",
         batch_size: int = 5,
         use_buffer: bool = True
     ) -> Dict[str, int]:
@@ -38,7 +38,6 @@ class ConversationMemoryProcessor:
         
         Args:
             csv_file_path: CSV file path
-            user_id: User ID
             batch_size: Batch processing size
             use_buffer: Whether to use buffer management
             
@@ -46,19 +45,21 @@ class ConversationMemoryProcessor:
             Processing result statistics
         """
         print(f"Starting to process CSV file: {csv_file_path}")
-        print(f"User ID: {user_id}")
         print(f"Batch size: {batch_size}")
         print(f"Using buffer: {use_buffer}")
         print("-" * 50)
         
         stats = {
             "total_rows": 0,
+            "valid_rows": 0,
             "processed_conversations": 0,
             "error_rows": 0,
-            "memory_extractions": 0
+            "memory_extractions": 0,
+            "users_processed": set()
         }
         
-        conversations_batch = []
+        # 按用户分组的对话批次
+        user_conversations = {}
         
         with open(csv_file_path, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
@@ -77,52 +78,63 @@ class ConversationMemoryProcessor:
                         stats["error_rows"] += 1
                         continue
                     
-                    conversations_batch.append(conversation_data)
+                    stats["valid_rows"] += 1
+                    user_id = conversation_data["user_id"]
+                    stats["users_processed"].add(user_id)
                     
-                    # Process when batch size reached or file ended
-                    if len(conversations_batch) >= batch_size:
+                    # Group conversations by user
+                    if user_id not in user_conversations:
+                        user_conversations[user_id] = []
+                    
+                    user_conversations[user_id].append(conversation_data)
+                    
+                    # Process when batch size reached for this user
+                    if len(user_conversations[user_id]) >= batch_size:
                         success = await self._process_conversation_batch(
-                            conversations_batch, user_id, use_buffer
+                            user_conversations[user_id], user_id, use_buffer
                         )
                         if success:
-                            stats["processed_conversations"] += len(conversations_batch)
+                            stats["processed_conversations"] += len(user_conversations[user_id])
                             stats["memory_extractions"] += 1
                         
-                        conversations_batch = []
+                        user_conversations[user_id] = []
                         
                         # Show progress
-                        print(f"Processed {stats['total_rows']} rows, extracted {stats['memory_extractions']} memories")
+                        print(f"Processed {stats['total_rows']} rows, {stats['valid_rows']} valid, "
+                              f"{len(stats['users_processed'])} users, {stats['memory_extractions']} extractions")
                     
                 except Exception as e:
                     print(f"Error processing row {row_num}: {e}")
                     stats["error_rows"] += 1
                     continue
         
-        # Process remaining conversations
-        if conversations_batch:
-            success = await self._process_conversation_batch(
-                conversations_batch, user_id, use_buffer
-            )
-            if success:
-                stats["processed_conversations"] += len(conversations_batch)
-                stats["memory_extractions"] += 1
+        # Process remaining conversations for each user
+        for user_id, conversations in user_conversations.items():
+            if conversations:
+                success = await self._process_conversation_batch(
+                    conversations, user_id, use_buffer
+                )
+                if success:
+                    stats["processed_conversations"] += len(conversations)
+                    stats["memory_extractions"] += 1
         
-        # If using buffer, process all remaining data
+        # If using buffer, process all remaining data for all users
         if use_buffer:
-            await self._finalize_buffer_processing(user_id)
+            for user_id in stats["users_processed"]:
+                await self._finalize_buffer_processing(user_id)
         
         return stats
     
     def _parse_csv_row(self, row: List[str], row_num: int) -> Optional[Dict]:
         """
-        Parse CSV row data
+        Parse CSV row data - only process rows with 'vin' field
         
         Args:
             row: CSV row data
             row_num: Row number
             
         Returns:
-            Parsed conversation data
+            Parsed conversation data with user_id from vin field
         """
         if len(row) < 8:
             print(f"Row {row_num} format incorrect, insufficient columns: {len(row)}")
@@ -141,23 +153,36 @@ class ConversationMemoryProcessor:
             # Parse request JSON
             try:
                 request_data = json.loads(request)
-                query = request_data.get("query", "")
-                chat_history = request_data.get("chat_history", [])
             except json.JSONDecodeError:
-                query = request  # If not JSON, use original text
-                chat_history = []
+                print(f"Row {row_num}: Invalid JSON in request field")
+                return None
+            
+            # Check if this is valid data (must have 'vin' field)
+            if 'vin' not in request_data:
+                return None  # Silently skip dirty data
+                
+            # Extract vin as user_id
+            user_id = str(request_data['vin'])
+            if not user_id or user_id == 'null':
+                return None
+            
+            # Extract messages for conversation history
+            messages = request_data.get('messages', [])
+            if not messages:
+                print(f"Row {row_num}: No messages found in request")
+                return None
             
             # Check if valid conversation (response is not error message)
-            if not response or response.startswith("ERROR:") or "Method Not Allowed" in response:
+            if not response or response.startswith('ERROR:') or 'Method Not Allowed' in response:
                 return None
             
             return {
+                "user_id": user_id,
                 "source": source,
                 "timestamp": timestamp,
                 "topic": topic,
-                "query": query,
-                "response": response,
-                "chat_history": chat_history,
+                "messages": messages,  # Full conversation history
+                "current_response": response,  # AI's response to the last user message
                 "request_ts": request_ts,
                 "response_ts": response_ts,
                 "stream_id": stream_id,
@@ -179,7 +204,7 @@ class ConversationMemoryProcessor:
         
         Args:
             conversations: List of conversation data
-            user_id: User ID
+            user_id: User ID (from vin field)
             use_buffer: Whether to use buffer
             
         Returns:
@@ -187,51 +212,45 @@ class ConversationMemoryProcessor:
         """
         try:
             # Convert conversations to message list
-            messages = []
+            all_messages = []
+            
             for conv in conversations:
-                # Add user message
-                if conv["query"]:
-                    messages.append(OpenAICompatibleMessage(
-                        role="user",
-                        content=conv["query"],
-                        created_at=self._timestamp_to_datetime(conv["request_ts"])
-                    ))
+                # Add all messages from conversation history
+                for msg in conv["messages"]:
+                    if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                        all_messages.append(OpenAICompatibleMessage(
+                            role=msg["role"],
+                            content=msg["content"],
+                            created_at=self._timestamp_to_datetime(conv["request_ts"])
+                        ))
                 
-                # Add assistant response
-                if conv["response"]:
-                    messages.append(OpenAICompatibleMessage(
-                        role="assistant", 
-                        content=conv["response"],
+                # Add the current AI response
+                if conv["current_response"]:
+                    all_messages.append(OpenAICompatibleMessage(
+                        role="assistant",
+                        content=conv["current_response"],
                         created_at=self._timestamp_to_datetime(conv["response_ts"])
                     ))
-                
-                # Add chat history (if any)
-                for hist_msg in conv.get("chat_history", []):
-                    if isinstance(hist_msg, dict) and "role" in hist_msg and "content" in hist_msg:
-                        messages.append(OpenAICompatibleMessage(
-                            role=hist_msg["role"],
-                            content=hist_msg["content"]
-                        ))
             
-            if not messages:
+            if not all_messages:
                 return False
             
             # Create chat blob
             chat_blob = ChatBlob(
-                messages=messages,
+                messages=all_messages,
                 type=BlobType.chat
             )
             
             if use_buffer:
                 # Use buffer management
                 blob_id = await self.memobase.add_blob_to_buffer(user_id, chat_blob)
-                print(f"Conversation batch added to buffer: {blob_id}")
+                print(f"User {user_id}: Conversation batch added to buffer: {blob_id}")
                 
                 # Check buffer status
                 status = await self.memobase.detect_buffer_full_or_not(user_id, BlobType.chat)
                 
                 if status["is_full"]:
-                    print(f"Buffer full, processing {len(status['buffer_full_ids'])} data blocks...")
+                    print(f"User {user_id}: Buffer full, processing {len(status['buffer_full_ids'])} data blocks...")
                     result = await self.memobase.process_buffer(
                         user_id=user_id,
                         blob_type=BlobType.chat,
@@ -240,10 +259,10 @@ class ConversationMemoryProcessor:
                     )
                     
                     if result:
-                        print("✓ Buffer processing completed")
+                        print(f"✓ User {user_id}: Buffer processing completed")
                         return True
                     else:
-                        print("⚠️ Buffer processing returned empty result")
+                        print(f"⚠️ User {user_id}: Buffer processing returned empty result")
                         return False
                 else:
                     return True  # Successfully added to buffer
@@ -256,14 +275,14 @@ class ConversationMemoryProcessor:
                 )
                 
                 if result:
-                    print(f"✓ Successfully extracted memory, contains {len(messages)} messages")
+                    print(f"✓ User {user_id}: Successfully extracted memory, contains {len(all_messages)} messages")
                     return True
                 else:
-                    print("⚠️ Memory extraction returned empty result")
+                    print(f"⚠️ User {user_id}: Memory extraction returned empty result")
                     return False
                 
         except Exception as e:
-            print(f"Error processing conversation batch: {e}")
+            print(f"Error processing conversation batch for user {user_id}: {e}")
             return False
     
     async def _finalize_buffer_processing(self, user_id: str):
@@ -358,7 +377,7 @@ async def main():
     
     # Initialize processor
     try:
-        processor = ConversationMemoryProcessor()
+        processor = ConversationMemoryProcessor(config_path="./config.yaml")
         print("✓ Lindorm-memobase initialized successfully")
     except Exception as e:
         print(f"✗ Initialization failed: {e}")
@@ -366,8 +385,7 @@ async def main():
     
     # Set parameters
     csv_file_path = "./data/shenlandata_converted.csv"
-    user_id = "test_user_1"
-    batch_size = 3  # Process 3 conversations at a time
+    batch_size = 5  # Process 3 conversations at a time
     use_buffer = True  # Use buffer management
     
     # Check if file exists
@@ -386,7 +404,6 @@ async def main():
     try:
         stats = await processor.process_csv_conversations(
             csv_file_path=csv_file_path,
-            user_id=user_id,
             batch_size=batch_size,
             use_buffer=use_buffer
         )
@@ -400,26 +417,32 @@ async def main():
         print("-" * 30)
         print(f"Total processing time: {processing_time:.2f} seconds")
         print(f"Total rows: {stats['total_rows']}")
+        print(f"Valid rows: {stats['valid_rows']}")
         print(f"Successfully processed conversations: {stats['processed_conversations']}")
         print(f"Memory extraction count: {stats['memory_extractions']}")
         print(f"Error rows: {stats['error_rows']}")
-        print(f"Success rate: {(stats['processed_conversations'] / max(stats['total_rows'], 1) * 100):.1f}%")
+        print(f"Users processed: {len(stats['users_processed'])}")
+        print(f"Success rate: {(stats['valid_rows'] / max(stats['total_rows'], 1) * 100):.1f}%")
         
-        # Get user memory summary
-        print(f"\n=== User {user_id} Memory Summary ===")
-        summary = await processor.get_user_summary(user_id)
+        # Get memory summaries for all processed users
+        print(f"\n=== Memory Summaries for {len(stats['users_processed'])} Users ===")
+        for user_id in list(stats['users_processed'])[:5]:  # Show first 5 users
+            try:
+                summary = await processor.get_user_summary(user_id)
+                print(f"\n📋 User {user_id}:")
+                print(f"  Profile topics: {summary['profiles_count']}")
+                print(f"  Event records: {summary['events_count']}")
+                
+                if summary["profiles"]:
+                    print(f"  Sample profile topics:")
+                    for profile in summary["profiles"][:2]:  # Show first 2 topics
+                        print(f"    📝 {profile['topic']}: {len(profile['subtopics'])} subtopics")
+                        
+            except Exception as e:
+                print(f"  ⚠️ Error getting summary for user {user_id}: {e}")
         
-        print(f"User profile topics count: {summary['profiles_count']}")
-        for profile in summary["profiles"]:
-            print(f"\n📝 Topic: {profile['topic']}")
-            for subtopic, content in profile["subtopics"].items():
-                print(f"   └── {subtopic}: {content}")
-        
-        print(f"\nEvent records count: {summary['events_count']}")
-        if summary["recent_events"]:
-            print("Recent events:")
-            for event in summary["recent_events"]:
-                print(f"   📅 {event['content']}")
+        if len(stats['users_processed']) > 5:
+            print(f"\n... and {len(stats['users_processed']) - 5} more users")
         
     except Exception as e:
         print(f"\n✗ Error occurred during processing: {e}")
