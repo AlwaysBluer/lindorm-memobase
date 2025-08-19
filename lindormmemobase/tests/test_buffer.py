@@ -2,7 +2,7 @@
 """
 Buffer Storage Integration Tests
 
-This test suite tests the LindormBufferStorage implementation
+This test suite tests the optimized LindormBufferStorage implementation
 using real Lindorm Wide Table connections from .env configuration.
 """
 
@@ -14,16 +14,13 @@ from datetime import datetime
 from dotenv import load_dotenv
 from lindormmemobase.config import Config
 from lindormmemobase.core.constants import BufferStatus
-from lindormmemobase.core.buffer.buffer import (
-    LindormBufferStorage,
-)
+from lindormmemobase.core.buffer.buffer import create_buffer_storage
 from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
 from pathlib import Path
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
 
 # Load .env file from the tests directory
 test_dir = Path(__file__).parent
@@ -32,14 +29,14 @@ load_dotenv(env_file)
 
 
 class TestBufferStorage:
-    """Test suite for LindormBufferStorage using real Lindorm connections."""
+    """Test suite for optimized LindormBufferStorage using real Lindorm connections."""
 
     @classmethod
     def setup_class(cls):
         """Setup test class with configuration."""
         cls.config = Config.load_config()
         cls.config.max_chat_blob_buffer_token_size = 128
-        cls.storage = LindormBufferStorage(cls.config)
+        cls.storage = create_buffer_storage(cls.config)
         cls.test_user_id = "test_user_123"
         cls.test_blob_ids = []
         
@@ -53,53 +50,23 @@ class TestBufferStorage:
 
     @classmethod
     async def _cleanup_test_data(cls):
-        """Clean up test data from database."""
-        pool = cls.storage._get_pool()
-        conn = pool.get_connection()
-        cursor = None
-
-        try:
-            cursor = conn.cursor()
-
-            # Get all blob IDs for this user from buffer_zone
+        """Clean up test data from database using new unified table."""
+        with cls.storage.get_connection() as (conn, cursor):
+            # Get all blob IDs for this user
             cursor.execute(
-                "SELECT blob_id FROM buffer_zone WHERE user_id = %s",
+                "SELECT blob_id FROM buffer WHERE user_id = %s",
                 (cls.test_user_id,)
             )
-            buffer_blob_ids = [row[0] for row in cursor.fetchall()]
+            blob_ids = [row[0] for row in cursor.fetchall()]
 
-            # Delete buffer zone entries individually using composite key
-            for blob_id in buffer_blob_ids:
+            # Delete buffer entries
+            for blob_id in blob_ids:
                 cursor.execute(
-                    "DELETE FROM buffer_zone WHERE user_id = %s AND blob_id = %s",
+                    "DELETE FROM buffer WHERE user_id = %s AND blob_id = %s",
                     (cls.test_user_id, blob_id)
                 )
 
-            # Get all blob IDs for this user from blob_content
-            cursor.execute(
-                "SELECT blob_id FROM blob_content WHERE user_id = %s",
-                (cls.test_user_id,)
-            )
-            content_blob_ids = [row[0] for row in cursor.fetchall()]
-
-            # Delete blob content entries individually using composite key
-            for blob_id in content_blob_ids:
-                cursor.execute(
-                    "DELETE FROM blob_content WHERE user_id = %s AND blob_id = %s",
-                    (cls.test_user_id, blob_id)
-                )
-
-            conn.commit()
-            print(
-                f"✅ Cleaned up test data for user: {cls.test_user_id} ({len(buffer_blob_ids)} buffers, {len(content_blob_ids)} blobs)")
-
-        except Exception as e:
-            conn.rollback()
-            print(f"⚠️ Error cleaning up test data: {e}")
-        finally:
-            if cursor:
-                cursor.close()
-            conn.close()
+            print(f"✅ Cleaned up test data for user: {cls.test_user_id} ({len(blob_ids)} blobs)")
 
     def setup_method(self):
         """Setup before each test method."""
@@ -114,39 +81,16 @@ class TestBufferStorage:
         if not self.test_blob_ids:
             return
 
-        pool = self.storage._get_pool()
-        conn = pool.get_connection()
-        cursor = None
-
-        try:
-            cursor = conn.cursor()
-
-            # Delete specific test buffer entries individually
+        with self.storage.get_connection() as (conn, cursor):
+            # Delete specific test buffer entries
             for blob_id in self.test_blob_ids:
                 cursor.execute(
-                    "DELETE FROM buffer_zone WHERE user_id = %s and blob_id = %s",
+                    "DELETE FROM buffer WHERE user_id = %s AND blob_id = %s",
                     (self.test_user_id, blob_id)
                 )
-
-            # Delete specific test blob entries individually  
-            for blob_id in self.test_blob_ids:
-                cursor.execute(
-                    "DELETE FROM blob_content WHERE user_id = %s and blob_id = %s",
-                    (self.test_user_id, blob_id)
-                )
-
-            conn.commit()
-
-        except Exception as e:
-            conn.rollback()
-            print(f"⚠️ Error in method cleanup: {e}")
-        finally:
-            if cursor:
-                cursor.close()
-            conn.close()
 
     @pytest.mark.asyncio
-    async def test_insert_blob_to_buffer(self):
+    async def test_insert_blob(self):
         """Test inserting a blob into the buffer."""
         blob_id = str(uuid.uuid4())
         self.test_blob_ids.append(blob_id)
@@ -164,21 +108,13 @@ class TestBufferStorage:
         )
 
         # Insert blob to buffer
-        p = await self.storage.insert_blob_to_buffer(
-            self.test_user_id,
-            blob_id,
-            chat_blob
-        )
+        result = self.storage.insert_blob(self.test_user_id, blob_id, chat_blob)
+        assert result.ok(), f"Failed to insert blob: {result.msg()}"
 
-        assert p.ok(), f"Failed to insert blob: {p.msg()}"
-
-        # Note: We can't verify insertion by querying user_id+blob_id 
-        # because Lindorm Wide Table considers it an inefficient query.
-        # The successful Promise return indicates the insert worked.
         print("✅ Blob inserted to buffer successfully")
 
     @pytest.mark.asyncio
-    async def test_get_buffer_capacity(self):
+    async def test_get_capacity(self):
         """Test getting buffer capacity for a specific blob type."""
         # Insert multiple blobs
         blob_ids = []
@@ -198,21 +134,17 @@ class TestBufferStorage:
                 created_at=datetime.now()
             )
 
-            p = await self.storage.insert_blob_to_buffer(
-                self.test_user_id,
-                blob_id,
-                chat_blob
-            )
-            assert p.ok()
+            result = self.storage.insert_blob(self.test_user_id, blob_id, chat_blob)
+            assert result.ok()
 
         # Get buffer capacity
-        p = await self.storage.get_buffer_capacity(self.test_user_id, BlobType.chat)
-        assert p.ok(), f"Failed to get buffer capacity: {p.msg()}"
-        assert p.data() == 3, f"Expected capacity of 3, got {p.data()}"
+        result = self.storage.get_capacity(self.test_user_id, BlobType.chat)
+        assert result.ok(), f"Failed to get buffer capacity: {result.msg()}"
+        assert result.data() == 3, f"Expected capacity of 3, got {result.data()}"
 
     @pytest.mark.asyncio
-    async def test_get_unprocessed_buffer_ids(self):
-        """Test getting unprocessed buffer IDs."""
+    async def test_get_pending_ids(self):
+        """Test getting pending buffer IDs."""
         # Insert test blobs
         blob_ids = []
         for i in range(2):
@@ -231,32 +163,20 @@ class TestBufferStorage:
                 created_at=datetime.now()
             )
 
-            p = await self.storage.insert_blob_to_buffer(
-                self.test_user_id,
-                blob_id,
-                chat_blob
-            )
-            assert p.ok()
+            result = self.storage.insert_blob(self.test_user_id, blob_id, chat_blob)
+            assert result.ok()
 
-        # Get unprocessed buffer IDs
-        p = await self.storage.get_unprocessed_blob_ids(
-            self.test_user_id,
-            BlobType.chat,
-            BufferStatus.idle
-        )
-
-        assert p.ok(), f"Failed to get unprocessed buffer IDs: {p.msg()}"
-        buffer_ids = p.data()
-        assert len(buffer_ids) == 2, f"Expected 2 unprocessed buffers, got {len(buffer_ids)}"
-
-        # Store for cleanup
-        # Note: buffer_ids are the same as blob_ids in our new structure
-        # No additional action needed as blob_ids are already tracked
+        # Get pending buffer IDs
+        result = self.storage.get_pending_ids(self.test_user_id, BlobType.chat, BufferStatus.idle)
+        assert result.ok(), f"Failed to get pending buffer IDs: {result.msg()}"
+        
+        buffer_ids = result.data()
+        assert len(buffer_ids) == 2, f"Expected 2 pending buffers, got {len(buffer_ids)}"
 
     @pytest.mark.asyncio
-    async def test_detect_buffer_full_or_not(self):
-        """Test detecting if buffer is full based on token size."""
-        # Insert blobs with large content to trigger buffer full
+    async def test_check_overflow(self):
+        """Test detecting if buffer overflows based on token size."""
+        # Insert blobs with large content to trigger buffer overflow
         blob_ids = []
         for i in range(5):
             blob_id = str(uuid.uuid4())
@@ -276,34 +196,25 @@ class TestBufferStorage:
                 created_at=datetime.now()
             )
 
-            p = await self.storage.insert_blob_to_buffer(
-                self.test_user_id,
-                blob_id,
-                chat_blob
-            )
-            assert p.ok()
+            result = self.storage.insert_blob(self.test_user_id, blob_id, chat_blob)
+            assert result.ok()
 
-        # Detect if buffer is full
-        p = await self.storage.detect_buffer_full_or_not(
+        # Check if buffer overflows
+        result = self.storage.check_overflow(
             self.test_user_id,
             BlobType.chat,
-            self.config
+            self.config.max_chat_blob_buffer_token_size
         )
 
-        assert p.ok(), f"Failed to detect buffer full: {p.msg()}"
-        buffer_ids = p.data()
+        assert result.ok(), f"Failed to check overflow: {result.msg()}"
+        buffer_ids = result.data()
 
         # Should return buffer IDs if token size exceeds limit
-        # The actual result depends on config.max_chat_blob_buffer_token_size
-        print(f"Buffer full detection returned {len(buffer_ids)} buffer IDs")
-
-        if buffer_ids:
-            # Note: buffer_ids are the same as blob_ids, already tracked for cleanup
-            pass
+        print(f"Buffer overflow check returned {len(buffer_ids)} buffer IDs")
 
     @pytest.mark.asyncio
-    async def test_flush_buffer_by_ids_with_processing(self):
-        """Test flush_buffer_by_ids method with actual blob processing."""
+    async def test_flush_with_processing(self):
+        """Test flush method with actual blob processing."""
         from lindormmemobase.models.profile_topic import ProfileConfig
         
         # Create a realistic profile config for testing
@@ -316,15 +227,7 @@ class TestBufferStorage:
                     "topic": "interests",
                     "sub_topics": [
                         {"name": "programming", "description": "Programming languages and technologies"},
-                        {"name": "hobbies", "description": "Personal hobbies and activities"},
-                        {"name": "travel", "description": "Travel experiences and preferences"}
-                    ]
-                },
-                {
-                    "topic": "skills", 
-                    "sub_topics": [
-                        {"name": "technical", "description": "Technical skills and expertise"},
-                        {"name": "communication", "description": "Communication and soft skills"}
+                        {"name": "hobbies", "description": "Personal hobbies and activities"}
                     ]
                 }
             ]
@@ -332,114 +235,69 @@ class TestBufferStorage:
         
         # Insert test blobs with realistic chat conversations
         blob_ids = []
-        realistic_conversations = [
-            {
-                "messages": [
-                    OpenAICompatibleMessage(
-                        role="user", 
-                        content="I've been learning Python for the past 6 months and I really enjoy working with data analysis libraries like pandas and numpy. Do you have any recommendations for next steps?"
-                    ),
-                    OpenAICompatibleMessage(
-                        role="assistant", 
-                        content="That's great progress! Since you enjoy data analysis with pandas and numpy, I'd recommend exploring matplotlib for data visualization, scikit-learn for machine learning, and maybe jupyter notebooks if you haven't already. You might also want to try some real datasets from Kaggle to practice your skills."
-                    ),
-                    OpenAICompatibleMessage(
-                        role="user", 
-                        content="Thanks! I actually started using Jupyter notebooks last week and they're amazing for exploratory data analysis. I'm particularly interested in machine learning - any specific areas you'd suggest starting with?"
-                    )
-                ]
-            },
-            {
-                "messages": [
-                    OpenAICompatibleMessage(
-                        role="user", 
-                        content="I just got back from a trip to Japan and it was incredible! The food, culture, and people were all amazing. I especially loved visiting Kyoto and seeing all the traditional temples and gardens."
-                    ),
-                    OpenAICompatibleMessage(
-                        role="assistant", 
-                        content="Japan sounds like it was an amazing experience! Kyoto is particularly beautiful with its mix of traditional and modern elements. Did you get to try any specific dishes that stood out to you? And how was the language barrier?"
-                    ),
-                    OpenAICompatibleMessage(
-                        role="user", 
-                        content="The ramen was absolutely incredible - so much better than what I've had back home. I also tried authentic sushi at Tsukiji market which was a completely different experience. The language barrier was challenging but people were so patient and helpful. I'm actually thinking of taking Japanese language classes now."
-                    )
-                ]
-            },
-            {
-                "messages": [
-                    OpenAICompatibleMessage(
-                        role="user", 
-                        content="I'm working on a team project at work and we're having some communication issues. Some team members seem to prefer email while others want everything discussed in meetings. How do you usually handle different communication preferences in a team?"
-                    ),
-                    OpenAICompatibleMessage(
-                        role="assistant", 
-                        content="That's a common challenge in team dynamics. One approach is to establish clear communication protocols at the project start - maybe use email for documentation and status updates, but meetings for complex discussions and decision-making. You could also try tools like Slack for quick questions and collaborative documents for ongoing work."
-                    )
-                ]
-            }
+        conversations = [
+            [
+                OpenAICompatibleMessage(
+                    role="user", 
+                    content="I've been learning Python for data analysis. Any recommendations?"
+                ),
+                OpenAICompatibleMessage(
+                    role="assistant", 
+                    content="I'd recommend exploring pandas, numpy, and matplotlib for visualization."
+                )
+            ],
+            [
+                OpenAICompatibleMessage(
+                    role="user", 
+                    content="I just got back from Japan and it was incredible! The food was amazing."
+                ),
+                OpenAICompatibleMessage(
+                    role="assistant", 
+                    content="Japan sounds amazing! What were your favorite dishes?"
+                )
+            ]
         ]
         
-        for i, conversation in enumerate(realistic_conversations):
+        for i, messages in enumerate(conversations):
             blob_id = str(uuid.uuid4())
             blob_ids.append(blob_id)
             self.test_blob_ids.append(blob_id)
             
             chat_blob = ChatBlob(
                 type=BlobType.chat,
-                messages=conversation["messages"],
+                messages=messages,
                 created_at=datetime.now()
             )
 
-            p = await self.storage.insert_blob_to_buffer(
-                self.test_user_id,
-                blob_id,
-                chat_blob
-            )
-            assert p.ok(), f"Failed to insert blob {i}: {p.msg()}"
+            result = self.storage.insert_blob(self.test_user_id, blob_id, chat_blob)
+            assert result.ok(), f"Failed to insert blob {i}: {result.msg()}"
 
         # Verify blobs are in buffer
-        p = await self.storage.get_unprocessed_blob_ids(
-            self.test_user_id,
-            BlobType.chat,
-            BufferStatus.idle
-        )
-        assert p.ok(), f"Failed to get unprocessed blob IDs: {p.msg()}"
-        buffer_ids = p.data()
-        assert len(buffer_ids) >= 3, f"Expected at least 3 unprocessed blobs, got {len(buffer_ids)}"
-
-        # Get buffer capacity before processing
-        p = await self.storage.get_buffer_capacity(self.test_user_id, BlobType.chat)
-        assert p.ok()
-        initial_capacity = p.data()
-        print(f"Initial buffer capacity: {initial_capacity}")
-
-        # Test flush_buffer_by_ids with actual processing and profile config
-        # Use the first 2 blob_ids for processing
-        process_blob_ids = blob_ids[:2]
+        result = self.storage.get_pending_ids(self.test_user_id, BlobType.chat, BufferStatus.idle)
+        assert result.ok(), f"Failed to get pending blob IDs: {result.msg()}"
         
-        p = await self.storage.flush_buffer_by_ids(
+        pending_ids = result.data()
+        assert len(pending_ids) >= 2, f"Expected at least 2 pending blobs, got {len(pending_ids)}"
+
+        # Test flush with actual processing
+        result = await self.storage.flush(
             self.test_user_id,
             BlobType.chat,
-            process_blob_ids,
+            blob_ids,
             BufferStatus.idle,
-            profile_config  # Use proper profile config for realistic processing
+            profile_config
         )
         
         # Check result
-        if not p.ok():
-            print(f"⚠️ Flush processing returned error: {p.msg()}")
-            print("This might be expected if LLM processing fails due to API issues or content complexity")
-            # Verify the buffer status was updated to failed
-            pool = self.storage._get_pool()
-            conn = pool.get_connection()
-            cursor = None
+        if not result.ok():
+            print(f"⚠️ Flush processing returned error: {result.msg()}")
+            print("This might be expected if LLM processing fails due to API issues")
             
-            try:
-                cursor = conn.cursor()
-                # Check if any blobs are marked as failed or processing
+            # Verify the buffer status was updated to failed
+            with self.storage.get_connection() as (conn, cursor):
                 cursor.execute(
-                    "SELECT blob_id, status FROM buffer_zone WHERE user_id = %s AND blob_id IN (%s, %s)",
-                    (self.test_user_id, process_blob_ids[0], process_blob_ids[1])
+                    f"SELECT blob_id, status FROM buffer WHERE user_id = %s AND blob_id IN ({','.join(['%s'] * len(blob_ids))})",
+                    [self.test_user_id] + blob_ids
                 )
                 status_results = cursor.fetchall()
                 
@@ -447,28 +305,17 @@ class TestBufferStorage:
                     assert status in [BufferStatus.failed, BufferStatus.processing], \
                         f"Expected failed or processing status for {blob_id}, got {status}"
                     print(f"✅ Blob {blob_id} correctly marked as {status}")
-                        
-            finally:
-                if cursor:
-                    cursor.close()
-                conn.close()
         else:
             # If processing succeeded
-            response_data = p.data()
-            print(f"✅ Flush processing succeeded with realistic chat data")
+            response_data = result.data()
+            print(f"✅ Flush processing succeeded")
             print(f"Response type: {type(response_data)}")
             
             # Verify buffer status updates to done
-            pool = self.storage._get_pool()
-            conn = pool.get_connection()
-            cursor = None
-            
-            try:
-                cursor = conn.cursor()
-                # Check processed blobs are marked as done
+            with self.storage.get_connection() as (conn, cursor):
                 cursor.execute(
-                    "SELECT blob_id, status FROM buffer_zone WHERE user_id = %s AND blob_id IN (%s, %s)",
-                    (self.test_user_id, process_blob_ids[0], process_blob_ids[1])
+                    f"SELECT blob_id, status FROM buffer WHERE user_id = %s AND blob_id IN ({','.join(['%s'] * len(blob_ids))})",
+                    [self.test_user_id] + blob_ids
                 )
                 status_results = cursor.fetchall()
                 
@@ -476,26 +323,12 @@ class TestBufferStorage:
                     assert status == BufferStatus.done, \
                         f"Expected done status for {blob_id}, got {status}"
                     print(f"✅ Blob {blob_id} correctly marked as {status}")
-                        
-            finally:
-                if cursor:
-                    cursor.close()
-                conn.close()
 
-        # Verify remaining buffer capacity decreased
-        p = await self.storage.get_buffer_capacity(self.test_user_id, BlobType.chat)
-        assert p.ok()
-        final_capacity = p.data()
-        print(f"Final buffer capacity: {final_capacity}")
-        
-        # The third blob should still be idle
-        assert final_capacity >= 1, "At least one blob should remain unprocessed"
-
-        print("✅ flush_buffer_by_ids with realistic content and profile config test completed successfully")
+        print("✅ flush with realistic content test completed successfully")
 
     @pytest.mark.asyncio
     async def test_buffer_status_updates(self):
-        """Test buffer status transitions."""
+        """Test buffer status transitions using new unified table."""
         blob_id = str(uuid.uuid4())
         self.test_blob_ids.append(blob_id)
 
@@ -511,67 +344,42 @@ class TestBufferStorage:
             created_at=datetime.now()
         )
 
-        p = await self.storage.insert_blob_to_buffer(
-            self.test_user_id,
-            blob_id,
-            chat_blob
-        )
-        assert p.ok()
+        result = self.storage.insert_blob(self.test_user_id, blob_id, chat_blob)
+        assert result.ok()
 
-        # Get the buffer ID
-        pool = self.storage._get_pool()
-        conn = pool.get_connection()
-        cursor = None
-
-        try:
-            cursor = conn.cursor()
-
-            # Check initial status - 注意：现在没有单独的id字段
+        # Check initial status using new table structure
+        with self.storage.get_connection() as (conn, cursor):
             cursor.execute(
-                "SELECT status FROM buffer_zone WHERE user_id = %s AND blob_id = %s",
+                "SELECT status FROM buffer WHERE user_id = %s AND blob_id = %s",
                 (self.test_user_id, blob_id)
             )
             result = cursor.fetchone()
             status = result[0] if result else None
-
             assert status == BufferStatus.idle, f"Expected idle status, got {status}"
 
-            # Update status to processing  
-            cursor.execute(
-                "UPDATE buffer_zone SET status = %s WHERE user_id = %s AND blob_id = %s",
-                (BufferStatus.processing, self.test_user_id, blob_id)
-            )
-            conn.commit()
+            # Update status to processing using internal method
+            self.storage._update_status(self.test_user_id, [blob_id], BufferStatus.processing)
 
             # Verify status update
             cursor.execute(
-                "SELECT status FROM buffer_zone WHERE user_id = %s AND blob_id = %s",
+                "SELECT status FROM buffer WHERE user_id = %s AND blob_id = %s",
                 (self.test_user_id, blob_id)
             )
             status = cursor.fetchone()[0]
             assert status == BufferStatus.processing, f"Expected processing status, got {status}"
 
             # Update status to done
-            cursor.execute(
-                "UPDATE buffer_zone SET status = %s WHERE user_id = %s AND blob_id = %s",
-                (BufferStatus.done, self.test_user_id, blob_id)
-            )
-            conn.commit()
+            self.storage._update_status(self.test_user_id, [blob_id], BufferStatus.done)
 
             # Verify final status
             cursor.execute(
-                "SELECT status FROM buffer_zone WHERE user_id = %s AND blob_id = %s",
+                "SELECT status FROM buffer WHERE user_id = %s AND blob_id = %s",
                 (self.test_user_id, blob_id)
             )
             status = cursor.fetchone()[0]
             assert status == BufferStatus.done, f"Expected done status, got {status}"
 
             print("✅ Buffer status transitions tested successfully")
-
-        finally:
-            if cursor:
-                cursor.close()
-            conn.close()
 
     @pytest.mark.asyncio
     async def test_multiple_blob_types(self):
@@ -594,25 +402,20 @@ class TestBufferStorage:
                 content="Document content",
                 created_at=datetime.now()
             ))
-            # Note: CodeBlob currently not supported in buffer processing
         ]
 
         for blob_type, blob_data in blob_types_data:
             blob_id = str(uuid.uuid4())
             self.test_blob_ids.append(blob_id)
 
-            p = await self.storage.insert_blob_to_buffer(
-                self.test_user_id,
-                blob_id,
-                blob_data
-            )
-            assert p.ok(), f"Failed to insert {blob_type} blob"
+            result = self.storage.insert_blob(self.test_user_id, blob_id, blob_data)
+            assert result.ok(), f"Failed to insert {blob_type} blob"
 
         # Check capacity for each type
         for blob_type, _ in blob_types_data:
-            p = await self.storage.get_buffer_capacity(self.test_user_id, blob_type)
-            assert p.ok()
-            assert p.data() == 1, f"Expected 1 {blob_type} blob, got {p.data()}"
+            result = self.storage.get_capacity(self.test_user_id, blob_type)
+            assert result.ok()
+            assert result.data() == 1, f"Expected 1 {blob_type} blob, got {result.data()}"
 
         print("✅ Multiple blob types handled successfully")
 

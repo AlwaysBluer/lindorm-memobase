@@ -110,7 +110,7 @@ class LindormSearchStorage:
                 "user_id": user_id,
                 "event_data": event_data,
                 "embedding": embedding,
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(datetime.UTC).isoformat()
             }
             
             response = self.client.index(
@@ -138,7 +138,7 @@ class LindormSearchStorage:
                 "event_id": event_id,
                 "gist_data": gist_data,
                 "embedding": embedding,
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(datetime.UTC).isoformat()
             }
             
             response = self.client.index(

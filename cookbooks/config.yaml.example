@@ -66,3 +66,27 @@ telemetry_deployment_environment: "local"
 # Optional LLM Headers and Query Parameters
 llm_openai_default_query: null
 llm_openai_default_header: null
+
+# Lindorm Search Configuration
+lindorm_search_host: "localhost"
+lindorm_search_port: 30070
+lindorm_search_use_ssl: false
+lindorm_search_username: null
+lindorm_search_password: null
+lindorm_search_events_index: "memobase_events"
+lindorm_search_event_gists_index: "memobase_event_gists"
+
+# Lindorm Table (MySQL Protocol) Configuration
+lindorm_table_host: "localhost"
+lindorm_table_port: 33060
+lindorm_table_username: "root"
+lindorm_table_password: null
+lindorm_table_database: "memobase"
+
+# Lindorm Buffer专用配置 (可选，未设置时使用lindorm_table_配置)
+# 如果你想让buffer使用不同的Lindorm实例，可以配置以下参数
+lindorm_buffer_host: null          # 默认使用lindorm_table_host
+lindorm_buffer_port: null          # 默认使用lindorm_table_port  
+lindorm_buffer_username: null      # 默认使用lindorm_table_username
+lindorm_buffer_password: null      # 默认使用lindorm_table_password
+lindorm_buffer_database: null      # 默认使用lindorm_table_database

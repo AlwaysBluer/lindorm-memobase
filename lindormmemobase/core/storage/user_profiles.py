@@ -79,7 +79,7 @@ class LindormTableStorage:
                 cursor = conn.cursor()
                 for content, attributes in zip(profiles, attributes_list):
                     profile_id = str(uuid.uuid4())
-                    now = datetime.utcnow()
+                    now = datetime.now(datetime.UTC)
                     cursor.execute(
                         """
                         INSERT INTO user_profiles (user_id, profile_id, content, attributes, created_at, updated_at)
@@ -116,7 +116,7 @@ class LindormTableStorage:
             try:
                 cursor = conn.cursor()
                 for profile_id, content, attributes in zip(profile_ids, contents, attributes_list):
-                    now = datetime.utcnow()
+                    now = datetime.now(datetime.UTC)
                     if attributes is not None:
                         cursor.execute(
                             """

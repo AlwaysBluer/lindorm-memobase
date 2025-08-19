@@ -9,7 +9,8 @@ the memory extraction system using their own configuration.
 import os
 import yaml
 import uuid
-from typing import Optional, List, Dict, Any, Union
+from functools import wraps
+from typing import Optional, List, Dict, Any, Union, Callable, TypeVar, Awaitable
 from pathlib import Path
 from .config import Config
 from .models.profile_topic import ProfileConfig
@@ -21,7 +22,6 @@ from .core.search.events import get_user_event_gists, search_user_event_gists
 from .core.search.user_profiles import get_user_profiles_data, filter_profiles_with_chats
 from .core.storage.user_profiles import get_user_profiles
 from .core.buffer.buffer import (
-    get_lindorm_buffer_storage, 
     get_buffer_capacity, 
     insert_blob_to_buffer,
     detect_buffer_full_or_not,
@@ -40,6 +40,23 @@ class LindormMemobaseError(Exception):
 class ConfigurationError(LindormMemobaseError):
     """Raised when configuration is invalid or missing."""
     pass
+
+
+T = TypeVar('T')
+
+def handle_promise_result(error_prefix: str):
+    """Decorator to handle Promise results and convert to exceptions."""
+    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+        @wraps(func)
+        async def wrapper(*args, **kwargs) -> T:
+            try:
+                return await func(*args, **kwargs)
+            except LindormMemobaseError:
+                raise
+            except Exception as e:
+                raise LindormMemobaseError(f"{error_prefix}: {str(e)}") from e
+        return wrapper
+    return decorator
 
 
 class LindormMemobase:
@@ -101,9 +118,6 @@ class LindormMemobase:
             if not config_path.exists():
                 raise ConfigurationError(f"Configuration file not found: {config_path}")
                 
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config_dict = yaml.safe_load(f) or {}
-                
             config = Config.from_yaml_file(config_path)
             return cls(config)
         except yaml.YAMLError as e:
@@ -133,11 +147,6 @@ class LindormMemobase:
             )
         """
         try:
-            # Load configuration using Config.from_yaml_file approach
-            config_dict = {}
-            config_dict.update(kwargs)
-            
-            # Create Config with all fields from kwargs, filling in missing values from Config defaults
             from dataclasses import fields
             valid_fields = {f.name for f in fields(Config)}
             filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_fields}
@@ -186,6 +195,29 @@ class LindormMemobase:
                 raise
             raise LindormMemobaseError(f"Memory extraction failed: {str(e)}") from e
     
+    def _convert_profile_data_to_profiles(self, raw_profiles, topics: Optional[List[str]] = None, max_profiles: Optional[int] = None) -> List[Profile]:
+        """Convert ProfileData list to Profile list with topic grouping."""
+        topic_groups = {}
+        
+        profile_list = raw_profiles[:max_profiles] if max_profiles else raw_profiles
+        
+        for profile_data in profile_list:
+            topic = profile_data.attributes.get("topic", "general")
+            subtopic = profile_data.attributes.get("sub_topic", "general")
+            
+            if topics and topic not in topics:
+                continue
+                
+            if topic not in topic_groups:
+                topic_groups[topic] = {}
+                
+            topic_groups[topic][subtopic] = ProfileEntry(
+                content=profile_data.content,
+                last_updated=profile_data.updated_at.timestamp() if profile_data.updated_at else None
+            )
+        
+        return [Profile(topic=topic, subtopics=subtopics) for topic, subtopics in topic_groups.items()]
+    
     async def get_user_profiles(self, user_id: str, topics: Optional[List[str]] = None) -> List[Profile]:
         """
         Get user profiles from storage.
@@ -210,37 +242,10 @@ class LindormMemobase:
                 raise LindormMemobaseError(f"Failed to get user profiles: {profiles_result.msg()}")
                 
             raw_profiles = profiles_result.data()
+            return self._convert_profile_data_to_profiles(raw_profiles.profiles, topics)
             
-            # Convert ProfileData to Profile format
-            profiles = []
-            topic_groups = {}
-            
-            # Group profiles by topic
-            for profile_data in raw_profiles.profiles:
-                topic = profile_data.attributes.get("topic", "general")
-                subtopic = profile_data.attributes.get("sub_topic", "general")
-                
-                if topics and topic not in topics:
-                    continue
-                    
-                if topic not in topic_groups:
-                    topic_groups[topic] = {}
-                    
-                topic_groups[topic][subtopic] = ProfileEntry(
-                    content=profile_data.content,
-                    last_updated=profile_data.updated_at.timestamp() if profile_data.updated_at else None
-                )
-            
-            # Convert to Profile objects
-            for topic, subtopics in topic_groups.items():
-                profiles.append(Profile(
-                    topic=topic,
-                    subtopics=subtopics
-                ))
-                
-            return profiles
         except Exception as e:
-            raise LindormMemobaseError(f"Failed to get user profiles: {str(e)}") from e
+            raise LindormMemobaseError(f"Failed to get user profiles: {str(e)}")
     
     
     async def get_events(
@@ -402,30 +407,8 @@ class LindormMemobase:
                 raise LindormMemobaseError(f"Failed to get relevant profiles: {result.msg()}")
                 
             profile_section, raw_profiles = result.data()
+            return self._convert_profile_data_to_profiles(raw_profiles, None, max_profiles)
             
-            # Convert to Profile format
-            profiles = []
-            topic_groups = {}
-            
-            for profile_data in raw_profiles[:max_profiles]:
-                topic = profile_data.attributes.get("topic", "general")
-                subtopic = profile_data.attributes.get("sub_topic", "general")
-                
-                if topic not in topic_groups:
-                    topic_groups[topic] = {}
-                    
-                topic_groups[topic][subtopic] = ProfileEntry(
-                    content=profile_data.content,
-                    last_updated=profile_data.updated_at.timestamp() if profile_data.updated_at else None
-                )
-            
-            for topic, subtopics in topic_groups.items():
-                profiles.append(Profile(
-                    topic=topic,
-                    subtopics=subtopics
-                ))
-                
-            return profiles
         except Exception as e:
             raise LindormMemobaseError(f"Failed to get relevant profiles: {str(e)}") from e
     

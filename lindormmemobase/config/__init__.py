@@ -81,6 +81,13 @@ class Config:
     lindorm_table_password: str = None
     lindorm_table_database: str = "memobase"
 
+    # Lindorm Buffer专用 MySQL协议配置 (可选，未设置时使用lindorm_table_配置)
+    lindorm_buffer_host: str = None
+    lindorm_buffer_port: int = None
+    lindorm_buffer_username: str = None
+    lindorm_buffer_password: str = None
+    lindorm_buffer_database: str = None
+
     # Test option
     test_skip_persist = False  # Fixed: Changed to False to enable event persistence
 
