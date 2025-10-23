@@ -1,6 +1,6 @@
 [project]
 name = "lindorm-memobase"
-version = "0.1.4"
+version = "0.1.6"
 description = "A lightweight memory extraction and profile management system for LLM applications"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,14 +20,14 @@ classifiers = [
 ]
 dependencies = [
     "python-dotenv>=1.0.0",
-    "numpy",
     "openai>=1.98.0",
     "pydantic>=2.11.7",
     "pyyaml>=6.0.2",
     "tiktoken>=0.9.0",
     "typeguard>=4.4.4",
     "opensearch-py>=2.0.0",
-    "mysql-connector-python==8.0.11"
+    "mysql-connector-python==8.0.11",
+    "numpy"
 ]
 
 [build-system]

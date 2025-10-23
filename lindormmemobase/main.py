@@ -287,10 +287,10 @@ class LindormMemobase:
             
             for gist in events_data.gists:
                 events.append({
-                    "id": gist.get("id"),
-                    "content": gist.get("gist_data", {}).get("content", ""),
-                    "created_at": gist.get("created_at"),
-                    "updated_at": gist.get("updated_at")
+                    "id": str(gist.id),
+                    "content": gist.gist_data.content if gist.gist_data else "",
+                    "created_at": gist.created_at.isoformat() if gist.created_at else None,
+                    "updated_at": gist.updated_at.isoformat() if gist.updated_at else None
                 })
                 
             return events

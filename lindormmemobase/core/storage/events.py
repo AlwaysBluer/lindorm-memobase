@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from opensearchpy import OpenSearch
 from typing import Optional, Dict, List, Any
 from ...models.promise import Promise, CODE
@@ -42,6 +42,9 @@ class LindormSearchStorage:
                 "knn_routing": True,
             },
             "mappings": {
+                "_source": {
+                    "excludes": ["embedding"]
+                },
                 "properties": {
                     "user_id": {"type": "keyword"},
                     "event_data": {"type": "object"},
@@ -73,6 +76,9 @@ class LindormSearchStorage:
                 "knn_routing": True,
             },
             "mappings": {
+                "_source": {
+                    "excludes": ["embedding"]
+                },
                 "properties": {
                     "user_id": {"type": "keyword"},
                     "event_id": {"type": "keyword"},
@@ -110,7 +116,7 @@ class LindormSearchStorage:
                 "user_id": user_id,
                 "event_data": event_data,
                 "embedding": embedding,
-                "created_at": datetime.now(datetime.UTC).isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
             
             response = self.client.index(
@@ -138,7 +144,7 @@ class LindormSearchStorage:
                 "event_id": event_id,
                 "gist_data": gist_data,
                 "embedding": embedding,
-                "created_at": datetime.now(datetime.UTC).isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
             
             response = self.client.index(

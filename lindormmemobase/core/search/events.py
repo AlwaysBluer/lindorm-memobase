@@ -5,7 +5,8 @@ from ...models.promise import Promise
 from ...utils.tools import get_encoded_tokens
 from ..storage.events import get_lindorm_search_storage
 from ...embedding import get_embedding
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
 
 
 def pack_latest_chat(chats: list[OpenAICompatibleMessage], chat_num: int = 3) -> str:
@@ -70,7 +71,7 @@ async def get_user_event_gists(
         storage = get_lindorm_search_storage(config)
         
         # Calculate time cutoff
-        time_cutoff = datetime.now(datetime.UTC) - timedelta(days=time_range_in_days)
+        time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
         
         # Search query to get recent gists for the user
         query = {
@@ -155,7 +156,7 @@ async def search_user_event_gists(
         if hasattr(query_embedding, 'tolist'):
             query_embedding = query_embedding.tolist()
         
-        time_cutoff = datetime.now(datetime.UTC) - timedelta(days=time_range_in_days)
+        time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
         storage = get_lindorm_search_storage(config)
         
         search_query = {

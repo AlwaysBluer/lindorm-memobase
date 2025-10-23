@@ -1,7 +1,7 @@
 import json
 import uuid
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from mysql.connector import pooling
 
@@ -26,7 +26,8 @@ class LindormTableStorage:
     def __init__(self, config):
         self.config = config
         self.pool = None
-    
+        self._ensure_tables()
+
     def _get_pool(self):
         if self.pool is None:
             self.pool = pooling.MySQLConnectionPool(
@@ -70,7 +71,6 @@ class LindormTableStorage:
         attributes_list: List[Dict[str, Any]]
     ) -> Promise[List[str]]:
         def _add_profiles_sync():
-            self._ensure_tables()
             pool = self._get_pool()
             conn = pool.get_connection()
             
@@ -79,7 +79,7 @@ class LindormTableStorage:
                 cursor = conn.cursor()
                 for content, attributes in zip(profiles, attributes_list):
                     profile_id = str(uuid.uuid4())
-                    now = datetime.now(datetime.UTC)
+                    now = datetime.now(timezone.utc)
                     cursor.execute(
                         """
                         INSERT INTO user_profiles (user_id, profile_id, content, attributes, created_at, updated_at)
@@ -116,7 +116,7 @@ class LindormTableStorage:
             try:
                 cursor = conn.cursor()
                 for profile_id, content, attributes in zip(profile_ids, contents, attributes_list):
-                    now = datetime.now(datetime.UTC)
+                    now = datetime.now(timezone.utc)
                     if attributes is not None:
                         cursor.execute(
                             """

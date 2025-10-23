@@ -8,7 +8,7 @@ This package provides core functionality for:
 - Storage backends for events and profiles
 """
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 from .main import LindormMemobase, LindormMemobaseError, ConfigurationError
 from .config import Config
