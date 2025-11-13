@@ -2,16 +2,16 @@ from .import (
     user_profile_topics,
     extract_profile,
     merge_profile,
+    merge_events,
     organize_profile,
     summary_entry_chats,
     zh_user_profile_topics,
     zh_extract_profile,
     zh_merge_profile,
     zh_summary_entry_chats,
+    zh_merge_events,
 )
 from ....models.types import UpdateResponse
-
-
 
 PROMPTS = {
     "en": {
@@ -19,6 +19,7 @@ PROMPTS = {
         "profile": user_profile_topics,
         "extract": extract_profile,
         "merge": merge_profile,
+        "merge_events": merge_events,
         "organize": organize_profile,
     },
     "zh": {
@@ -26,6 +27,7 @@ PROMPTS = {
         "profile": zh_user_profile_topics,
         "extract": zh_extract_profile,
         "merge": zh_merge_profile,
+        "merge_events": zh_merge_events,
         "organize": organize_profile,
     },
 }

@@ -38,7 +38,7 @@ class Config:
 
     # LLM
     language: Literal["en", "zh"] = "en"
-    llm_style: Literal["openai", "doubao_cache"] = "openai"
+    llm_style: Literal["openai", "lindormai"] = "openai"
     llm_base_url: str = None
     llm_api_key: str = None
     llm_openai_default_query: dict[str, str] = None
@@ -47,11 +47,14 @@ class Config:
     summary_llm_model: str = None
 
     enable_event_embedding: bool = True
-    embedding_provider: Literal["openai", "jina"] = "openai"
+    embedding_provider: Literal["openai", "jina", "lindormai"] = "openai"
     embedding_api_key: str = None
     embedding_base_url: str = None
     embedding_dim: int = 1536
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "text-embedding-v3"
+
+    lindorm_username: str = None
+    lindorm_password: str = None
     embedding_max_token_size: int = 8192
 
     additional_user_profiles: list[dict] = field(default_factory=list)
@@ -138,11 +141,11 @@ class Config:
         return config_dict
 
     @classmethod
-    def load_config(cls) -> "Config":
-        if not os.path.exists("config.yaml"):
+    def load_config(cls, config_file_path: str) -> "Config":
+        if not os.path.exists(config_file_path):
             overwrite_config = {}
         else:
-            with open("config.yaml") as f:
+            with open(config_file_path) as f:
                 overwrite_config = yaml.safe_load(f)
 
         # Process environment variables
@@ -172,7 +175,6 @@ class Config:
         return cls(**filtered_config)
 
     def __post_init__(self):
-        assert self.llm_api_key is not None, "llm_api_key is required"
         if self.enable_event_embedding:
             if self.embedding_api_key is None and (
                 self.llm_style == self.embedding_provider == "openai"
@@ -180,9 +182,9 @@ class Config:
                 # default to llm config if embedding_api_key is not set
                 self.embedding_api_key = self.llm_api_key
                 self.embedding_base_url = self.llm_base_url
-            assert (
-                self.embedding_api_key is not None
-            ), "embedding_api_key is required for event embedding"
+                assert (
+                        self.embedding_api_key is not None
+                ), "embedding_api_key is required for event embedding"
 
             if self.embedding_provider == "jina":
                 self.embedding_base_url = (
@@ -194,7 +196,6 @@ class Config:
 
         # Delay validation to avoid circular import at module load time
         # Validation will be done when actually needed
-        pass
 
     @property
     def timezone(self) -> timezone:

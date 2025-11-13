@@ -20,7 +20,6 @@ import asyncio
 import argparse
 import os
 import sys
-import yaml
 from datetime import datetime
 from typing import List, Optional
 import logging

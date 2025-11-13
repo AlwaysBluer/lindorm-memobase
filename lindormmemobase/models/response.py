@@ -1,7 +1,11 @@
 from datetime import datetime
+from typing import NamedTuple
 from enum import IntEnum
 from typing import Optional, Literal, Any
+
+import numpy as np
 from pydantic import BaseModel, UUID4, UUID5, Field
+
 UUID = UUID4 | UUID5
 
 
@@ -22,6 +26,7 @@ class BaseResponse(BaseModel):
     errmsg: str = Field(default="", description="Error message")
     data: Any = Field(default=None, description="Response data")
 
+
 class AIUserProfile(BaseModel):
     topic: str = Field(..., description="The main topic of the user profile")
     sub_topic: str = Field(..., description="The sub-topic of the user profile")
@@ -30,6 +35,7 @@ class AIUserProfile(BaseModel):
 
 class AIUserProfiles(BaseModel):
     facts: list[AIUserProfile] = Field(..., description="List of user profile facts")
+
 
 class ProfileData(BaseModel):
     id: UUID = Field(..., description="The profile's unique identifier")
@@ -47,22 +53,26 @@ class ProfileData(BaseModel):
 
 
 class ChatModalResponse(BaseModel):
-    event_id: Optional[UUID] = Field(..., description="The event's unique identifier")
-    add_profiles: Optional[list[UUID]] = Field(
+    event_id: str = Field(..., description="The event's unique identifier")
+    add_profiles: Optional[list[str]] = Field(
         ..., description="List of added profiles' ids"
     )
-    update_profiles: Optional[list[UUID]] = Field(
+    update_profiles: Optional[list[str]] = Field(
         ..., description="List of updated profiles' ids"
     )
-    delete_profiles: Optional[list[UUID]] = Field(
+    delete_profiles: Optional[list[str]] = Field(
         ..., description="List of deleted profiles' ids"
     )
+
+
 
 class UserProfilesData(BaseModel):
     profiles: list[ProfileData] = Field(..., description="List of user profiles")
 
+
 class IdsData(BaseModel):
     ids: list[UUID] = Field(..., description="List of UUID identifiers")
+
 
 class ProfileDelta(BaseModel):
     content: str = Field(..., description="The profile content")
@@ -71,9 +81,11 @@ class ProfileDelta(BaseModel):
         description="User profile attributes in JSON, containing 'topic', 'sub_topic'",
     )
 
+
 class EventTag(BaseModel):
     tag: str = Field(..., description="The event tag")
     value: str = Field(..., description="The event tag value")
+
 
 class EventData(BaseModel):
     profile_delta: Optional[list[ProfileDelta]] = Field(
@@ -123,6 +135,7 @@ class UserEventData(BaseModel):
 class ContextData(BaseModel):
     context: str = Field(..., description="Context string")
 
+
 class UserEventGistData(BaseModel):
     id: UUID = Field(..., description="The event gist's unique identifier")
     gist_data: EventGistData = Field(None, description="User event gist data")
@@ -134,5 +147,26 @@ class UserEventGistData(BaseModel):
     )
     similarity: Optional[float] = Field(None, description="Similarity score")
 
+
 class UserEventGistsData(BaseModel):
     gists: list[UserEventGistData] = Field(..., description="List of user event gists")
+
+
+class EventGist(NamedTuple):
+    text: str
+    embedding: np.ndarray | None
+
+
+class EventGistWithAction(NamedTuple):
+    """带动作的事件片段"""
+    text: str
+    embedding: np.ndarray | None
+    action: Literal["ADD", "UPDATE", "DELETE", "ABORT"]
+    event_gist_id: str | None = None
+    event_id: str | None = None
+    similarity: float | None = None
+
+
+class EventProcessResult(NamedTuple):
+    event_tags: list
+    event_gists_with_actions: list[EventGistWithAction]

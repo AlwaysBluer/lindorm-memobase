@@ -1,27 +1,30 @@
 import asyncio
 import uuid
 
+import numpy
+
+from ....embedding import get_embedding
 from ....utils.tools import get_blob_str, get_encoded_tokens
 from ....models.promise import Promise
 
-from ....config import Config
+from ....config import Config, TRACE_LOG
 from ....models.blob import Blob
-from ....models.response import ChatModalResponse, CODE
+from ....models.response import ChatModalResponse, CODE, EventProcessResult, EventGist
 from ....models.types import MergeAddResult
 from ....models.profile_topic import ProfileConfig
 
 from .extract import extract_topics
-from .merge import merge_or_valid_new_memos
+from .merge import merge_or_valid_new_profile, handle_merge_or_validate_new_event_gists
 from .organize import organize_profiles
 from .event_summary import tag_event
 from .entry_summary import entry_chat_summary
 from .summary import re_summary
-from .profile_events import handle_session_event, handle_user_profile_db
+from .profile_events import handle_session_event, handle_user_profile_db, handle_session_event_gists
 
 
 def truncate_chat_blobs(
-    blobs: list[Blob], max_token_size: int
-) -> tuple[list[str], list[Blob]]:
+        blobs: list[Blob], max_token_size: int
+) -> [list[Blob]]:
     results = []
     total_token_size = 0
     for b in blobs[::-1]:
@@ -35,7 +38,7 @@ def truncate_chat_blobs(
 
 
 async def process_blobs(
-    user_id: str, profile_config: ProfileConfig, blobs: list[Blob], config: Config
+        user_id: str, profile_config: ProfileConfig, blobs: list[Blob], config: Config
 ) -> Promise[ChatModalResponse]:
     # 1. Extract patch profiles
     blobs = truncate_chat_blobs(blobs, config.max_chat_blob_buffer_process_token_size)
@@ -49,9 +52,32 @@ async def process_blobs(
         return p
     user_memo_str = p.data()
 
+    event_gists_texts = user_memo_str.split("\n")
+    event_gists_texts = [l.strip() for l in event_gists_texts if l.strip().startswith("-")]
+    TRACE_LOG.info(user_id, f"Processing {len(event_gists_texts)} event gists")
+    if config.enable_event_embedding and len(event_gists_texts) > 0:
+        p_embedding = await get_embedding(
+            event_gists_texts,
+            phase="document",
+            model=config.embedding_model,
+            config=config,
+        )
+        if not p_embedding.ok():
+            TRACE_LOG.error(user_id, f"Failed to get embeddings: {p_embedding.msg()}")
+            event_gists_embeddings = [None] * len(event_gists_texts)
+        else:
+            event_gists_embeddings = p_embedding.data()
+    else:
+        event_gists_embeddings = [None] * len(event_gists_texts)
+
+    event_gists = [
+        EventGist(text=text, embedding=emb)
+        for text, emb in zip(event_gists_texts, event_gists_embeddings)
+    ]
+
     processing_results = await asyncio.gather(
         process_profile_res(user_id, user_memo_str, profile_config, config),
-        process_event_res(user_id, user_memo_str, profile_config, config),
+        process_event_res(user_id, user_memo_str, event_gists, profile_config, config),
     )
 
     profile_results: Promise = processing_results[0]
@@ -64,52 +90,71 @@ async def process_blobs(
         )
 
     intermediate_profile, delta_profile_data = profile_results.data()
-    event_tags = event_results.data()
+    event_data: EventProcessResult = event_results.data()
 
     # Handle session events and user profiles (only skip if test_skip_persist is True)
-    if not config.test_skip_persist:  # Fixed: Changed to NOT config.test_skip_persist
-        p = await handle_session_event(
+    event_id = str(uuid.uuid4())
+    persistence_results = await asyncio.gather(
+        handle_session_event(
             user_id,
+            event_id,
             user_memo_str,
             delta_profile_data,
-            event_tags,
+            event_data.event_tags,
             config,
-        )
-        if not p.ok():
-            return p
-        eid = p.data()
+        ),
+        handle_session_event_gists(
+            user_id,
+            event_id,
+            event_data.event_gists_with_actions,
+            config,
+        ),
+        handle_user_profile_db(user_id, intermediate_profile, config),
+        return_exceptions=True
+    )
 
-        p = await handle_user_profile_db(user_id, intermediate_profile, config)
-        if not p.ok():
-            return p
-    else:
-        # For testing: use mock event ID
-        eid = str(uuid.uuid4())
+    errors = []
+    for idx, result in enumerate(persistence_results):
+        operation_name = ["session_event", "event_gists", "user_profile"][idx]
+
+        if isinstance(result, Exception):
+            error_msg = f"{operation_name} failed: {str(result)}"
+            TRACE_LOG.error(user_id, error_msg)
+            errors.append(error_msg)
+        elif hasattr(result, 'ok') and not result.ok():
+            error_msg = f"{operation_name} failed: {result.msg()}"
+            TRACE_LOG.error(user_id, error_msg)
+            errors.append(error_msg)
+
+    if errors:
+        return Promise.reject(
+            CODE.SERVER_PROCESS_ERROR,
+            f"Persistence errors: {'; '.join(errors)}"
+        )
 
     return Promise.resolve(
         ChatModalResponse(
-            event_id=eid,
+            event_id=event_id,
             add_profiles=[str(uuid.uuid4()) for _ in intermediate_profile["add"]],
-            update_profiles=[up["profile_id"] for up in intermediate_profile["update"]],
-            delete_profiles=intermediate_profile["delete"],
+            update_profiles=[str(up["profile_id"]) for up in intermediate_profile["update"]],
+            delete_profiles=[str(pid) for pid in intermediate_profile["delete"]],
         )
     )
 
 
 async def process_profile_res(
-    user_id: str,
-    user_memo_str: str,
-    project_profiles: ProfileConfig,
-    config: Config,
+        user_id: str,
+        user_memo_str: str,
+        project_profiles: ProfileConfig,
+        config: Config,
 ) -> Promise[tuple[MergeAddResult, list[dict]]]:
-
     p = await extract_topics(user_id, user_memo_str, project_profiles, config)
     if not p.ok():
         return p
     extracted_data = p.data()
 
     # 2. Merge it to thw whole profile
-    p = await merge_or_valid_new_memos(
+    p = await merge_or_valid_new_profile(
         user_id=user_id,
         fact_contents=extracted_data["fact_contents"],
         fact_attributes=extracted_data["fact_attributes"],
@@ -149,14 +194,43 @@ async def process_profile_res(
     return Promise.resolve((intermediate_profile, delta_profile_data))
 
 
+# async def process_event_res(
+#     usr_id: str,
+#     memo_str: str,
+#     profile_config: ProfileConfig,
+#     config: Config,
+# ) -> Promise[list | None]:
+#     p = await tag_event(profile_config, memo_str, config)
+#     if not p.ok():
+#         return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to tag event: {p.msg()}")
+#     event_tags = p.data()
+#     return Promise.resolve(event_tags)
+
+
 async def process_event_res(
-    usr_id: str,
-    memo_str: str,
-    profile_config: ProfileConfig,
-    config: Config,
+        user_id: str,
+        memo_str: str,
+        event_gists: list[EventGist],
+        profile_config: ProfileConfig,
+        config: Config,
 ) -> Promise[list | None]:
+    # event index
     p = await tag_event(profile_config, memo_str, config)
     if not p.ok():
         return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to tag event: {p.msg()}")
     event_tags = p.data()
-    return Promise.resolve(event_tags)
+    if len(event_gists) == 0:
+        return Promise.resolve(EventProcessResult(
+            event_tags=event_tags,
+            event_gists_with_actions=[]
+        ))
+
+    p = await handle_merge_or_validate_new_event_gists(user_id, event_gists, profile_config, config)
+    if not p.ok():
+        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to merge or validate new events: {p.msg()}")
+
+    returned_events_with_actions = p.data()
+    return Promise.resolve(EventProcessResult(
+        event_tags=event_tags,
+        event_gists_with_actions=returned_events_with_actions
+    ))

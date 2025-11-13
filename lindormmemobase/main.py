@@ -6,7 +6,6 @@ This module provides the main entry points for users to interact with
 the memory extraction system using their own configuration.
 """
 
-import os
 import yaml
 import uuid
 from functools import wraps
@@ -22,10 +21,8 @@ from .core.search.events import get_user_event_gists, search_user_event_gists
 from .core.search.user_profiles import get_user_profiles_data, filter_profiles_with_chats
 from .core.storage.user_profiles import get_user_profiles
 from .core.buffer.buffer import (
-    get_buffer_capacity, 
     insert_blob_to_buffer,
     detect_buffer_full_or_not,
-    get_unprocessed_buffer_ids,
     flush_buffer_by_ids,
     flush_buffer
 )
@@ -180,7 +177,7 @@ class LindormMemobase:
         try:
             result = await process_blobs(
                 user_id=user_id,
-                profile_config=profile_config or ProfileConfig(),
+                profile_config=profile_config or ProfileConfig.load_from_config(self.config),
                 blobs=blobs,
                 config=self.config
             )
@@ -469,7 +466,7 @@ class LindormMemobase:
         """
         try:
             if profile_config is None:
-                profile_config = ProfileConfig()
+                profile_config = ProfileConfig.load_from_config(self.config)
                 
             result = await get_user_context(
                 user_id=user_id,

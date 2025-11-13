@@ -1,4 +1,3 @@
-import asyncio
 import time
 from ..config import LOG
 from ..utils.tools import Promise, CODE
@@ -69,6 +68,9 @@ async def llm_stream_complete(
         if config.llm_style == "openai":
             from .openai_model_llm import openai_stream_complete
             stream_func = openai_stream_complete
+        elif config.llm_style == "lindormai":
+            from .lindormai_model_llm import lindormai_stream_complete
+            stream_func = lindormai_stream_complete
         else:
             raise ValueError(f"Streaming not supported for llm_style: {config.llm_style}")
         

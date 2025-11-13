@@ -9,9 +9,14 @@ from ..models.response import CODE
 
 from .openai_embedding import openai_embedding
 from .jina_embedding import jina_embedding
+from .lindormai_embedding import lindormai_embedding
 
 
-FACTORIES = {"openai": openai_embedding, "jina": jina_embedding}
+FACTORIES = {
+    "openai": openai_embedding,
+    "jina": jina_embedding,
+    "lindormai": lindormai_embedding
+}
 
 async def get_embedding(
     texts: list[str],

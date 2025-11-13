@@ -26,7 +26,7 @@ from lindormmemobase.models.profile_topic import ProfileConfig
 from lindormmemobase.models.response import ProfileData
 from lindormmemobase.core.extraction.processor.entry_summary import entry_chat_summary
 from lindormmemobase.core.extraction.processor.extract import extract_topics
-from lindormmemobase.core.extraction.processor.merge import merge_or_valid_new_memos
+from lindormmemobase.core.extraction.processor.merge import merge_or_valid_new_profile
 from lindormmemobase.core.extraction.processor.event_summary import tag_event
 from lindormmemobase.core.extraction.processor.process_blobs import truncate_chat_blobs, process_profile_res, process_event_res
 from lindormmemobase.core.extraction.processor.organize import organize_profiles, deduplicate_profiles
@@ -246,7 +246,7 @@ class TestProcessingFunctions:
             )
         ]
         
-        result = await merge_or_valid_new_memos(
+        result = await merge_or_valid_new_profile(
             user_id="test_user",
             fact_contents=fact_contents,
             fact_attributes=fact_attributes,
@@ -776,7 +776,7 @@ class TestProcessingFunctions:
         
         # Step 3: Memo Merging/Validation
         print_section("STEP 3: MEMO MERGING & VALIDATION")
-        merge_result = await merge_or_valid_new_memos(
+        merge_result = await merge_or_valid_new_profile(
             user_id=test_user_id,
             fact_contents=extract_data['fact_contents'],
             fact_attributes=extract_data['fact_attributes'],
