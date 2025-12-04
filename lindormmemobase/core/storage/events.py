@@ -324,7 +324,13 @@ class LindormSearchStorage:
                         }
                     }
                 },
-                "ext": {"lvector": {"min_score": str(min_score)}}
+                "ext": {
+                    "lvector": {
+                        "min_score": str(min_score),
+                        "hybrid_search_type": "filter_rrf",
+                        "rrf_knn_weight_factor": "0.5"
+                    }
+                }
             }
 
             response = self.client.search(
@@ -399,7 +405,13 @@ class LindormSearchStorage:
                         }
                     }
                 },
-                "ext": {"lvector": {"min_score": str(min_score)}}
+                "ext": {
+                    "lvector": {
+                        "min_score": str(min_score),
+                        "hybrid_search_type": "filter_rrf",
+                        "rrf_knn_weight_factor": "0.5"
+                    }
+                }
             }
 
             response = self.client.search(

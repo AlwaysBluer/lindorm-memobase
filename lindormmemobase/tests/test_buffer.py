@@ -167,7 +167,7 @@ class TestBufferStorage:
             assert result.ok()
 
         # Get pending buffer IDs
-        result = self.storage.get_pending_ids(self.test_user_id, BlobType.chat, BufferStatus.idle)
+        result = self.storage.get_ids_by_status(self.test_user_id, BlobType.chat, BufferStatus.idle)
         assert result.ok(), f"Failed to get pending buffer IDs: {result.msg()}"
         
         buffer_ids = result.data()
@@ -273,7 +273,7 @@ class TestBufferStorage:
             assert result.ok(), f"Failed to insert blob {i}: {result.msg()}"
 
         # Verify blobs are in buffer
-        result = self.storage.get_pending_ids(self.test_user_id, BlobType.chat, BufferStatus.idle)
+        result = self.storage.get_ids_by_status(self.test_user_id, BlobType.chat, BufferStatus.idle)
         assert result.ok(), f"Failed to get pending blob IDs: {result.msg()}"
         
         pending_ids = result.data()
