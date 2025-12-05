@@ -1,0 +1,3 @@
+lindorm-memobase>=0.1.9
+tqdm
+jinja2
