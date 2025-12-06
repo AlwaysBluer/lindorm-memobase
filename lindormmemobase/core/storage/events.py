@@ -159,7 +159,7 @@ class LindormSearchStorage:
 
             return Promise.resolve(gist_id)
         except Exception as e:
-            return Promise.reject("OPENSEARCH_ERROR", f"Failed to store event gist: {str(e)}")
+            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to store event gist: {str(e)}")
 
     async def update_event_with_embedding(
             self,

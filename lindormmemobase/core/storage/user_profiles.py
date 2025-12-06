@@ -57,7 +57,7 @@ class LindormTableStorage:
                     content VARCHAR NOT NULL,
                     topic VARCHAR(255) NOT NULL,
                     subtopic VARCHAR(255) NOT NULL,
-                    update_hits INT DEFAULT 0,
+                    update_hits INT,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP,
                     PRIMARY KEY(user_id, project_id, profile_id)

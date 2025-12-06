@@ -108,7 +108,7 @@ def zh_config(mock_config):
     return mock_config
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def integration_config():
     """
     Provide configuration for integration tests.
@@ -241,10 +241,12 @@ def mock_llm_merge_response() -> str:
 
 
 @pytest.fixture
-def mock_embedding_vector():
-    """Provide a mock embedding vector."""
+def mock_embedding_vector(integration_config):
+    """Provide a mock embedding vector with correct dimension from config."""
     import numpy as np
-    return np.random.rand(1536).tolist()
+    # Use embedding dimension from config (default 1024 for LindormAI)
+    dim = integration_config.embedding_dim if hasattr(integration_config, 'embedding_dim') else 1536
+    return np.random.rand(dim).tolist()
 
 
 # ==================== Test Utilities ====================
