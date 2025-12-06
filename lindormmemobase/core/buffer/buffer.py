@@ -28,7 +28,25 @@ class LindormBufferStorage:
     def __init__(self, config: Config):
         self.config = config
         self._pool = None
-        self._ensure_tables()
+        # Don't call _ensure_tables in __init__ anymore
+        # Tables are created explicitly via initialize_tables()
+    
+    def initialize_tables(self):
+        """Create buffer table. Called during StorageManager initialization."""
+        with self.get_connection() as (conn, cursor):
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS buffer (
+                    user_id VARCHAR(255) NOT NULL,
+                    blob_id VARCHAR(255) NOT NULL,
+                    blob_type VARCHAR(50) NOT NULL,
+                    blob_data VARCHAR(65535) NOT NULL,
+                    token_size INT NOT NULL,
+                    status VARCHAR(50) NOT NULL,
+                    created_at BIGINT NOT NULL,
+                    updated_at BIGINT NOT NULL,
+                    PRIMARY KEY(user_id, blob_id)
+                )
+            """)
 
     @property
     def pool(self) -> pooling.MySQLConnectionPool:
@@ -73,21 +91,7 @@ class LindormBufferStorage:
             if conn:
                 conn.close()
 
-    def _ensure_tables(self):
-        with self.get_connection() as (conn, cursor):
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS buffer (
-                    user_id VARCHAR(255) NOT NULL,
-                    blob_id VARCHAR(255) NOT NULL,
-                    blob_type VARCHAR(50) NOT NULL,
-                    blob_data VARCHAR(65535) NOT NULL,
-                    token_size INT NOT NULL,
-                    status VARCHAR(50) NOT NULL,
-                    created_at BIGINT NOT NULL,
-                    updated_at BIGINT NOT NULL,
-                    PRIMARY KEY(user_id, blob_id)
-                )
-            """)
+
 
     def insert_blob(self, user_id: str, blob_id: str, blob_data: Blob) -> Promise[None]:
         try:
@@ -223,34 +227,17 @@ _storage_cache = {}
 _storage_lock = threading.Lock()
 
 
-# Public API - singleton pattern with cache
+# Public API - singleton pattern with cache (delegates to StorageManager)
 def create_buffer_storage(config: Config) -> LindormBufferStorage:
-    # Create cache key based on connection parameters
-    cache_key = (
-        config.lindorm_buffer_host or config.lindorm_table_host,
-        config.lindorm_buffer_port or config.lindorm_table_port,
-        config.lindorm_buffer_username or config.lindorm_table_username,
-        config.lindorm_buffer_database or config.lindorm_table_database
-    )
-    # Thread-safe singleton creation
-    with _storage_lock:
-        if cache_key not in _storage_cache:
-            _storage_cache[cache_key] = LindormBufferStorage(config)
-        return _storage_cache[cache_key]
+    """Create or get cached buffer storage - delegates to StorageManager."""
+    from ..storage.manager import StorageManager
+    return StorageManager.get_buffer_storage(config)
 
 
 def clear_buffer_storage_cache():
-    """Clear the storage cache. Useful for testing or cleanup."""
-    global _storage_cache
-    with _storage_lock:
-        # Close existing connections if possible
-        for storage in _storage_cache.values():
-            try:
-                if hasattr(storage, '_pool') and storage._pool:
-                    storage._pool.close()
-            except:
-                pass  # Ignore cleanup errors
-        _storage_cache.clear()
+    """Clear the storage cache. Useful for testing or cleanup - delegates to StorageManager."""
+    from ..storage.manager import StorageManager
+    StorageManager.cleanup()
 
 
 async def insert_blob_to_buffer(user_id: str, blob_id: str, blob_data: Blob, config: Config) -> Promise[None]:

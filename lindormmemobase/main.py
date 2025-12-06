@@ -8,6 +8,7 @@ the memory extraction system using their own configuration.
 
 import yaml
 import uuid
+from datetime import datetime
 from functools import wraps
 from typing import Optional, List, Dict, Any, Union, Callable, TypeVar, Awaitable
 from pathlib import Path
@@ -90,6 +91,10 @@ class LindormMemobase:
         """
         try:
             self.config = config if config is not None else Config.load_config()
+            # Initialize storage layer
+            from .core.storage.manager import StorageManager
+            if not StorageManager.is_initialized():
+                StorageManager.initialize(self.config)
         except Exception as e:
             raise ConfigurationError(f"Failed to load configuration: {str(e)}") from e
     
@@ -158,7 +163,8 @@ class LindormMemobase:
         self, 
         user_id: str, 
         blobs: List[Blob], 
-        profile_config: Optional[ProfileConfig] = None
+        profile_config: Optional[ProfileConfig] = None,
+        project_id: Optional[str] = None,
     ):
         """
         Extract memories from user blobs.
@@ -167,6 +173,7 @@ class LindormMemobase:
             user_id: Unique identifier for the user
             blobs: List of user data blobs to process
             profile_config: Profile configuration. If None, uses default.
+            project_id: Project identifier for multi-tenancy. If None, uses default.
             
         Returns:
             Extraction results data
@@ -175,6 +182,10 @@ class LindormMemobase:
             LindormMemobaseError: If extraction fails
         """
         try:
+            # Store project_id in config temporarily for this extraction
+            if project_id is not None:
+                self.config._extraction_project_id = project_id
+            
             result = await process_blobs(
                 user_id=user_id,
                 profile_config=profile_config or ProfileConfig.load_from_config(self.config),
@@ -191,6 +202,10 @@ class LindormMemobase:
             if isinstance(e, LindormMemobaseError):
                 raise
             raise LindormMemobaseError(f"Memory extraction failed: {str(e)}") from e
+        finally:
+            # Clean up temporary project_id
+            if hasattr(self.config, '_extraction_project_id'):
+                delattr(self.config, '_extraction_project_id')
     
     def _convert_profile_data_to_profiles(self, raw_profiles, topics: Optional[List[str]] = None, max_profiles: Optional[int] = None) -> List[Profile]:
         """Convert ProfileData list to Profile list with topic grouping."""
@@ -215,7 +230,15 @@ class LindormMemobase:
         
         return [Profile(topic=topic, subtopics=subtopics) for topic, subtopics in topic_groups.items()]
     
-    async def get_user_profiles(self, user_id: str, topics: Optional[List[str]] = None) -> List[Profile]:
+    async def get_user_profiles(
+        self, 
+        user_id: str, 
+        project_id: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        subtopics: Optional[List[str]] = None,
+        time_from: Optional[datetime] = None,
+        time_to: Optional[datetime] = None
+    ) -> List[Profile]:
         """
         Get user profiles from storage.
         
@@ -223,6 +246,10 @@ class LindormMemobase:
             user_id: Unique identifier for the user
             topics: Optional list of topics to filter by. If provided, only profiles 
                    with matching topics will be returned.
+            subtopics: Optional list of subtopics to filter by
+            project_id: Optional project ID to filter by. None returns all projects.
+            time_from: Optional start time filter (created_at >= time_from)
+            time_to: Optional end time filter (created_at <= time_to)
             
         Returns:
             List of user profiles grouped by topic and subtopic
@@ -231,15 +258,27 @@ class LindormMemobase:
             LindormMemobaseError: If profile retrieval fails
             
         Example:
-            profiles = await memobase.get_user_profiles("user123", topics=["interests", "preferences"])
+            profiles = await memobase.get_user_profiles(
+                "user123", 
+                topics=["interests", "preferences"],
+                project_id="my_project"
+            )
         """
         try:
-            profiles_result = await get_user_profiles(user_id, self.config)
+            profiles_result = await get_user_profiles(
+                user_id, 
+                self.config,
+                project_id=project_id,
+                topics=topics,
+                subtopics=subtopics,
+                time_from=time_from,
+                time_to=time_to
+            )
             if not profiles_result.ok():
                 raise LindormMemobaseError(f"Failed to get user profiles: {profiles_result.msg()}")
                 
             raw_profiles = profiles_result.data()
-            return self._convert_profile_data_to_profiles(raw_profiles.profiles, topics)
+            return self._convert_profile_data_to_profiles(raw_profiles.profiles, None)
             
         except Exception as e:
             raise LindormMemobaseError(f"Failed to get user profiles: {str(e)}")

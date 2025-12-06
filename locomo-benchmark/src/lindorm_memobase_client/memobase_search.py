@@ -15,10 +15,12 @@ from dotenv import load_dotenv
 from lindormmemobase import LindormMemobase
 from lindormmemobase.models.blob import OpenAICompatibleMessage
 
-root_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(root_dir, "config.yaml")
+# Load environment variables from project root
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+load_dotenv(os.path.join(project_root, ".env"))
 
-load_dotenv()
+# Load config from project root
+config_path = os.path.join(project_root, "config.yaml")
 
 class LindormMemobaseSearch:
     def __init__(
@@ -29,6 +31,11 @@ class LindormMemobaseSearch:
     ):
         if os.path.exists(config_path):
             self.memobase = LindormMemobase.from_yaml_file(config_path)
+        else:
+            raise FileNotFoundError(
+                f"Config file not found at {config_path}. "
+                f"Please copy config.yaml.example to config.yaml and configure it."
+            )
         self.top_k = top_k
         http_client = httpx.Client(
             headers={

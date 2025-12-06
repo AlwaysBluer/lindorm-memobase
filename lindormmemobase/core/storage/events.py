@@ -5,18 +5,11 @@ from typing import Optional, Dict, List, Any
 from ...models.promise import Promise, CODE
 from ...config import Config, TRACE_LOG
 
-# Global storage instance cache
-_lindorm_search_storage = None
-
-
+# Backward compatibility - delegate to StorageManager
 def get_lindorm_search_storage(config: Config) -> 'LindormSearchStorage':
-    """Get or create a global LindormSearchStorage instance."""
-    global _lindorm_search_storage
-    if _lindorm_search_storage is None and config is None:
-        raise Exception("requre configurations params to connect to lindorm")
-    elif _lindorm_search_storage is None:
-        _lindorm_search_storage = LindormSearchStorage(config)
-    return _lindorm_search_storage
+    """Get or create a global LindormSearchStorage instance - delegates to StorageManager."""
+    from .manager import StorageManager
+    return StorageManager.get_search_storage(config)
 
 
 # class OpenSearchEventStorage:
@@ -37,6 +30,11 @@ class LindormSearchStorage:
             ssl_assert_hostname=False,
             ssl_show_warn=False,
         )
+        # Don't call _ensure methods in __init__ anymore
+        # Indices are created explicitly via initialize_indices()
+    
+    def initialize_indices(self):
+        """Create event and event gist indices. Called during StorageManager initialization."""
         self._ensure_event_indices()
         self._ensure_event_gist_indices()
 

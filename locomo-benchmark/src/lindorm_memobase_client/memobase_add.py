@@ -8,10 +8,12 @@ from dotenv import load_dotenv
 from lindormmemobase import LindormMemobase, ChatBlob, Config
 from lindormmemobase.models.blob import OpenAICompatibleMessage, BlobType
 
-load_dotenv()
+# Load environment variables from project root
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+load_dotenv(os.path.join(project_root, ".env"))
 
-root_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(root_dir, "config.yaml")
+# Load config from project root
+config_path = os.path.join(project_root, "config.yaml")
 
 
 def string_to_uuid(s: str, salt="memobase_client") -> str:
@@ -21,8 +23,13 @@ def string_to_uuid(s: str, salt="memobase_client") -> str:
 class LindormMemobaseADD:
     def __init__(self, data_path, batch_size=16, reprocess=False):
         if os.path.exists(config_path):
-            config = Config.load_config(config_path)
+            config = Config.from_yaml_file(config_path)
             self.memobase = LindormMemobase(config)
+        else:
+            raise FileNotFoundError(
+                f"Config file not found at {config_path}. "
+                f"Please copy config.yaml.example to config.yaml and configure it."
+            )
         self.batch_size = batch_size
         self.data_path = data_path
         self.data = None

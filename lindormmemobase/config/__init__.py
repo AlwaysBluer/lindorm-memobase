@@ -65,6 +65,11 @@ class Config:
     profile_strict_mode: bool = False
     profile_validate_mode: bool = True
 
+    # UserProfilesV2 configuration
+    default_project_id: str = "default"
+    enable_profile_splitting: bool = True
+    profile_split_delimiter: str = "; "
+
     minimum_chats_token_size_for_event_summary: int = 256
     event_tags: list[dict] = field(default_factory=list)
     # LindormSearch配置
@@ -91,7 +96,7 @@ class Config:
     lindorm_buffer_database: str = None
 
     # Test option
-    test_skip_persist = False  # Fixed: Changed to False to enable event persistence
+    test_skip_persist: bool = False  # Fixed: Changed to False to enable event persistence
 
     @classmethod
     def _process_env_vars(cls, config_dict):
