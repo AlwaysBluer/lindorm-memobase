@@ -182,15 +182,12 @@ class LindormMemobase:
             LindormMemobaseError: If extraction fails
         """
         try:
-            # Store project_id in config temporarily for this extraction
-            if project_id is not None:
-                self.config._extraction_project_id = project_id
-            
             result = await process_blobs(
                 user_id=user_id,
                 profile_config=profile_config or ProfileConfig.load_from_config(self.config),
                 blobs=blobs,
-                config=self.config
+                config=self.config,
+                project_id=project_id
             )
             
             if result.ok():
@@ -202,10 +199,6 @@ class LindormMemobase:
             if isinstance(e, LindormMemobaseError):
                 raise
             raise LindormMemobaseError(f"Memory extraction failed: {str(e)}") from e
-        finally:
-            # Clean up temporary project_id
-            if hasattr(self.config, '_extraction_project_id'):
-                delattr(self.config, '_extraction_project_id')
     
     def _convert_profile_data_to_profiles(self, raw_profiles, topics: Optional[List[str]] = None, max_profiles: Optional[int] = None) -> List[Profile]:
         """Convert ProfileData list to Profile list with topic grouping."""

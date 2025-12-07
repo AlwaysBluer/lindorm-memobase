@@ -38,7 +38,7 @@ def truncate_chat_blobs(
 
 
 async def process_blobs(
-        user_id: str, profile_config: ProfileConfig, blobs: list[Blob], config: Config
+        user_id: str, profile_config: ProfileConfig, blobs: list[Blob], config: Config, project_id: str | None = None
 ) -> Promise[ChatModalResponse]:
     # 1. Extract patch profiles
     blobs = truncate_chat_blobs(blobs, config.max_chat_blob_buffer_process_token_size)
@@ -109,7 +109,7 @@ async def process_blobs(
             event_data.event_gists_with_actions,
             config,
         ),
-        handle_user_profile_db(user_id, intermediate_profile, config),
+        handle_user_profile_db(user_id, intermediate_profile, config, project_id),
         return_exceptions=True
     )
 

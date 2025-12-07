@@ -172,10 +172,11 @@ async def handle_profile_merge_or_valid(
                 runtime_profile.attributes[ConstantsTable.update_hits] = 1
             else:
                 runtime_profile.attributes[ConstantsTable.update_hits] += 1
+            # Use ;; separator to mark for later splitting
             session_merge_validate_results["update"].append(
                 {
                     "profile_id": runtime_profile.id,
-                    "content": f"{runtime_profile.content};{profile_content}",
+                    "content": f"{runtime_profile.content};; {profile_content}",
                     "attributes": runtime_profile.attributes,
                 }
             )

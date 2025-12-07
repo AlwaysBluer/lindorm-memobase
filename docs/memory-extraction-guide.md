@@ -433,7 +433,7 @@ result = await memobase.extract_memories(
     blobs=[conversation_blob]
 )
 
-print(f"事件ID: {result.event_gist_id}")
+print(f"事件ID: {result.event_id}")
 print(f"新增画像: {len(result.add_profiles)} 个")
 print(f"更新画像: {len(result.update_profiles)} 个")
 ```

@@ -16,23 +16,99 @@ from ....core.storage.events import store_event_with_embedding, store_event_gist
 from ....core.storage.user_profiles import add_user_profiles, update_user_profiles, delete_user_profiles
 
 
+def split_concatenated_profiles(
+    add_profiles: list[dict],
+    update_profiles: list[dict],
+    delete_profile_ids: list[str]
+) -> tuple[list[dict], list[dict], list[str]]:
+    """
+    Split profiles containing ;; markers into individual profiles.
+    
+    For ADD list: Split content by ;; into multiple profiles
+    For UPDATE list: If content contains ;;, move to DELETE list and create new ADD entries
+    
+    Returns:
+        Tuple of (expanded_add_list, cleaned_update_list, expanded_delete_list)
+    """
+    expanded_add = []
+    cleaned_update = []
+    expanded_delete = list(delete_profile_ids)
+    
+    # Process ADD list - split concatenated content
+    for profile in add_profiles:
+        content = profile["content"]
+        attributes = profile["attributes"]
+        
+        if ";;" in content:
+            # Split by ;; and create separate profiles
+            split_contents = [c.strip() for c in content.split(";;") if c.strip()]
+            for split_content in split_contents:
+                expanded_add.append({
+                    "content": split_content,
+                    "attributes": attributes.copy()
+                })
+        else:
+            # Keep as single profile
+            expanded_add.append(profile)
+    
+    # Process UPDATE list - convert concatenated updates to DELETE + ADD
+    for profile in update_profiles:
+        content = profile["content"]
+        profile_id = profile["profile_id"]
+        attributes = profile["attributes"]
+        
+        if ";;" in content:
+            # Mark old profile for deletion
+            expanded_delete.append(profile_id)
+            
+            # Split content and create new profiles
+            split_contents = [c.strip() for c in content.split(";;") if c.strip()]
+            for split_content in split_contents:
+                expanded_add.append({
+                    "content": split_content,
+                    "attributes": attributes.copy()
+                })
+        else:
+            # Keep as normal update
+            cleaned_update.append(profile)
+    
+    return expanded_add, cleaned_update, expanded_delete
+
+
 async def handle_user_profile_db(
-        user_id: str, intermediate_profile: MergeAddResult, config: Config
+        user_id: str, intermediate_profile: MergeAddResult, config: Config, project_id: str | None = None
 ) -> Promise[IdsData]:
+    # Split concatenated profiles before storage
+    add_list = [
+        {"content": ap["content"], "attributes": ap["attributes"]}
+        for ap in intermediate_profile["add"]
+    ]
+    update_list = [
+        {"profile_id": up["profile_id"], "content": up["content"], "attributes": up["attributes"]}
+        for up in intermediate_profile["update"]
+    ]
+    delete_list = list(intermediate_profile["delete"])
+    
+    # Apply splitting logic
+    expanded_add, cleaned_update, expanded_delete = split_concatenated_profiles(
+        add_list, update_list, delete_list
+    )
+    
     TRACE_LOG.info(
         user_id,
-        f"Adding {len(intermediate_profile['add'])}, updating {len(intermediate_profile['update'])}, deleting {len(intermediate_profile['delete'])} profiles",
+        f"After splitting: Adding {len(expanded_add)}, updating {len(cleaned_update)}, deleting {len(expanded_delete)} profiles",
     )
 
     p = await add_update_delete_user_profiles(
         user_id,
-        [ap["content"] for ap in intermediate_profile["add"]],
-        [ap["attributes"] for ap in intermediate_profile["add"]],
-        [up["profile_id"] for up in intermediate_profile["update"]],
-        [up["content"] for up in intermediate_profile["update"]],
-        [up["attributes"] for up in intermediate_profile["update"]],
-        intermediate_profile["delete"],
+        [ap["content"] for ap in expanded_add],
+        [ap["attributes"] for ap in expanded_add],
+        [up["profile_id"] for up in cleaned_update],
+        [up["content"] for up in cleaned_update],
+        [up["attributes"] for up in cleaned_update],
+        expanded_delete,
         config=config,
+        project_id=project_id,
     )
     return p
 
@@ -46,6 +122,7 @@ async def add_update_delete_user_profiles(
         update_attributes: list[dict | None],
         delete_profile_ids: list[str],
         config: Config,
+        project_id: str | None = None,
 ) -> Promise[IdsData]:
     assert len(add_profiles) == len(
         add_attributes
@@ -62,7 +139,7 @@ async def add_update_delete_user_profiles(
 
         if len(add_profiles):
             add_result = await add_user_profiles(
-                user_id, add_profiles, add_attributes, config
+                user_id, add_profiles, add_attributes, config, project_id=project_id
             )
             if not add_result.ok():
                 return add_result
@@ -70,14 +147,14 @@ async def add_update_delete_user_profiles(
 
         if len(update_profile_ids):
             update_result = await update_user_profiles(
-                user_id, update_profile_ids, update_contents, update_attributes, config
+                user_id, update_profile_ids, update_contents, update_attributes, config, project_id=project_id
             )
             if not update_result.ok():
                 return update_result
 
         if len(delete_profile_ids):
             delete_result = await delete_user_profiles(
-                user_id, delete_profile_ids, config
+                user_id, delete_profile_ids, config, project_id=project_id
             )
             if not delete_result.ok():
                 return delete_result

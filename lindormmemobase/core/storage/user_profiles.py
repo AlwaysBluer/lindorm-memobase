@@ -152,10 +152,18 @@ class LindormTableStorage:
             actual_project_id = project_id or DEFAULT_PROJECT_ID
             
             try:
-                cursor = conn.cursor()
+                cursor = conn.cursor(dictionary=True)
                 for profile_id, content, attributes in zip(profile_ids, contents, attributes_list):
                     now = datetime.now(timezone.utc)
                     
+                    # Determine update_hits value
+                    # If attributes contains update_hits, use it (already incremented in merge.py)
+                    # Otherwise, fetch current value and increment by 1
+                    if attributes is not None and 'update_hits' in attributes:
+                        new_update_hits = attributes['update_hits']
+                    else:
+                        # Fetch current update_hits value
+                        new_update_hits = 0
                     if attributes is not None:
                         # Extract topic and subtopic from attributes
                         topic = attributes.get('topic', '')
@@ -164,19 +172,19 @@ class LindormTableStorage:
                         cursor.execute(
                             """
                             UPDATE UserProfilesV2 
-                            SET content = %s, topic = %s, subtopic = %s, update_hits = update_hits + 1, updated_at = %s
+                            SET content = %s, topic = %s, subtopic = %s, update_hits = %s, updated_at = %s
                             WHERE user_id = %s AND project_id = %s AND profile_id = %s
                             """,
-                            (str(content), str(topic), str(subtopic), now, str(user_id), str(actual_project_id), str(profile_id))
+                            (str(content), str(topic), str(subtopic), new_update_hits, now, str(user_id), str(actual_project_id), str(profile_id))
                         )
                     else:
                         cursor.execute(
                             """
                             UPDATE UserProfilesV2 
-                            SET content = %s, update_hits = update_hits + 1, updated_at = %s
+                            SET content = %s, update_hits = %s, updated_at = %s
                             WHERE user_id = %s AND project_id = %s AND profile_id = %s
                             """,
-                            (str(content), now, str(user_id), str(actual_project_id), str(profile_id))
+                            (str(content), new_update_hits, now, str(user_id), str(actual_project_id), str(profile_id))
                         )
                     
                     if cursor.rowcount > 0:
@@ -207,28 +215,47 @@ class LindormTableStorage:
             
             try:
                 cursor = conn.cursor()
-                placeholders = ','.join(['%s'] * len(profile_ids))
+                deleted_count = 0
                 
+                # Lindorm requires all PK columns for delete operations
+                # Must delete one row at a time to avoid "range delete" error
                 if project_id is not None:
-                    # Delete from specific project
-                    cursor.execute(
-                        f"""
-                        DELETE FROM UserProfilesV2 
-                        WHERE user_id = %s AND project_id = %s AND profile_id IN ({placeholders})
-                        """,
-                        (str(user_id), str(project_id), *[str(pid) for pid in profile_ids])
-                    )
+                    # Delete from specific project - one row at a time
+                    for profile_id in profile_ids:
+                        cursor.execute(
+                            """
+                            DELETE FROM UserProfilesV2 
+                            WHERE user_id = %s AND project_id = %s AND profile_id = %s
+                            """,
+                            (str(user_id), str(project_id), str(profile_id))
+                        )
+                        deleted_count += cursor.rowcount
                 else:
-                    # Delete from all projects (backward compatibility)
-                    cursor.execute(
-                        f"""
-                        DELETE FROM UserProfilesV2 
-                        WHERE user_id = %s AND profile_id IN ({placeholders})
-                        """,
-                        (str(user_id), *[str(pid) for pid in profile_ids])
-                    )
+                    # When project_id is None, we need to fetch the project_id for each profile first
+                    # This is for backward compatibility but should be avoided
+                    for profile_id in profile_ids:
+                        # First, get the project_id for this profile
+                        cursor.execute(
+                            """
+                            SELECT project_id FROM UserProfilesV2
+                            WHERE user_id = %s AND profile_id = %s
+                            LIMIT 1
+                            """,
+                            (str(user_id), str(profile_id))
+                        )
+                        result = cursor.fetchone()
+                        if result:
+                            actual_project_id = result[0]
+                            # Now delete with all PK columns
+                            cursor.execute(
+                                """
+                                DELETE FROM UserProfilesV2 
+                                WHERE user_id = %s AND project_id = %s AND profile_id = %s
+                                """,
+                                (str(user_id), str(actual_project_id), str(profile_id))
+                            )
+                            deleted_count += cursor.rowcount
                 
-                deleted_count = cursor.rowcount
                 conn.commit()
                 return deleted_count
             finally:
@@ -304,11 +331,11 @@ class LindormTableStorage:
                         'content': row['content'],
                         'attributes': {
                             'topic': row['topic'],
-                            'sub_topic': row['subtopic']
+                            'sub_topic': row['subtopic'],
+                            'update_hits': row.get('update_hits', 0),
                         },
                         'created_at': row['created_at'].isoformat() if row['created_at'] else None,  
                         'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None,
-                        'update_hits': row.get('update_hits', 0),
                         'project_id': row.get('project_id', DEFAULT_PROJECT_ID)
                     })
                 return profiles

@@ -17,11 +17,13 @@ from ....models.profile_topic import read_out_profile_config
 from ....llm.complete import llm_complete
 
 def merge_by_topic_sub_topics(new_facts: list[FactResponse]):
+    """Merge facts with same topic-subtopic using ;; separator for later splitting."""
     topic_subtopic = {}
     for nf in new_facts:
         key = (nf[ConstantsTable.topic], nf[ConstantsTable.sub_topic])
         if key in topic_subtopic and isinstance(nf["memo"], str):
-            topic_subtopic[key]["memo"] += f"; {nf['memo']}"
+            # Use ;; separator to preserve split boundaries
+            topic_subtopic[key]["memo"] += f";; {nf['memo']}"
             continue
         topic_subtopic[key] = nf
     return list(topic_subtopic.values())
@@ -80,7 +82,7 @@ async def extract_topics(
         already_topics_subtopics = sorted(already_topics_subtopics)
         already_topics_prompt = "\n".join(
             [
-                f"- {topic}{config.llm_tab_separator}{sub_topic}{config.llm_tab_separator}{truncate_string(already_topic_subtopics_values[(topic, sub_topic)], 5)}"
+                f"- {topic}{config.llm_tab_separator}{sub_topic}{config.llm_tab_separator}{truncate_string(already_topic_subtopics_values[(topic, sub_topic)], 10)}"
                 for topic, sub_topic in already_topics_subtopics
             ]
         )
@@ -100,7 +102,7 @@ async def extract_topics(
         system_prompt=PROMPTS[USE_LANGUAGE]["extract"].get_prompt(
             PROMPTS[USE_LANGUAGE]["profile"].get_prompt(project_profiles_slots), config
         ),
-        temperature=0.2,  # precise
+        temperature=0.1,  # precise
         config=config,
         **PROMPTS[USE_LANGUAGE]["extract"].get_kwargs(),
     )

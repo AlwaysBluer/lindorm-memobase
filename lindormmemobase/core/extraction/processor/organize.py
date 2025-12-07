@@ -124,14 +124,26 @@ async def organize_profiles_by_topic(
 
 
 def deduplicate_profiles(profiles: list[AddProfile]) -> list[AddProfile]:
-    topic_subtopic = {}
-    for nf in profiles:
+    """
+    Remove exact duplicates while preserving all individual profiles.
+    No longer concatenates profiles with same topic-subtopic.
+    
+    Each profile is kept as a separate entry, even if they share the same
+    topic-subtopic combination. Database uniqueness is enforced via profile_id.
+    """
+    seen = set()
+    result = []
+    
+    for profile in profiles:
+        # Create a hashable key based on content and attributes
         key = (
-            nf["attributes"][ConstantsTable.topic],
-            nf["attributes"][ConstantsTable.sub_topic],
+            profile["content"],
+            profile["attributes"][ConstantsTable.topic],
+            profile["attributes"][ConstantsTable.sub_topic],
         )
-        if key in topic_subtopic:
-            topic_subtopic[key]["content"] += f"; {nf['content']}"
-            continue
-        topic_subtopic[key] = nf
-    return list(topic_subtopic.values())
+        
+        if key not in seen:
+            seen.add(key)
+            result.append(profile)
+    
+    return result
