@@ -41,25 +41,17 @@ async def demo_memory_extraction():
     print("=" * 80)
     print()
     
-    # 第一次对话：基本个人信息
-    print("💬 对话 1: 基本个人信息介绍")
+    # 第一次对话：基本个人信息（新增 personal_info）
+    print("💬 对话 1: 基本个人信息 - 测试新增档案")
     conversation_1 = ChatBlob(
         messages=[
             OpenAICompatibleMessage(
                 role="user", 
-                content="你好！我叫张伟，今年32岁，是一名软件工程师，目前在北京工作。"
+                content="你好！我叫张伟，今年32岁，是一名软件工程师。"
             ),
             OpenAICompatibleMessage(
                 role="assistant", 
-                content="你好张伟！很高兴认识你。软件工程师是很有前景的职业。"
-            ),
-            OpenAICompatibleMessage(
-                role="user", 
-                content="是的，我在一家互联网公司做后端开发，主要用Python和Go语言。"
-            ),
-            OpenAICompatibleMessage(
-                role="assistant", 
-                content="Python和Go都是很优秀的语言！你在公司主要负责什么项目呢？"
+                content="你好张伟！很高兴认识你。"
             ),
         ],
         type=BlobType.chat,
@@ -78,37 +70,30 @@ async def demo_memory_extraction():
     print()
     
     # 查看提取的档案
-    print("📋 查看提取的用户档案:")
+    print("📋 本轮提取后的用户档案:")
     profiles_1 = await memobase.get_user_profiles(user_id, project_id=project_id)
+    print(f"   当前共有 {len(profiles_1)} 个主题")
     for profile in profiles_1:
-        print(f"  【主题: {profile.topic}】")
+        print(f"\n  【主题: {profile.topic}】")
         for subtopic, entry in profile.subtopics.items():
             print(f"    - {subtopic}: {entry.content}")
     print()
     
-    # 第二次对话：兴趣爱好
-    print("💬 对话 2: 兴趣爱好和生活方式")
+    # 第二次对话：技术技能（新增 skills）
+    print("💬 对话 2: 技术技能 - 测试新增另一个档案")
     conversation_2 = ChatBlob(
         messages=[
             OpenAICompatibleMessage(
                 role="user", 
-                content="我平时工作比较忙，但周末喜欢去健身房锻炼，主要做力量训练。"
+                content="我在公司主要做后端开发，熟悉Python和Go语言。"
             ),
             OpenAICompatibleMessage(
                 role="assistant", 
-                content="保持运动是很好的习惯！力量训练对身体很有帮助。"
+                content="这两种语言都很强大！你有用过什么框架吗？"
             ),
             OpenAICompatibleMessage(
                 role="user", 
-                content="对，我每周去3-4次。除了健身，我还喜欢看科幻电影和技术书籍。"
-            ),
-            OpenAICompatibleMessage(
-                role="assistant", 
-                content="科幻电影和技术书籍都很有意思！有特别喜欢的作品吗？"
-            ),
-            OpenAICompatibleMessage(
-                role="user", 
-                content="科幻电影我最喜欢《星际穿越》和《银翼杀手2049》，技术书籍最近在读《设计数据密集型应用》。"
+                content="Python主要用Django和FastAPI，Go用的是Gin框架。"
             ),
         ],
         type=BlobType.chat,
@@ -127,10 +112,11 @@ async def demo_memory_extraction():
     print()
     
     # 查看更新后的档案
-    print("📋 查看更新后的用户档案:")
+    print("📋 本轮提取后的用户档案:")
     profiles_2 = await memobase.get_user_profiles(user_id, project_id=project_id)
+    print(f"   当前共有 {len(profiles_2)} 个主题")
     for profile in profiles_2:
-        print(f"  【主题: {profile.topic}】")
+        print(f"\n  【主题: {profile.topic}】")
         for subtopic, entry in profile.subtopics.items():
             print(f"    - {subtopic}: {entry.content}")
     print()
@@ -141,29 +127,21 @@ async def demo_memory_extraction():
     print("=" * 80)
     print()
     
-    # 第三次对话：更新职业信息和新增饮食偏好
-    print("💬 对话 3: 更新职业信息，新增饮食习惯")
+    # 第三次对话：更新技术技能（更新 skills）
+    print("💬 对话 3: 技术栈更新 - 测试更新现有档案")
     conversation_3 = ChatBlob(
         messages=[
             OpenAICompatibleMessage(
                 role="user", 
-                content="对了，忘记跟你说了，我上个月刚换了工作，现在在一家AI公司做机器学习工程师。"
+                content="最近我开始学习Rust了，觉得它的内存安全特性很棒。"
             ),
             OpenAICompatibleMessage(
                 role="assistant", 
-                content="恭喜你！机器学习是很热门的方向。工作内容有什么变化吗？"
+                content="Rust确实很有前景！你打算用它做什么项目吗？"
             ),
             OpenAICompatibleMessage(
                 role="user", 
-                content="现在主要做大语言模型的应用开发，用的技术栈也变了，主要是Python和PyTorch。"
-            ),
-            OpenAICompatibleMessage(
-                role="assistant", 
-                content="听起来很有挑战性！适应新工作还顺利吗？"
-            ),
-            OpenAICompatibleMessage(
-                role="user", 
-                content="挺好的。另外，我最近开始注意饮食健康，早餐通常吃燕麦和水果，中午喜欢吃健康轻食。"
+                content="想用Rust重写一些性能关键的服务，还在学习阶段。"
             ),
         ],
         type=BlobType.chat,
@@ -183,13 +161,13 @@ async def demo_memory_extraction():
     print()
     
     # 验证更新效果
-    print("📋 验证职业信息是否更新:")
+    print("📋 本轮提取后的用户档案 (验证技术技能更新):")
     profiles_3 = await memobase.get_user_profiles(user_id, project_id=project_id)
+    print(f"   当前共有 {len(profiles_3)} 个主题")
     for profile in profiles_3:
-        print(f"  【主题: {profile.topic}】")
+        print(f"\n  【主题: {profile.topic}】")
         for subtopic, entry in profile.subtopics.items():
-            content_preview = entry.content[:100] if len(entry.content) > 100 else entry.content
-            print(f"    - {subtopic}: {content_preview}")
+            print(f"    - {subtopic}: {entry.content}")
     print()
     
     # ========== 第三部分：记忆合并测试 ==========
@@ -198,29 +176,21 @@ async def demo_memory_extraction():
     print("=" * 80)
     print()
     
-    # 第四次对话：补充健身细节和技术技能
-    print("💬 对话 4: 补充健身和技术细节，测试信息合并")
+    # 第四次对话：新增兴趣爱好（新增 hobbies）
+    print("💬 对话 4: 兴趣爱好 - 测试新增第三个档案")
     conversation_4 = ChatBlob(
         messages=[
             OpenAICompatibleMessage(
                 role="user", 
-                content="我在健身房通常做深蹲、卧推和硬拉这些复合动作，每次训练1.5小时左右。"
+                content="我平时喜欢健身，每周去健身房3-4次，主要做力量训练。"
             ),
             OpenAICompatibleMessage(
                 role="assistant", 
-                content="这些都是很经典的力量训练动作！看来你对健身很专业。"
+                content="保持运动是很好的习惯！"
             ),
             OpenAICompatibleMessage(
                 role="user", 
-                content="是的，我已经坚持3年了。说到技术方面，除了Python和PyTorch，我还熟悉TensorFlow、Docker和Kubernetes。"
-            ),
-            OpenAICompatibleMessage(
-                role="assistant", 
-                content="技能栈很全面！这些都是AI工程师必备的技能。"
-            ),
-            OpenAICompatibleMessage(
-                role="user", 
-                content="对，我最近在学习LangChain和向量数据库，想做一些RAG应用。"
+                content="是的，已经坚持了2年了。"
             ),
         ],
         type=BlobType.chat,
@@ -238,39 +208,37 @@ async def demo_memory_extraction():
     print(f"  ✓ 更新档案: {len(result_4.update_profiles)} 个")
     print()
     
+    # 查看本轮更新后的档案
+    print("📋 本轮提取后的用户档案:")
+    profiles_4 = await memobase.get_user_profiles(user_id, project_id=project_id)
+    print(f"   当前共有 {len(profiles_4)} 个主题")
+    for profile in profiles_4:
+        print(f"\n  【主题: {profile.topic}】")
+        for subtopic, entry in profile.subtopics.items():
+            print(f"    - {subtopic}: {entry.content}")
+    print()
+    
     # ========== 第四部分：复杂场景测试 ==========
     print("=" * 80)
     print("第四部分：复杂场景 - 多主题混合对话")
     print("=" * 80)
     print()
     
-    # 第五次对话：多主题混合，包含个人生活、职业规划、健康等
-    print("💬 对话 5: 综合对话，涉及多个主题")
+    # 第五次对话：更新兴趣爱好（更新 hobbies）并测试删除
+    print("💬 对话 5: 兴趣变化 - 测试更新档案")
     conversation_5 = ChatBlob(
         messages=[
             OpenAICompatibleMessage(
                 role="user", 
-                content="最近工作压力有点大，项目要上线了。不过我还是坚持每天冥想10分钟来放松。"
+                content="最近我改练瑜伽了，觉得对身体柔韧性更好。力量训练暂时停了。"
             ),
             OpenAICompatibleMessage(
                 role="assistant", 
-                content="冥想是很好的减压方式。项目上线加油！"
+                content="瑜伽也是很好的运动方式！"
             ),
             OpenAICompatibleMessage(
                 role="user", 
-                content="谢谢！我计划项目结束后休个假，想去日本旅行，体验一下当地的文化和美食。"
-            ),
-            OpenAICompatibleMessage(
-                role="assistant", 
-                content="日本是个不错的选择！有计划去哪些城市吗？"
-            ),
-            OpenAICompatibleMessage(
-                role="user", 
-                content="想去东京和京都。对了，我最近还买了个Kindle，准备在通勤路上多看些书，特别是AI和哲学相关的。"
-            ),
-            OpenAICompatibleMessage(
-                role="assistant", 
-                content="通勤时间利用起来读书很不错！AI和哲学都是很有深度的领域。"
+                content="是的，每周上3次瑜伽课，感觉压力小了很多。"
             ),
         ],
         type=BlobType.chat,
@@ -286,6 +254,16 @@ async def demo_memory_extraction():
     print(f"  ✓ 事件ID: {result_5.event_id}")
     print(f"  ✓ 新增档案: {len(result_5.add_profiles)} 个")
     print(f"  ✓ 更新档案: {len(result_5.update_profiles)} 个")
+    print()
+    
+    # 查看本轮更新后的档案
+    print("📋 本轮提取后的用户档案:")
+    profiles_5 = await memobase.get_user_profiles(user_id, project_id=project_id)
+    print(f"   当前共有 {len(profiles_5)} 个主题")
+    for profile in profiles_5:
+        print(f"\n  【主题: {profile.topic}】")
+        for subtopic, entry in profile.subtopics.items():
+            print(f"    - {subtopic}: {entry.content}")
     print()
     
     # ========== 第五部分：最终档案汇总 ==========
