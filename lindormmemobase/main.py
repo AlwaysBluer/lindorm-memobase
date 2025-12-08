@@ -21,7 +21,7 @@ from .core.search.context import get_user_context
 from .core.search.events import get_user_event_gists, search_user_event_gists
 from .core.search.user_profiles import get_user_profiles_data, filter_profiles_with_chats
 from .core.storage.user_profiles import get_user_profiles
-from .core.buffer.buffer import (
+from .core.storage.buffers import (
     insert_blob_to_buffer,
     detect_buffer_full_or_not,
     flush_buffer_by_ids,
@@ -598,7 +598,8 @@ class LindormMemobase:
         self,
         user_id: str,
         blob: Blob,
-        blob_id: Optional[str] = None
+        blob_id: Optional[str] = None,
+        project_id: Optional[str] = None
     ) -> str:
         """
         Add a blob to the processing buffer.
@@ -610,6 +611,7 @@ class LindormMemobase:
             user_id: Unique identifier for the user
             blob: The data blob to add to the buffer (ChatBlob, DocBlob, etc.)
             blob_id: Optional custom ID for the blob. If None, generates a UUID.
+            project_id: Optional project identifier for multi-tenancy. If None, uses default.
             
         Returns:
             The blob ID assigned to the added blob
@@ -634,7 +636,8 @@ class LindormMemobase:
                 user_id=user_id,
                 blob_id=blob_id,
                 blob_data=blob,
-                config=self.config
+                config=self.config,
+                project_id=project_id
             )
             
             if not result.ok():
@@ -649,7 +652,8 @@ class LindormMemobase:
     async def detect_buffer_full_or_not(
         self,
         user_id: str,
-        blob_type: BlobType = BlobType.chat
+        blob_type: BlobType = BlobType.chat,
+        project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get comprehensive buffer status information.
@@ -657,6 +661,7 @@ class LindormMemobase:
         Args:
             user_id: Unique identifier for the user
             blob_type: Type of blobs to check (default: BlobType.chat)
+            project_id: Optional project identifier for multi-tenancy. If None, uses default.
 
         Returns:
             Dictionary containing:
@@ -675,7 +680,8 @@ class LindormMemobase:
             full_result = await detect_buffer_full_or_not(
                 user_id=user_id,
                 blob_type=blob_type,
-                config=self.config
+                config=self.config,
+                project_id=project_id
             )
 
             if not full_result.ok():
@@ -699,7 +705,8 @@ class LindormMemobase:
         user_id: str,
         blob_type: BlobType = BlobType.chat,
         profile_config: Optional[ProfileConfig] = None,
-        blob_ids: Optional[List[str]] = None
+        blob_ids: Optional[List[str]] = None,
+        project_id: Optional[str] = None
     ) -> Optional[Any]:
         """
         Process blobs in the buffer and extract memories.
@@ -712,6 +719,7 @@ class LindormMemobase:
             blob_type: Type of blobs to process (default: BlobType.chat)
             profile_config: Profile configuration for extraction. Uses default if None.
             blob_ids: Specific blob IDs to process. If None, processes all unprocessed blobs.
+            project_id: Optional project identifier for multi-tenancy. If None, uses default.
             
         Returns:
             Processing result data if successful, None if no blobs to process
@@ -744,7 +752,8 @@ class LindormMemobase:
                     buffer_ids=blob_ids,
                     config=self.config,
                     select_status=BufferStatus.idle,
-                    profile_config=profile_config
+                    profile_config=profile_config,
+                    project_id=project_id
                 )
             else:
                 # Process all unprocessed blobs
@@ -752,7 +761,8 @@ class LindormMemobase:
                     user_id=user_id,
                     blob_type=blob_type,
                     config=self.config,
-                    profile_config=profile_config
+                    profile_config=profile_config,
+                    project_id=project_id
                 )
                 
             if not result.ok():

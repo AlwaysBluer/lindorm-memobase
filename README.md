@@ -262,9 +262,8 @@ max_chat_blob_buffer_process_token_size: 16384  # 单次处理最大token数
 - **`core/extraction/`**: 记忆提取处理管道
   - `processor/`: 数据处理器（摘要、提取、合并、组织）
   - `prompts/`: 智能提示词（支持中英文）
-- **`core/buffer/`**: 缓冲区管理（智能缓存、批量处理、状态跟踪）
 - **`models/`**: 数据模型（Blob、Profile、Response类型）
-- **`core/storage/`**: 存储后端（Lindorm宽表、Search引擎）
+- **`core/storage/`**: 存储后端（Lindorm宽表、Search引擎、缓冲区管理）
 - **`embedding/`**: 嵌入服务（OpenAI、Jina等）
 - **`llm/`**: 大语言模型接口和完成服务
 - **`core/search/`**: 搜索服务（用户画像、事件、上下文检索）

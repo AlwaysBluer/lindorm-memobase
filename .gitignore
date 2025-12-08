@@ -203,4 +203,4 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-shenlan-poc/
+logs/

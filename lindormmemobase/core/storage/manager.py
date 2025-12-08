@@ -136,7 +136,7 @@ class StorageManager:
         Returns:
             LindormBufferStorage instance
         """
-        from ..buffer.buffer import LindormBufferStorage
+        from .buffers import LindormBufferStorage
         
         host = config.lindorm_buffer_host or config.lindorm_table_host
         port = config.lindorm_buffer_port or config.lindorm_table_port
