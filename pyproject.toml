@@ -1,6 +1,6 @@
 [project]
 name = "lindorm-memobase"
-version = "0.1.10"
+version = "0.2.1"
 description = "A lightweight memory extraction and profile management system for LLM applications"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -38,6 +37,7 @@ build-backend = "setuptools.build_meta"
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -52,4 +52,9 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "asyncio: mark test as async",
+    "unit: Fast, isolated unit tests",
+    "integration: Tests requiring external services",
+    "slow: Long-running tests",
+    "requires_api_key: Tests needing real API credentials",
+    "requires_database: Tests needing Lindorm connection",
 ]
