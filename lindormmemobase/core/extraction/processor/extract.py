@@ -7,7 +7,7 @@ from ....core.extraction.prompts.utils import (
     attribute_unify,
 )
 
-from ....utils.tools import Promise, truncate_string
+from ....utils.tools import truncate_string
 
 from ....models.response import AIUserProfiles
 from ....models.profile_topic import ProfileConfig
@@ -31,11 +31,9 @@ def merge_by_topic_sub_topics(new_facts: list[FactResponse]):
 
 async def extract_topics(
     user_id: str, user_memo: str, project_profiles: ProfileConfig, config
-) -> Promise[dict]:
-    p = await get_user_profiles(user_id, config)
-    if not p.ok():
-        return p
-    profiles = p.data().profiles
+) -> dict:
+    profiles_data = await get_user_profiles(user_id, config)
+    profiles = profiles_data.profiles
     USE_LANGUAGE = project_profiles.language or config.language
     STRICT_MODE = (
         project_profiles.profile_strict_mode
@@ -93,7 +91,7 @@ async def extract_topics(
     else:
         already_topics_prompt = ""
 
-    p = await llm_complete(
+    results = await llm_complete(
         PROMPTS[USE_LANGUAGE]["extract"].pack_input(
             already_topics_prompt,
             user_memo,
@@ -106,9 +104,6 @@ async def extract_topics(
         config=config,
         **PROMPTS[USE_LANGUAGE]["extract"].get_kwargs(),
     )
-    if not p.ok():
-        return p
-    results = p.data()
     parsed_facts: AIUserProfiles = parse_string_into_profiles(results)
     new_facts: list[FactResponse] = parsed_facts.model_dump()["facts"]
     if not len(new_facts):
@@ -116,14 +111,12 @@ async def extract_topics(
             user_id,
             f"No new facts extracted",
         )
-        return Promise.resolve(
-            {
-                "fact_contents": [],
-                "fact_attributes": [],
-                "profiles": profiles,
-                "total_profiles": project_profiles_slots,
-            }
-        )
+        return {
+            "fact_contents": [],
+            "fact_attributes": [],
+            "profiles": profiles,
+            "total_profiles": project_profiles_slots,
+        }
 
     for nf in new_facts:
         nf[ConstantsTable.topic] = attribute_unify(nf[ConstantsTable.topic])
@@ -147,11 +140,9 @@ async def extract_topics(
                 ConstantsTable.sub_topic: nf[ConstantsTable.sub_topic],
             }
         )
-    return Promise.resolve(
-        {
-            "fact_contents": fact_contents,
-            "fact_attributes": fact_attributes,
-            "profiles": profiles,
-            "total_profiles": project_profiles_slots,
-        }
-    )
+    return {
+        "fact_contents": fact_contents,
+        "fact_attributes": fact_attributes,
+        "profiles": profiles,
+        "total_profiles": project_profiles_slots,
+    }

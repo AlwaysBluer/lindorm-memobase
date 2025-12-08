@@ -328,48 +328,69 @@ async def demo_memory_extraction():
             print("  未找到相关记录")
     print()
     
-    # ========== 第七部分：上下文生成测试 ==========
+    # ========== 第七部分：点查测试 ==========
     print("=" * 80)
-    print("第七部分：对话上下文生成")
+    print("第七部分：Topic-Subtopic 点查测试")
     print("=" * 80)
     print()
     
-    # 模拟新对话，生成相关上下文
-    test_conversations = [
-        {
-            "query": "我想换个健身计划",
-            "topics": ["health", "fitness", "exercise"]
-        },
-        {
-            "query": "推荐一些AI相关的学习资源",
-            "topics": ["work", "skills", "technology"]
-        },
-        {
-            "query": "周末有什么好的活动建议",
-            "topics": ["hobbies", "interests", "lifestyle"]
-        }
+    # 测试点查功能：按照 topic::subtopic 精确查询
+    point_queries = [
+        {"topic": "life_circumstances", "subtopic": "career"},
+        {"topic": "basic_info", "subtopic": "name"},
+        {"topic": "personal_growth", "subtopic": "self_care_activities"}
     ]
     
-    for test_conv in test_conversations:
-        print(f"💭 新对话: \"{test_conv['query']}\"")
-        
-        conversation = [
-            OpenAICompatibleMessage(role="user", content=test_conv['query'])
-        ]
-        
-        context = await memobase.get_conversation_context(
-            user_id=user_id,
-            conversation=conversation,
-            max_token_size=1500,
-            prefer_topics=test_conv.get('topics'),
-            time_range_in_days=7
+    for pq in point_queries:
+        print(f"🔍 点查: topic='{pq['topic']}', subtopic='{pq['subtopic']}'")
+        point_result = await memobase.get_user_profiles(
+            user_id,
+            project_id=project_id,
+            topics=[pq['topic']],
+            subtopics=[pq['subtopic']]
         )
         
-        print(f"  生成的上下文长度: {len(context)} 字符")
-        print(f"  上下文预览:")
-        context_preview = context[:300] if len(context) > 300 else context
-        print(f"  {context_preview}...")
+        if point_result:
+            print(f"  ✓ 找到 {len(point_result)} 个主题")
+            for profile in point_result:
+                print(f"    主题: {profile.topic}")
+                for subtopic, entry in profile.subtopics.items():
+                    print(f"      - {subtopic}: {entry.content}")
+        else:
+            print(f"  ✗ 未找到匹配的档案")
         print()
+    
+    # ========== 第八部分：时间范围查询测试 ==========
+    print("=" * 80)
+    print("第八部分：时间范围查询测试")
+    print("=" * 80)
+    print()
+    
+    # 获取最近创建的档案（最近24小时）
+    # 使用UTC时间与数据库时区保持一致
+    from datetime import timedelta, timezone
+    now_utc = datetime.now(timezone.utc)
+    twenty_four_hours_ago_utc = now_utc - timedelta(hours=24)
+    
+    print(f"⏰ 查询时间范围: 最近24小时内创建的档案 (UTC时间)")
+    print(f"   起始时间 (UTC): {twenty_four_hours_ago_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   结束时间 (UTC): {now_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+    time_filtered_profiles = await memobase.get_user_profiles(
+        user_id,
+        project_id=project_id,
+        time_from=twenty_four_hours_ago_utc,
+        time_to=now_utc
+    )
+    
+    print(f"  ✓ 在该时间范围内找到 {len(time_filtered_profiles)} 个主题")
+    for profile in time_filtered_profiles:
+        print(f"\n  【主题: {profile.topic}】")
+        for subtopic, entry in profile.subtopics.items():
+            print(f"    - {subtopic}: {entry.content}")
+            if entry.last_updated:
+                updated_dt = datetime.fromtimestamp(entry.last_updated)
+                print(f"      (最后更新: {updated_dt.strftime('%Y-%m-%d %H:%M:%S')})")
+    print()
     
     # ========== 总结 ==========
     print("=" * 80)
@@ -383,7 +404,8 @@ async def demo_memory_extraction():
     print("  4. ✓ 多主题处理 - 一次对话涉及多个主题")
     print("  5. ✓ 档案查询 - 按主题和子主题查看")
     print("  6. ✓ 事件搜索 - 语义相似度搜索")
-    print("  7. ✓ 上下文生成 - 为新对话生成相关背景")
+    print("  7. ✓ Topic-Subtopic 点查 - 精确查询特定档案")
+    print("  8. ✓ 时间范围查询 - 按创建时间过滤档案")
     print()
     print(f"📈 统计数据:")
     print(f"  - 用户ID: {user_id}")

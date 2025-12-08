@@ -5,10 +5,10 @@ from pydantic import ValidationError
 from ....config import TRACE_LOG, Config
 
 from ....models.types import MergeAddResult
-from ....models.response import IdsData, EventData, CODE, EventGistWithAction
+from ....models.response import IdsData, EventData, EventGistWithAction
 from ....embedding import get_embedding
+from ....utils.errors import StorageError
 
-from ....models.promise import Promise
 from ....utils.tools import event_embedding_str
 
 from ....core.storage.events import store_event_with_embedding, store_event_gist_with_embedding, \
@@ -77,7 +77,7 @@ def split_concatenated_profiles(
 
 async def handle_user_profile_db(
         user_id: str, intermediate_profile: MergeAddResult, config: Config, project_id: str | None = None
-) -> Promise[IdsData]:
+) -> IdsData:
     # Split concatenated profiles before storage
     add_list = [
         {"content": ap["content"], "attributes": ap["attributes"]}
@@ -123,7 +123,7 @@ async def add_update_delete_user_profiles(
         delete_profile_ids: list[str],
         config: Config,
         project_id: str | None = None,
-) -> Promise[IdsData]:
+) -> IdsData:
     assert len(add_profiles) == len(
         add_attributes
     ), "Length of add_profiles, add_attributes must be equal"
@@ -138,37 +138,28 @@ async def add_update_delete_user_profiles(
         add_profile_ids = []
 
         if len(add_profiles):
-            add_result = await add_user_profiles(
+            add_profile_ids = await add_user_profiles(
                 user_id, add_profiles, add_attributes, config, project_id=project_id
             )
-            if not add_result.ok():
-                return add_result
-            add_profile_ids = add_result.data()
 
         if len(update_profile_ids):
-            update_result = await update_user_profiles(
+            await update_user_profiles(
                 user_id, update_profile_ids, update_contents, update_attributes, config, project_id=project_id
             )
-            if not update_result.ok():
-                return update_result
 
         if len(delete_profile_ids):
-            delete_result = await delete_user_profiles(
+            await delete_user_profiles(
                 user_id, delete_profile_ids, config, project_id=project_id
             )
-            if not delete_result.ok():
-                return delete_result
 
-        return Promise.resolve(IdsData(ids=add_profile_ids))
+        return IdsData(ids=add_profile_ids)
 
     except Exception as e:
         TRACE_LOG.error(
             user_id,
             f"Error merging user profiles: {e}",
         )
-        return Promise.reject(
-            CODE.SERVER_PARSE_ERROR, f"Error merging user profiles: {e}"
-        )
+        raise StorageError(f"Error merging user profiles: {e}") from e
 
 
 async def handle_session_event(
@@ -178,7 +169,7 @@ async def handle_session_event(
         delta_profile_data: list[dict],
         event_tags: list | None,
         config: Config,
-) -> Promise[str]:
+) -> str:
     eid = await append_user_event(
         user_id,
         event_id,
@@ -189,10 +180,7 @@ async def handle_session_event(
         },
         config
     )
-    if not eid.ok():
-        return Promise.reject(eid.code(), eid.msg())
-    eid = eid.data()
-    return Promise.resolve(eid)
+    return eid
 
 
 async def handle_session_event_gists(
@@ -200,15 +188,15 @@ async def handle_session_event_gists(
         event_id: str,
         event_gists_with_actions: list[EventGistWithAction],
         config: Config,
-) -> Promise[None]:
+) -> None:
     """
     并发处理所有 event gist 操作
     """
     if not config.enable_event_embedding:
-        return Promise.resolve(None)
+        return
 
     if not event_gists_with_actions:
-        return Promise.resolve(None)
+        return
 
     tasks = []
     for event in event_gists_with_actions:
@@ -251,22 +239,14 @@ async def handle_session_event_gists(
             if isinstance(result, Exception):
                 errors.append(f"Task {idx} failed: {str(result)}")
                 TRACE_LOG.error(user_id, f"Event gist operation failed: {str(result)}")
-            elif hasattr(result, 'ok') and not result.ok():
-                errors.append(f"Task {idx} failed: {result.msg()}")
-                TRACE_LOG.error(user_id, f"Event gist operation failed: {result.msg()}")
 
         if errors:
-            return Promise.reject(
-                CODE.SERVER_PROCESS_ERROR,
-                f"Failed to process event gists: {'; '.join(errors)}"
-            )
-
-    return Promise.resolve(None)
+            raise StorageError(f"Failed to process event gists: {'; '.join(errors)}")
 
 
 async def append_user_event(
         user_id: str, event_id: str, event_data: dict, config: Config
-) -> Promise[str]:
+) -> str:
     try:
         validated_event = EventData(**event_data)
     except ValidationError as e:
@@ -274,27 +254,17 @@ async def append_user_event(
             user_id,
             f"Invalid event data: {str(e)}",
         )
-        return Promise.reject(
-            CODE.INTERNAL_SERVER_ERROR,
-            f"Invalid event data: {str(e)}",
-        )
+        raise StorageError(f"Invalid event data: {str(e)}") from e
 
     if config.enable_event_embedding:
         event_data_str = event_embedding_str(validated_event)
-        embedding = await get_embedding(
-            [event_data_str],
-            phase="document",
-            model=config.embedding_model,
-            config=config,
-        )
-        if not embedding.ok():
-            TRACE_LOG.error(
-                user_id,
-                f"Failed to get embeddings: {embedding.msg()}",
+        try:
+            embedding = await get_embedding(
+                [event_data_str],
+                phase="document",
+                model=config.embedding_model,
+                config=config,
             )
-            embedding = [None]
-        else:
-            embedding = embedding.data()
             embedding_dim_current = embedding.shape[-1]
             if embedding_dim_current != config.embedding_dim:
                 TRACE_LOG.error(
@@ -302,10 +272,16 @@ async def append_user_event(
                     f"Embedding dimension mismatch! Expected {config.embedding_dim}, got {embedding_dim_current}.",
                 )
                 embedding = [None]
+        except Exception as e:
+            TRACE_LOG.error(
+                user_id,
+                f"Failed to get embeddings: {str(e)}",
+            )
+            embedding = [None]
     else:
         embedding = [None]
 
-    event_result = await store_event_with_embedding(
+    event_id = await store_event_with_embedding(
         user_id,
         event_id,
         validated_event.model_dump(),
@@ -313,8 +289,4 @@ async def append_user_event(
         config=config,
     )
 
-    if not event_result.ok():
-        return event_result
-
-    event_id = event_result.data()
-    return Promise.resolve(event_id)
+    return event_id

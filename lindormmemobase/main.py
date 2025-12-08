@@ -28,33 +28,8 @@ from .core.storage.buffers import (
     flush_buffer
 )
 from .core.constants import BufferStatus
+from .utils.errors import LindormMemobaseError, ConfigurationError
 
-
-class LindormMemobaseError(Exception):
-    """Base exception class for LindormMemobase errors."""
-    pass
-
-
-class ConfigurationError(LindormMemobaseError):
-    """Raised when configuration is invalid or missing."""
-    pass
-
-
-T = TypeVar('T')
-
-def handle_promise_result(error_prefix: str):
-    """Decorator to handle Promise results and convert to exceptions."""
-    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
-        @wraps(func)
-        async def wrapper(*args, **kwargs) -> T:
-            try:
-                return await func(*args, **kwargs)
-            except LindormMemobaseError:
-                raise
-            except Exception as e:
-                raise LindormMemobaseError(f"{error_prefix}: {str(e)}") from e
-        return wrapper
-    return decorator
 
 
 class LindormMemobase:
@@ -182,19 +157,13 @@ class LindormMemobase:
             LindormMemobaseError: If extraction fails
         """
         try:
-            result = await process_blobs(
+            return await process_blobs(
                 user_id=user_id,
                 profile_config=profile_config or ProfileConfig.load_from_config(self.config),
                 blobs=blobs,
                 config=self.config,
                 project_id=project_id
             )
-            
-            if result.ok():
-                return result.data()
-            else:
-                raise LindormMemobaseError(f"Memory extraction failed: {result.msg()}")
-                
         except Exception as e:
             if isinstance(e, LindormMemobaseError):
                 raise
@@ -278,7 +247,7 @@ class LindormMemobase:
             )
         """
         try:
-            profiles_result = await get_user_profiles(
+            raw_profiles_data = await get_user_profiles(
                 user_id, 
                 self.config,
                 project_id=project_id,
@@ -287,14 +256,11 @@ class LindormMemobase:
                 time_from=time_from,
                 time_to=time_to
             )
-            if not profiles_result.ok():
-                raise LindormMemobaseError(f"Failed to get user profiles: {profiles_result.msg()}")
-                
-            raw_profiles = profiles_result.data()
-            return self._convert_profile_data_to_profiles(raw_profiles.profiles, None)
-            
+            return self._convert_profile_data_to_profiles(raw_profiles_data.profiles, None)
         except Exception as e:
-            raise LindormMemobaseError(f"Failed to get user profiles: {str(e)}")
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to get user profiles: {str(e)}") from e
     
     
     async def get_events(
@@ -321,19 +287,14 @@ class LindormMemobase:
             events = await memobase.get_events("user123", time_range_in_days=30, limit=50)
         """
         try:
-            result = await get_user_event_gists(
+            events_data = await get_user_event_gists(
                 user_id=user_id,
                 config=self.config,
                 topk=limit,
                 time_range_in_days=time_range_in_days
             )
             
-            if not result.ok():
-                raise LindormMemobaseError(f"Failed to get events: {result.msg()}")
-                
-            events_data = result.data()
             events = []
-            
             for gist in events_data.gists:
                 events.append({
                     "id": str(gist.id),
@@ -344,6 +305,8 @@ class LindormMemobase:
                 
             return events
         except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
             raise LindormMemobaseError(f"Failed to get events: {str(e)}") from e
     
     async def search_events(
@@ -374,7 +337,7 @@ class LindormMemobase:
             events = await memobase.search_events("user123", "travel plans", limit=5, similarity_threshold=0.3)
         """
         try:
-            result = await search_user_event_gists(
+            events_data = await search_user_event_gists(
                 user_id=user_id,
                 query=query,
                 config=self.config,
@@ -383,12 +346,7 @@ class LindormMemobase:
                 time_range_in_days=time_range_in_days
             )
             
-            if not result.ok():
-                raise LindormMemobaseError(f"Failed to search events: {result.msg()}")
-                
-            events_data = result.data()
             events = []
-            
             for gist in events_data.gists:
                 events.append({
                     "id": str(gist.id),
@@ -400,6 +358,8 @@ class LindormMemobase:
                 
             return events
         except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
             raise LindormMemobaseError(f"Failed to search events: {str(e)}") from e
     
     async def get_relevant_profiles(
@@ -440,7 +400,7 @@ class LindormMemobase:
             profiles = await memobase.get_relevant_profiles("user123", conversation, topics=["travel"])
         """
         try:
-            result = await get_user_profiles_data(
+            profile_section, raw_profiles = await get_user_profiles_data(
                 user_id=user_id,
                 max_profile_token_size=max_profile_token_size,
                 prefer_topics=None,
@@ -452,13 +412,10 @@ class LindormMemobase:
                 global_config=self.config
             )
             
-            if not result.ok():
-                raise LindormMemobaseError(f"Failed to get relevant profiles: {result.msg()}")
-                
-            profile_section, raw_profiles = result.data()
             return self._convert_profile_data_to_profiles(raw_profiles, None, max_profiles)
-            
         except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
             raise LindormMemobaseError(f"Failed to get relevant profiles: {str(e)}") from e
     
     async def get_conversation_context(
@@ -520,7 +477,7 @@ class LindormMemobase:
             if profile_config is None:
                 profile_config = ProfileConfig.load_from_config(self.config)
                 
-            result = await get_user_context(
+            context_data = await get_user_context(
                 user_id=user_id,
                 profile_config=profile_config,
                 global_config=self.config,
@@ -539,12 +496,10 @@ class LindormMemobase:
                 fill_window_with_events=fill_window_with_events
             )
             
-            if not result.ok():
-                raise LindormMemobaseError(f"Failed to get conversation context: {result.msg()}")
-                
-            context_data = result.data()
             return context_data.context
         except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
             raise LindormMemobaseError(f"Failed to get conversation context: {str(e)}") from e
     
     async def search_profiles(
@@ -632,7 +587,7 @@ class LindormMemobase:
             if blob_id is None:
                 blob_id = str(uuid.uuid4())
                 
-            result = await insert_blob_to_buffer(
+            await insert_blob_to_buffer(
                 user_id=user_id,
                 blob_id=blob_id,
                 blob_data=blob,
@@ -640,9 +595,6 @@ class LindormMemobase:
                 project_id=project_id
             )
             
-            if not result.ok():
-                raise LindormMemobaseError(f"Failed to add blob to buffer: {result.msg()}")
-                
             return blob_id
         except Exception as e:
             if isinstance(e, LindormMemobaseError):
@@ -677,17 +629,13 @@ class LindormMemobase:
         """
         try:
             # Check if buffer is full
-            full_result = await detect_buffer_full_or_not(
+            buffer_full_ids = await detect_buffer_full_or_not(
                 user_id=user_id,
                 blob_type=blob_type,
                 config=self.config,
                 project_id=project_id
             )
 
-            if not full_result.ok():
-                raise LindormMemobaseError(f"Failed to detect buffer full status: {full_result.msg()}")
-
-            buffer_full_ids = full_result.data()
             is_full = len(buffer_full_ids) > 0
 
             return {
@@ -765,10 +713,7 @@ class LindormMemobase:
                     project_id=project_id
                 )
                 
-            if not result.ok():
-                raise LindormMemobaseError(f"Buffer processing failed: {result.msg()}")
-                
-            return result.data()
+            return result
         except Exception as e:
             if isinstance(e, LindormMemobaseError):
                 raise

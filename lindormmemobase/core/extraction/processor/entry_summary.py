@@ -9,12 +9,11 @@ from ....core.extraction.prompts.profile_init_utils import read_out_event_tags
 from ....core.extraction.prompts.profile_init_utils import read_out_profile_config
 
 from ....llm.complete import llm_complete
-from ....utils.tools import Promise
 
 
 async def entry_chat_summary(
     blobs: list[Blob], profile_config: ProfileConfig, config: Config
-) -> Promise[str]:
+) -> str:
     assert all(b.type == BlobType.chat for b in blobs), "All blobs must be chat blobs"
     USE_LANGUAGE = profile_config.language or config.language
     from ....core.extraction.prompts.user_profile_topics import get_candidate_profile_topics

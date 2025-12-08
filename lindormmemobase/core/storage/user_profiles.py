@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 from mysql.connector import pooling
 
 from ...models.response import UserProfilesData
-from ...models.promise import Promise, CODE
+from ...utils.errors import TableStorageError
 
 # Default project_id constant
 DEFAULT_PROJECT_ID = "default"
@@ -93,7 +93,7 @@ class LindormTableStorage:
         profiles: List[str],
         attributes_list: List[Dict[str, Any]],
         project_id: Optional[str] = None
-    ) -> Promise[List[str]]:
+    ) -> List[str]:
         def _add_profiles_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
@@ -131,9 +131,9 @@ class LindormTableStorage:
         try:
             loop = asyncio.get_event_loop()
             profile_ids = await loop.run_in_executor(None, _add_profiles_sync)
-            return Promise.resolve(profile_ids)
+            return profile_ids
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to add profiles: {str(e)}")
+            raise TableStorageError(f"Failed to add profiles: {str(e)}") from e
 
     async def update_profiles(
         self,
@@ -142,7 +142,7 @@ class LindormTableStorage:
         contents: List[str],
         attributes_list: List[Optional[Dict[str, Any]]],
         project_id: Optional[str] = None
-    ) -> Promise[List[str]]:
+    ) -> List[str]:
         def _update_profiles_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
@@ -199,16 +199,16 @@ class LindormTableStorage:
         try:
             loop = asyncio.get_event_loop()
             updated_ids = await loop.run_in_executor(None, _update_profiles_sync)
-            return Promise.resolve(updated_ids)
+            return updated_ids
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to update profiles: {str(e)}")
+            raise TableStorageError(f"Failed to update profiles: {str(e)}") from e
 
     async def delete_profiles(
         self,
         user_id: str,
         profile_ids: List[str],
         project_id: Optional[str] = None
-    ) -> Promise[int]:
+    ) -> int:
         def _delete_profiles_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
@@ -265,9 +265,9 @@ class LindormTableStorage:
         try:
             loop = asyncio.get_event_loop()
             deleted_count = await loop.run_in_executor(None, _delete_profiles_sync)
-            return Promise.resolve(deleted_count)
+            return deleted_count
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to delete profiles: {str(e)}")
+            raise TableStorageError(f"Failed to delete profiles: {str(e)}") from e
 
     async def get_user_profiles(
         self,
@@ -278,7 +278,7 @@ class LindormTableStorage:
         time_from: Optional[datetime] = None,
         time_to: Optional[datetime] = None,
         limit: Optional[int] = None
-    ) -> Promise[List[Dict[str, Any]]]:
+    ) -> List[Dict[str, Any]]:
         def _get_profiles_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
@@ -346,9 +346,9 @@ class LindormTableStorage:
         try:
             loop = asyncio.get_event_loop()
             profiles = await loop.run_in_executor(None, _get_profiles_sync)
-            return Promise.resolve(profiles)
+            return profiles
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get profiles: {str(e)}")
+            raise TableStorageError(f"Failed to get profiles: {str(e)}") from e
 
 
 async def add_user_profiles(
@@ -357,7 +357,7 @@ async def add_user_profiles(
     attributes_list: List[Dict[str, Any]],
     config,
     project_id: Optional[str] = None
-) -> Promise[List[str]]:
+) -> List[str]:
     storage = get_lindorm_table_storage(config)
     return await storage.add_profiles(user_id, profiles, attributes_list, project_id)
 
@@ -368,7 +368,7 @@ async def update_user_profiles(
     attributes_list: List[Optional[Dict[str, Any]]],
     config,
     project_id: Optional[str] = None
-) -> Promise[List[str]]:
+) -> List[str]:
     storage = get_lindorm_table_storage(config)
     return await storage.update_profiles(user_id, profile_ids, contents, attributes_list, project_id)
 
@@ -377,7 +377,7 @@ async def delete_user_profiles(
     profile_ids: List[str],
     config,
     project_id: Optional[str] = None
-) -> Promise[int]:
+) -> int:
     storage = get_lindorm_table_storage(config)
     return await storage.delete_profiles(user_id, profile_ids, project_id)
 
@@ -389,12 +389,7 @@ async def get_user_profiles(
     subtopics: Optional[List[str]] = None,
     time_from: Optional[datetime] = None,
     time_to: Optional[datetime] = None
-) -> Promise[UserProfilesData]:
+) -> UserProfilesData:
     storage = get_lindorm_table_storage(config)
-    result = await storage.get_user_profiles(user_id, project_id, topics, subtopics, time_from, time_to)
-    
-    if result.ok():
-        profiles_data = result.data()
-        return Promise.resolve(UserProfilesData(profiles=profiles_data))
-    else:
-        return result
+    profiles_data = await storage.get_user_profiles(user_id, project_id, topics, subtopics, time_from, time_to)
+    return UserProfilesData(profiles=profiles_data)

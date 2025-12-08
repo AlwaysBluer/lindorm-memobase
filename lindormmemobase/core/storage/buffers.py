@@ -7,7 +7,7 @@ from mysql.connector import pooling
 from ...config import TRACE_LOG, Config
 from ..constants import BufferStatus
 from ...models.blob import BlobType, Blob
-from ...models.promise import Promise, CODE
+from ...utils.errors import BufferStorageError
 from ...models.response import ChatModalResponse
 from ...models.profile_topic import ProfileConfig
 from .user_profiles import DEFAULT_PROJECT_ID
@@ -17,7 +17,7 @@ from ..extraction.processor.process_blobs import process_blobs
 
 BlobProcessFunc = Callable[
     [str, Optional[ProfileConfig], list[Blob], Config],
-    Awaitable[Promise[ChatModalResponse]],
+    Awaitable[ChatModalResponse],
 ]
 
 BLOBS_PROCESS: dict[BlobType, BlobProcessFunc] = {BlobType.chat: process_blobs}
@@ -79,7 +79,7 @@ class LindormBufferStorage:
             )
         return self._pool
 
-    async def insert_blob(self, user_id: str, blob_id: str, blob_data: Blob, project_id: Optional[str] = None) -> Promise[None]:
+    async def insert_blob(self, user_id: str, blob_id: str, blob_data: Blob, project_id: Optional[str] = None) -> None:
         def _insert_sync():
             actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
             now = int(datetime.now().timestamp())
@@ -100,11 +100,10 @@ class LindormBufferStorage:
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _insert_sync)
-            return Promise.resolve(None)
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to insert blob: {str(e)}")
+            raise BufferStorageError(f"Failed to insert blob: {str(e)}") from e
 
-    async def get_capacity(self, user_id: str, blob_type: BlobType, project_id: Optional[str] = None) -> Promise[int]:
+    async def get_capacity(self, user_id: str, blob_type: BlobType, project_id: Optional[str] = None) -> int:
         def _get_capacity_sync():
             actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
             pool = self._get_pool()
@@ -125,11 +124,11 @@ class LindormBufferStorage:
         try:
             loop = asyncio.get_event_loop()
             count = await loop.run_in_executor(None, _get_capacity_sync)
-            return Promise.resolve(count)
+            return count
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get capacity: {str(e)}")
+            raise BufferStorageError(f"Failed to get capacity: {str(e)}") from e
 
-    async def get_ids_by_status(self, user_id: str, blob_type: BlobType, status: str = BufferStatus.idle, project_id: Optional[str] = None) -> Promise[List[str]]:
+    async def get_ids_by_status(self, user_id: str, blob_type: BlobType, status: str = BufferStatus.idle, project_id: Optional[str] = None) -> List[str]:
         def _get_ids_sync():
             actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
             pool = self._get_pool()
@@ -150,11 +149,11 @@ class LindormBufferStorage:
         try:
             loop = asyncio.get_event_loop()
             blob_ids = await loop.run_in_executor(None, _get_ids_sync)
-            return Promise.resolve(blob_ids)
+            return blob_ids
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get pending ids: {str(e)}")
+            raise BufferStorageError(f"Failed to get pending ids: {str(e)}") from e
 
-    async def check_overflow(self, user_id: str, blob_type: BlobType, max_tokens: int, project_id: Optional[str] = None) -> Promise[List[str]]:
+    async def check_overflow(self, user_id: str, blob_type: BlobType, max_tokens: int, project_id: Optional[str] = None) -> List[str]:
         def _check_overflow_sync():
             actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
             pool = self._get_pool()
@@ -184,9 +183,9 @@ class LindormBufferStorage:
         try:
             loop = asyncio.get_event_loop()
             blob_ids = await loop.run_in_executor(None, _check_overflow_sync)
-            return Promise.resolve(blob_ids)
+            return blob_ids
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to check overflow: {str(e)}")
+            raise BufferStorageError(f"Failed to check overflow: {str(e)}") from e
 
     async def _load_blobs(self, user_id: str, blob_ids: List[str], project_id: str) -> List[Tuple[Blob, str]]:
         def _load_blobs_sync():
@@ -252,9 +251,9 @@ class LindormBufferStorage:
         await loop.run_in_executor(None, _update_status_sync)
 
     async def flush(self, user_id: str, blob_type: BlobType, blob_ids: List[str],
-                    status: str = BufferStatus.idle, profile_config=None, project_id: Optional[str] = None) -> Promise[ChatModalResponse | None]:
+                    status: str = BufferStatus.idle, profile_config=None, project_id: Optional[str] = None) -> Optional[ChatModalResponse]:
         if blob_type not in BLOBS_PROCESS or not blob_ids:
-            return Promise.resolve(None)
+            return None
 
         try:
             actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
@@ -262,7 +261,7 @@ class LindormBufferStorage:
             # Load blobs
             blobs_with_ids = await self._load_blobs(user_id, blob_ids, actual_project_id)
             if not blobs_with_ids:
-                return Promise.resolve(None)
+                return None
 
             blobs = [blob for blob, _ in blobs_with_ids]
             actual_blob_ids = [blob_id for _, blob_id in blobs_with_ids]
@@ -277,14 +276,19 @@ class LindormBufferStorage:
             result = await BLOBS_PROCESS[blob_type](user_id, profile_config, blobs, self.config, actual_project_id)
 
             # Update final status
-            final_status = BufferStatus.done if result.ok() else BufferStatus.failed
-            await self._update_status(user_id, actual_blob_ids, final_status, actual_project_id)
+            await self._update_status(user_id, actual_blob_ids, BufferStatus.done, actual_project_id)
 
             return result
 
         except Exception as e:
             TRACE_LOG.error(user_id, f"Flush error: {e}")
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Flush failed: {str(e)}")
+            # Mark as failed if possible
+            if 'actual_blob_ids' in locals():
+                try:
+                    await self._update_status(user_id, actual_blob_ids, BufferStatus.failed, actual_project_id)
+                except:
+                    pass
+            raise BufferStorageError(f"Flush failed: {str(e)}") from e
 
 
 # Backward compatibility - delegate to StorageManager
@@ -300,70 +304,64 @@ def clear_buffer_storage_cache():
     StorageManager.cleanup()
 
 
-async def insert_blob_to_buffer(user_id: str, blob_id: str, blob_data: Blob, config: Config, project_id: Optional[str] = None) -> Promise[None]:
+async def insert_blob_to_buffer(user_id: str, blob_id: str, blob_data: Blob, config: Config, project_id: Optional[str] = None) -> None:
     storage = create_buffer_storage(config)
     return await storage.insert_blob(user_id, blob_id, blob_data, project_id)
 
 
-async def get_buffer_capacity(user_id: str, blob_type: BlobType, config: Config, project_id: Optional[str] = None) -> Promise[int]:
+async def get_buffer_capacity(user_id: str, blob_type: BlobType, config: Config, project_id: Optional[str] = None) -> int:
     storage = create_buffer_storage(config)
     return await storage.get_capacity(user_id, blob_type, project_id)
 
 
-async def detect_buffer_full_or_not(user_id: str, blob_type: BlobType, config: Config, project_id: Optional[str] = None) -> Promise[List[str]]:
+async def detect_buffer_full_or_not(user_id: str, blob_type: BlobType, config: Config, project_id: Optional[str] = None) -> List[str]:
     storage = create_buffer_storage(config)
     return await storage.check_overflow(user_id, blob_type, config.max_chat_blob_buffer_token_size, project_id)
 
 
 async def get_unprocessed_buffer_ids(user_id: str, blob_type: BlobType, config: Config,
-                                     select_status: str = BufferStatus.idle, project_id: Optional[str] = None) -> Promise[List[str]]:
+                                     select_status: str = BufferStatus.idle, project_id: Optional[str] = None) -> List[str]:
     storage = create_buffer_storage(config)
     return await storage.get_ids_by_status(user_id, blob_type, select_status, project_id)
 
 
 async def flush_buffer_by_ids(user_id: str, blob_type: BlobType, buffer_ids: List[str], config: Config,
-                              select_status: str = BufferStatus.idle, profile_config=None, project_id: Optional[str] = None) -> Promise[
-    ChatModalResponse | None]:
+                              select_status: str = BufferStatus.idle, profile_config=None, project_id: Optional[str] = None) -> Optional[ChatModalResponse]:
     storage = create_buffer_storage(config)
     return await storage.flush(user_id, blob_type, buffer_ids, select_status, profile_config, project_id)
 
 
-async def wait_insert_done_then_flush(user_id: str, blob_type: BlobType, config: Config, profile_config=None, project_id: Optional[str] = None) -> \
-Promise[ChatModalResponse | None]:
+async def wait_insert_done_then_flush(user_id: str, blob_type: BlobType, config: Config, profile_config=None, project_id: Optional[str] = None) -> Optional[ChatModalResponse]:
     storage = create_buffer_storage(config)
-    p = await storage.get_ids_by_status(user_id, blob_type, BufferStatus.idle, project_id)
-    if not p.ok():
-        return p
-
-    buffer_ids = p.data()
+    buffer_ids = await storage.get_ids_by_status(user_id, blob_type, BufferStatus.idle, project_id)
     if not buffer_ids:
-        return Promise.resolve(None)
+        return None
 
     return await storage.flush(user_id, blob_type, buffer_ids, BufferStatus.idle, profile_config, project_id)
 
 
-async def flush_buffer(user_id: str, blob_type: BlobType, config: Config, profile_config=None, project_id: Optional[str] = None) -> Promise[
-    ChatModalResponse | None]:
+async def flush_buffer(user_id: str, blob_type: BlobType, config: Config, profile_config=None, project_id: Optional[str] = None) -> Optional[ChatModalResponse]:
     """Flush buffer with parallel status queries for improved performance."""
     storage = create_buffer_storage(config)
 
     # Parallel execution of status queries - optimized from serial execution
     idle_result, failed_result = await asyncio.gather(
         storage.get_ids_by_status(user_id, blob_type, BufferStatus.idle, project_id),
-        storage.get_ids_by_status(user_id, blob_type, BufferStatus.failed, project_id)
+        storage.get_ids_by_status(user_id, blob_type, BufferStatus.failed, project_id),
+        return_exceptions=True
     )
 
     buffer_ids: set[str] = set()
 
-    if isinstance(idle_result, Exception) or not idle_result.ok():
-        return idle_result if not isinstance(idle_result, Exception) else Promise.fail(str(idle_result))
-    buffer_ids.update(idle_result.data())
+    if isinstance(idle_result, Exception):
+        raise BufferStorageError(f"Failed to get idle buffer ids: {str(idle_result)}") from idle_result
+    buffer_ids.update(idle_result)
 
-    if isinstance(failed_result, Exception) or not failed_result.ok():
-        return failed_result if not isinstance(failed_result, Exception) else Promise.fail(str(failed_result))
-    buffer_ids.update(failed_result.data())
+    if isinstance(failed_result, Exception):
+        raise BufferStorageError(f"Failed to get failed buffer ids: {str(failed_result)}") from failed_result
+    buffer_ids.update(failed_result)
 
     if not buffer_ids:
-        return Promise.resolve(None)
+        return None
 
     return await storage.flush(user_id, blob_type, list(buffer_ids), BufferStatus.idle, profile_config, project_id)

@@ -4,9 +4,9 @@ from ...config import Config, TRACE_LOG
 from ..extraction.prompts import pick_related_profiles as pick_prompt
 from ...llm.complete import llm_complete
 from ...models.blob import OpenAICompatibleMessage
-from ...models.response import UserProfilesData, CODE
-from ...models.promise import Promise
+from ...models.response import UserProfilesData
 from ...utils.tools import get_encoded_tokens, truncate_string, find_list_int_or_none
+from ...utils.errors import SearchError
 
 from ..storage.user_profiles import get_user_profiles
 
@@ -28,9 +28,9 @@ async def truncate_profiles(
         only_topics: list[str] = None,
         max_subtopic_size: int = None,
         topic_limits: dict[str, int] = None,
-) -> Promise[UserProfilesData]:
+) -> UserProfilesData:
     if not len(profiles.profiles):
-        return Promise.resolve(profiles)
+        return profiles
     profiles.profiles.sort(key=lambda p: p.updated_at, reverse=True)
     if prefer_topics:
         prefer_topics = [t.strip() for t in prefer_topics]
@@ -82,7 +82,7 @@ async def truncate_profiles(
                 break
             use_index = max_i
         profiles.profiles = profiles.profiles[: use_index + 1]
-    return Promise.resolve(profiles)
+    return profiles
 
 
 async def get_user_profiles_data(
@@ -95,24 +95,24 @@ async def get_user_profiles_data(
         chats: list[OpenAICompatibleMessage],
         full_profile_and_only_search_event: bool,
         global_config: Config,
-) -> Promise[tuple[str, list]]:
+) -> tuple[str, list]:
     """Retrieve and process user profiles."""
-    p = await get_user_profiles(user_id, global_config)
-    if not p.ok():
-        return p
-    total_profiles = p.data()
+    total_profiles = await get_user_profiles(user_id, global_config)
 
     if max_profile_token_size > 0:
         if chats and (not full_profile_and_only_search_event):
-            p = await filter_profiles_with_chats(
-                user_id,
-                total_profiles,
-                chats,
-                global_config,
-                only_topics=only_topics,
-            )
-            if p.ok():
-                total_profiles.profiles = p.data()["profiles"]
+            try:
+                filter_result = await filter_profiles_with_chats(
+                    user_id,
+                    total_profiles,
+                    chats,
+                    global_config,
+                    only_topics=only_topics,
+                )
+                total_profiles.profiles = filter_result["profiles"]
+            except Exception as e:
+                # If filtering fails, continue with all profiles
+                TRACE_LOG.warning(user_id, f"Profile filtering failed: {str(e)}")
 
         user_profiles = total_profiles
         use_profiles = await truncate_profiles(
@@ -123,9 +123,7 @@ async def get_user_profiles_data(
             max_subtopic_size=max_subtopic_size,
             topic_limits=topic_limits,
         )
-        if not use_profiles.ok():
-            return use_profiles
-        use_profiles = use_profiles.data().profiles
+        use_profiles = use_profiles.profiles
 
         profile_section = "- " + "\n- ".join(
             [
@@ -137,7 +135,7 @@ async def get_user_profiles_data(
         profile_section = ""
         use_profiles = []
 
-    return Promise.resolve((profile_section, use_profiles))
+    return (profile_section, use_profiles)
 
 
 async def filter_profiles_with_chats(
@@ -149,10 +147,10 @@ async def filter_profiles_with_chats(
         max_value_token_size: int = 10,
         max_previous_chats: int = 4,
         max_filter_num: int = 10,
-) -> Promise[dict]:
+) -> dict:
     """Filter profiles with chats"""
     if not len(chats) or not len(profiles.profiles):
-        return Promise.reject(CODE.BAD_REQUEST, "No chats or profiles to filter")
+        raise SearchError("No chats or profiles to filter")
     chats = chats[-(max_previous_chats + 1):]
     if only_topics:
         only_topics = [t.strip() for t in only_topics]
@@ -172,34 +170,33 @@ async def filter_profiles_with_chats(
     topics_index = sorted(topics_index, key=lambda x: (x["topic"], x["sub_topic"]))
     system_prompt = pick_prompt.get_prompt(max_num=max_filter_num)
     input_prompt = pick_prompt.get_input(chats, topics_index)
-    r = await llm_complete(
-        input_prompt,
-        system_prompt=system_prompt,
-        temperature=0.2,  # precise
-        model=global_config.summary_llm_model,
-        config=global_config,
-        **pick_prompt.get_kwargs(),
-    )
-    if not r.ok():
+    try:
+        r = await llm_complete(
+            input_prompt,
+            system_prompt=system_prompt,
+            temperature=0.2,  # precise
+            model=global_config.summary_llm_model,
+            config=global_config,
+            **pick_prompt.get_kwargs(),
+        )
+        found_ids = find_list_int_or_none(r)
+        reason = try_json_reason(r)
+        if found_ids is None:
+            TRACE_LOG.error(
+                user_id,
+                f"Failed to pick related profiles: {r}",
+            )
+            raise SearchError("Failed to pick related profiles")
+        ids = [i for i in found_ids if i < len(topics_index)]
+        profiles = [profiles.profiles[topics_index[i]["index"]] for i in ids]
+        TRACE_LOG.info(
+            user_id,
+            f"Filter profiles with chats: {reason}, {found_ids}",
+        )
+        return {"reason": reason, "profiles": profiles}
+    except Exception as e:
         TRACE_LOG.error(
             user_id,
-            f"Failed to pick related profiles: {r.msg()}",
+            f"Failed to pick related profiles: {str(e)}",
         )
-        return r
-    found_ids = find_list_int_or_none(r.data())
-    reason = try_json_reason(r.data())
-    if found_ids is None:
-        TRACE_LOG.error(
-            user_id,
-            f"Failed to pick related profiles: {r.data()}",
-        )
-        return Promise.reject(
-            CODE.INTERNAL_SERVER_ERROR, "Failed to pick related profiles"
-        )
-    ids = [i for i in found_ids if i < len(topics_index)]
-    profiles = [profiles.profiles[topics_index[i]["index"]] for i in ids]
-    TRACE_LOG.info(
-        user_id,
-        f"Filter profiles with chats: {reason}, {found_ids}",
-    )
-    return Promise.resolve({"reason": reason, "profiles": profiles})
+        raise SearchError(f"Failed to pick related profiles: {str(e)}") from e

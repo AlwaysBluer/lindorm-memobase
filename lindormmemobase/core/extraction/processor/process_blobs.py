@@ -5,11 +5,11 @@ import numpy
 
 from ....embedding import get_embedding
 from ....utils.tools import get_blob_str, get_encoded_tokens
-from ....models.promise import Promise
+from ....utils.errors import ExtractionError
 
 from ....config import Config, TRACE_LOG
 from ....models.blob import Blob
-from ....models.response import ChatModalResponse, CODE, EventProcessResult, EventGist
+from ....models.response import ChatModalResponse, EventProcessResult, EventGist
 from ....models.types import MergeAddResult
 from ....models.profile_topic import ProfileConfig
 
@@ -39,34 +39,28 @@ def truncate_chat_blobs(
 
 async def process_blobs(
         user_id: str, profile_config: ProfileConfig, blobs: list[Blob], config: Config, project_id: str | None = None
-) -> Promise[ChatModalResponse]:
+) -> ChatModalResponse:
     # 1. Extract patch profiles
     blobs = truncate_chat_blobs(blobs, config.max_chat_blob_buffer_process_token_size)
     if len(blobs) == 0:
-        return Promise.reject(
-            CODE.SERVER_PARSE_ERROR, "No blobs to process after truncating"
-        )
+        raise ExtractionError("No blobs to process after truncating")
 
-    p = await entry_chat_summary(blobs, profile_config, config)
-    if not p.ok():
-        return p
-    user_memo_str = p.data()
+    user_memo_str = await entry_chat_summary(blobs, profile_config, config)
 
     event_gists_texts = user_memo_str.split("\n")
     event_gists_texts = [l.strip() for l in event_gists_texts if l.strip().startswith("-")]
     TRACE_LOG.info(user_id, f"Processing {len(event_gists_texts)} event gists")
     if config.enable_event_embedding and len(event_gists_texts) > 0:
-        p_embedding = await get_embedding(
-            event_gists_texts,
-            phase="document",
-            model=config.embedding_model,
-            config=config,
-        )
-        if not p_embedding.ok():
-            TRACE_LOG.error(user_id, f"Failed to get embeddings: {p_embedding.msg()}")
+        try:
+            event_gists_embeddings = await get_embedding(
+                event_gists_texts,
+                phase="document",
+                model=config.embedding_model,
+                config=config,
+            )
+        except Exception as e:
+            TRACE_LOG.error(user_id, f"Failed to get embeddings: {str(e)}")
             event_gists_embeddings = [None] * len(event_gists_texts)
-        else:
-            event_gists_embeddings = p_embedding.data()
     else:
         event_gists_embeddings = [None] * len(event_gists_texts)
 
@@ -78,19 +72,16 @@ async def process_blobs(
     processing_results = await asyncio.gather(
         process_profile_res(user_id, user_memo_str, profile_config, config),
         process_event_res(user_id, user_memo_str, event_gists, profile_config, config),
+        return_exceptions=True
     )
 
-    profile_results: Promise = processing_results[0]
-    event_results: Promise = processing_results[1]
+    if isinstance(processing_results[0], Exception):
+        raise ExtractionError(f"Failed to process profile: {str(processing_results[0])}") from processing_results[0]
+    if isinstance(processing_results[1], Exception):
+        raise ExtractionError(f"Failed to process event: {str(processing_results[1])}") from processing_results[1]
 
-    if not profile_results.ok() or not event_results.ok():
-        return Promise.reject(
-            CODE.SERVER_PARSE_ERROR,
-            f"Failed to process profile or event: {profile_results.msg()}, {event_results.msg()}",
-        )
-
-    intermediate_profile, delta_profile_data = profile_results.data()
-    event_data: EventProcessResult = event_results.data()
+    intermediate_profile, delta_profile_data = processing_results[0]
+    event_data: EventProcessResult = processing_results[1]
 
     # Handle session events and user profiles (only skip if test_skip_persist is True)
     event_id = str(uuid.uuid4())
@@ -116,29 +107,19 @@ async def process_blobs(
     errors = []
     for idx, result in enumerate(persistence_results):
         operation_name = ["session_event", "event_gists", "user_profile"][idx]
-
         if isinstance(result, Exception):
             error_msg = f"{operation_name} failed: {str(result)}"
             TRACE_LOG.error(user_id, error_msg)
             errors.append(error_msg)
-        elif hasattr(result, 'ok') and not result.ok():
-            error_msg = f"{operation_name} failed: {result.msg()}"
-            TRACE_LOG.error(user_id, error_msg)
-            errors.append(error_msg)
 
     if errors:
-        return Promise.reject(
-            CODE.SERVER_PROCESS_ERROR,
-            f"Persistence errors: {'; '.join(errors)}"
-        )
+        raise ExtractionError(f"Persistence errors: {'; '.join(errors)}")
 
-    return Promise.resolve(
-        ChatModalResponse(
-            event_id=event_id,
-            add_profiles=[str(uuid.uuid4()) for _ in intermediate_profile["add"]],
-            update_profiles=[str(up["profile_id"]) for up in intermediate_profile["update"]],
-            delete_profiles=[str(pid) for pid in intermediate_profile["delete"]],
-        )
+    return ChatModalResponse(
+        event_id=event_id,
+        add_profiles=[str(uuid.uuid4()) for _ in intermediate_profile["add"]],
+        update_profiles=[str(up["profile_id"]) for up in intermediate_profile["update"]],
+        delete_profiles=[str(pid) for pid in intermediate_profile["delete"]],
     )
 
 
@@ -147,14 +128,11 @@ async def process_profile_res(
         user_memo_str: str,
         project_profiles: ProfileConfig,
         config: Config,
-) -> Promise[tuple[MergeAddResult, list[dict]]]:
-    p = await extract_topics(user_id, user_memo_str, project_profiles, config)
-    if not p.ok():
-        return p
-    extracted_data = p.data()
+) -> tuple[MergeAddResult, list[dict]]:
+    extracted_data = await extract_topics(user_id, user_memo_str, project_profiles, config)
 
     # 2. Merge it to thw whole profile
-    p = await merge_or_valid_new_profile(
+    intermediate_profile = await merge_or_valid_new_profile(
         user_id=user_id,
         fact_contents=extracted_data["fact_contents"],
         fact_attributes=extracted_data["fact_attributes"],
@@ -163,35 +141,28 @@ async def process_profile_res(
         total_profiles=extracted_data["total_profiles"],
         config=config,
     )
-    if not p.ok():
-        return p
 
-    intermediate_profile = p.data()
     delta_profile_data = [
         p for p in (intermediate_profile["add"] + intermediate_profile["update_delta"])
     ]
 
     # 3. Check if we need to organize profiles
-    p = await organize_profiles(
+    await organize_profiles(
         user_id=user_id,
         profile_options=intermediate_profile,
         config=project_profiles,
         main_config=config
     )
-    if not p.ok():
-        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to organize profiles: {p.msg()}")
 
     # 4. Re-summary profiles if any slot is too big
-    p = await re_summary(
+    await re_summary(
         user_id=user_id,
         add_profile=intermediate_profile["add"],
         update_profile=intermediate_profile["update"],
         config=config,
     )
-    if not p.ok():
-        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to re-summary profiles: {p.msg()}")
 
-    return Promise.resolve((intermediate_profile, delta_profile_data))
+    return (intermediate_profile, delta_profile_data)
 
 
 # async def process_event_res(
@@ -213,24 +184,20 @@ async def process_event_res(
         event_gists: list[EventGist],
         profile_config: ProfileConfig,
         config: Config,
-) -> Promise[list | None]:
+) -> EventProcessResult:
     # event index
-    p = await tag_event(profile_config, memo_str, config)
-    if not p.ok():
-        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to tag event: {p.msg()}")
-    event_tags = p.data()
+    event_tags = await tag_event(profile_config, memo_str, config)
     if len(event_gists) == 0:
-        return Promise.resolve(EventProcessResult(
+        return EventProcessResult(
             event_tags=event_tags,
             event_gists_with_actions=[]
-        ))
+        )
 
-    p = await handle_merge_or_validate_new_event_gists(user_id, event_gists, profile_config, config)
-    if not p.ok():
-        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to merge or validate new events: {p.msg()}")
+    returned_events_with_actions = await handle_merge_or_validate_new_event_gists(
+        user_id, event_gists, profile_config, config
+    )
 
-    returned_events_with_actions = p.data()
-    return Promise.resolve(EventProcessResult(
+    return EventProcessResult(
         event_tags=event_tags,
         event_gists_with_actions=returned_events_with_actions
-    ))
+    )

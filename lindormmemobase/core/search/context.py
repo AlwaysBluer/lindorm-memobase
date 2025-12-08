@@ -1,13 +1,11 @@
 from functools import partial
 
 from ...config import Config, TRACE_LOG
-from ...models.response import CODE
 from ...models.blob import OpenAICompatibleMessage
 from ...models.response import ContextData
 from ...models.profile_topic import ProfileConfig
 from ..extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
-
-from ...models.promise import Promise
+from ...utils.errors import SearchError
 from ...utils.tools import get_encoded_tokens
 
 from .events import get_user_event_gists_data, truncate_event_gists
@@ -39,7 +37,7 @@ async def get_user_context(
     customize_context_prompt: str = None,
     full_profile_and_only_search_event: bool = False,
     fill_window_with_events: bool = False,
-) -> Promise[ContextData]:
+) -> ContextData:
     import asyncio
 
     assert 0 < profile_event_ratio <= 1, "profile_event_ratio must be between 0 and 1"
@@ -78,21 +76,13 @@ async def get_user_context(
 
     # Handle profile result
     if isinstance(profile_result, Exception):
-        return Promise.reject(
-            CODE.SERVER_PARSE_ERROR, f"Profile retrieval failed: {str(profile_result)}"
-        )
-    if not profile_result.ok():
-        return profile_result
-    profile_section, use_profiles = profile_result.data()
+        raise SearchError(f"Profile retrieval failed: {str(profile_result)}") from profile_result
+    profile_section, use_profiles = profile_result
 
     # Handle event result
     if isinstance(event_gist_result, Exception):
-        return Promise.reject(
-            CODE.SERVER_PARSE_ERROR, f"Event retrieval failed: {str(event_gist_result)}"
-        )
-    if not event_gist_result.ok():
-        return event_gist_result
-    user_event_gists = event_gist_result.data()
+        raise SearchError(f"Event retrieval failed: {str(event_gist_result)}") from event_gist_result
+    user_event_gists = event_gist_result
 
     # Calculate token sizes and truncate events if needed
     profile_section_tokens = len(get_encoded_tokens(profile_section))
@@ -105,15 +95,10 @@ async def get_user_context(
         )
 
     if max_event_token_size <= 0:
-        return Promise.resolve(
-            ContextData(context=context_prompt_func(profile_section, ""))
-        )
+        return ContextData(context=context_prompt_func(profile_section, ""))
 
     # Truncate events based on calculated token size
-    p = await truncate_event_gists(user_event_gists, max_event_token_size)
-    if not p.ok():
-        return p
-    user_event_gists = p.data()
+    user_event_gists = await truncate_event_gists(user_event_gists, max_event_token_size)
 
     event_section = "\n".join([ed.gist_data.content for ed in user_event_gists.gists])
     event_section_tokens = len(get_encoded_tokens(event_section))
@@ -123,6 +108,4 @@ async def get_user_context(
         f"Retrieved {len(use_profiles)} profiles({profile_section_tokens} tokens), {len(user_event_gists.gists)} event gists({event_section_tokens} tokens)",
     )
 
-    return Promise.resolve(
-        ContextData(context=context_prompt_func(profile_section, event_section))
-    )
+    return ContextData(context=context_prompt_func(profile_section, event_section))

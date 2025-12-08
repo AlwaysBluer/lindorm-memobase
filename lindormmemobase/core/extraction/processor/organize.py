@@ -13,9 +13,7 @@ from ....core.extraction.prompts.utils import (
 )
 
 from ....llm.complete import llm_complete
-
-
-from ....models.promise import Promise
+from ....utils.errors import ExtractionError
 
 
 async def organize_profiles(
@@ -23,7 +21,7 @@ async def organize_profiles(
     profile_options: MergeAddResult,
     config: ProfileConfig,
     main_config,
-) -> Promise[None]:
+) -> None:
     profiles = profile_options["before_profiles"]
     USE_LANGUAGE = config.language or main_config.language
     topic_groups = defaultdict(list)
@@ -36,28 +34,30 @@ async def organize_profiles(
             need_to_organize_topics[topic] = group
 
     if not len(need_to_organize_topics):
-        return Promise.resolve(None)
-    ps = await asyncio.gather(
+        return
+    results = await asyncio.gather(
         *[
             organize_profiles_by_topic(user_id, group, USE_LANGUAGE, main_config)
             for group in need_to_organize_topics.values()
-        ]
+        ],
+        return_exceptions=True
     )
-    if not all([p.ok() for p in ps]):
-        errmsg = "\n".join([p.msg() for p in ps if not p.ok()])
-        return Promise.reject(f"Failed to organize profiles: {errmsg}")
+    errors = [r for r in results if isinstance(r, Exception)]
+    if errors:
+        errmsg = "\n".join([str(e) for e in errors])
+        raise ExtractionError(f"Failed to organize profiles: {errmsg}") from errors[0]
 
     delete_profile_ids = []
     for gs in need_to_organize_topics.values():
         delete_profile_ids.extend([p.id for p in gs])
     new_profiles = []
-    for p in ps:
-        new_profiles.extend(p.data())
+    for r in results:
+        if not isinstance(r, Exception):
+            new_profiles.extend(r)
 
     profile_options["add"].extend(new_profiles)
     profile_options["add"] = deduplicate_profiles(profile_options["add"])
     profile_options["delete"].extend(delete_profile_ids)
-    return Promise.resolve(None)
 
 
 async def organize_profiles_by_topic(
@@ -65,7 +65,7 @@ async def organize_profiles_by_topic(
     profiles: list[ProfileData],
     USE_LANGUAGE: str,  # profiles in the same topics
     main_config,
-) -> Promise[list[AddProfile]]:
+) -> list[AddProfile]:
     assert (
         len(profiles) > main_config.max_profile_subtopics
     ), f"Unknown Error,{len(profiles)} is not greater than max_profile_subtopics: {main_config.max_profile_subtopics}"
@@ -91,36 +91,36 @@ async def organize_profiles_by_topic(
     llm_prompt = f"""topic: {topic}
 {llm_inputs}
 """
-    p = await llm_complete(
-        llm_prompt,
-        PROMPTS[USE_LANGUAGE]["organize"].get_prompt(
-            main_config.max_profile_subtopics // 2 + 1, suggest_subtopics
-        ),
-        temperature=0.2,  # precise
-        config=main_config,
-        **PROMPTS[USE_LANGUAGE]["organize"].get_kwargs(),
-    )
-    if not p.ok():
-        return p
-    results = p.data()
-    subtopics = parse_string_into_subtopics(results)
-    reorganized_profiles: list[AddProfile] = [
-        {
-            "content": sp["memo"],
-            "attributes": {
-                ConstantsTable.topic: topic,
-                ConstantsTable.sub_topic: sp[ConstantsTable.sub_topic],
-            },
-        }
-        for sp in subtopics
-    ]
-    if len(reorganized_profiles) == 0:
-        return Promise.reject(
-            "Failed to organize profiles, left profiles is 0 so maybe it's the LLM error"
+    try:
+        results = await llm_complete(
+            llm_prompt,
+            PROMPTS[USE_LANGUAGE]["organize"].get_prompt(
+                main_config.max_profile_subtopics // 2 + 1, suggest_subtopics
+            ),
+            temperature=0.2,  # precise
+            config=main_config,
+            **PROMPTS[USE_LANGUAGE]["organize"].get_kwargs(),
         )
-    # forcing the number of subtopics to be less than max_profile_subtopics // 2 + 1
-    reorganized_profiles = reorganized_profiles[: main_config.max_profile_subtopics // 2 + 1]
-    return Promise.resolve(reorganized_profiles)
+        subtopics = parse_string_into_subtopics(results)
+        reorganized_profiles: list[AddProfile] = [
+            {
+                "content": sp["memo"],
+                "attributes": {
+                    ConstantsTable.topic: topic,
+                    ConstantsTable.sub_topic: sp[ConstantsTable.sub_topic],
+                },
+            }
+            for sp in subtopics
+        ]
+        if len(reorganized_profiles) == 0:
+            raise ExtractionError(
+                "Failed to organize profiles, left profiles is 0 so maybe it's the LLM error"
+            )
+        # forcing the number of subtopics to be less than max_profile_subtopics // 2 + 1
+        reorganized_profiles = reorganized_profiles[: main_config.max_profile_subtopics // 2 + 1]
+        return reorganized_profiles
+    except Exception as e:
+        raise ExtractionError(f"Failed to organize profiles by topic: {str(e)}") from e
 
 
 def deduplicate_profiles(profiles: list[AddProfile]) -> list[AddProfile]:

@@ -9,7 +9,7 @@ from ..config import ENCODER, LOG
 from ..models.profile_topic import ProfileConfig
 from ..models.blob import Blob, BlobType, ChatBlob, DocBlob, OpenAICompatibleMessage
 from ..models.response import UserEventData, EventData
-from ..models.promise import Promise, CODE
+from .errors import ValidationError as LindormValidationError
 
 LIST_INT_REGEX = re.compile(r"\[\s*(?:\d+(?:\s*,\s*\d+)*\s*)?\]")
 
@@ -135,19 +135,18 @@ def seconds_from_now(dt: datetime):
 def attribute_unify(attr: str):
     return attr.lower().strip().replace(" ", "_")
 
-def is_valid_profile_config(profile_config: str | None) -> Promise[None]:
+def is_valid_profile_config(profile_config: str | None) -> None:
     if profile_config is None:
-        return Promise.resolve(None)
+        return
     # check if the profile config is valid yaml
     try:
         if len(profile_config) > 65535:
-            return Promise.reject(CODE.BAD_REQUEST, "Profile config is too long")
+            raise LindormValidationError("Profile config is too long")
         ProfileConfig.load_config_string(profile_config)
-        return Promise.resolve(None)
     except yaml.YAMLError as e:
-        return Promise.reject(CODE.BAD_REQUEST, f"Invalid profile config: {e}")
+        raise LindormValidationError(f"Invalid profile config: {e}") from e
     except ValidationError as e:
-        return Promise.reject(CODE.BAD_REQUEST, f"Invalid profile config: {e}")
+        raise LindormValidationError(f"Invalid profile config: {e}") from e
 
 def find_list_int_or_none(content: str) -> list[int] | None:
     result = LIST_INT_REGEX.findall(content)

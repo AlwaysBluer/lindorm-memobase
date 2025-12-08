@@ -12,7 +12,7 @@ from ....core.extraction.prompts.router import PROMPTS, UpdateResponse
 from ....embedding import get_embedding
 from ....models.profile_topic import UserProfileTopic, SubTopic, ProfileConfig
 from ....llm.complete import llm_complete
-from ....models.promise import Promise, CODE
+from ....utils.errors import ExtractionError
 from ....models.response import ProfileData, UserEventGistsData, EventGist, EventGistWithAction
 from ....models.types import MergeAddResult
 from ....utils.text_utils import remove_code_blocks
@@ -26,7 +26,7 @@ async def merge_or_valid_new_profile(
         profile_config: ProfileConfig,
         total_profiles: list[UserProfileTopic],
         config,
-) -> Promise[MergeAddResult]:
+) -> MergeAddResult:
     assert len(fact_contents) == len(
         fact_attributes
     ), "Length of fact_contents and fact_attributes must be equal"
@@ -60,7 +60,7 @@ async def merge_or_valid_new_profile(
         )
         tasks.append(task)
     await asyncio.gather(*tasks)
-    return Promise.resolve(profile_session_results)
+    return profile_session_results
 
 
 async def handle_profile_merge_or_valid(
@@ -72,7 +72,7 @@ async def handle_profile_merge_or_valid(
         profile_define_maps: dict[tuple[str, str], SubTopic],
         session_merge_validate_results: MergeAddResult,
         config,  # System config
-) -> Promise[None]:
+) -> None:
     KEY = (
         profile_attributes[ConstantsTable.topic],
         profile_attributes[ConstantsTable.sub_topic],
@@ -101,113 +101,108 @@ async def handle_profile_merge_or_valid(
                 "attributes": profile_attributes,
             }
         )
-        return Promise.resolve(None)
-    r = await llm_complete(
-        PROMPTS[USE_LANGUAGE]["merge"].get_input(
-            KEY[0],
-            KEY[1],
-            runtime_profile.content if runtime_profile else None,
-            profile_content,
-            update_instruction=define_sub_topic.update_description,  # maybe none
-            topic_description=define_sub_topic.description,  # maybe none
-        ),
-        system_prompt=PROMPTS[USE_LANGUAGE]["merge"].get_prompt(),
-        temperature=0.2,
-        config=config,
-        **PROMPTS[USE_LANGUAGE]["merge"].get_kwargs(),
-    )
-    # print(KEY, profile_content)
-    # print(r.data())
-    if not r.ok():
-        TRACE_LOG.warning(
-            user_id,
-            f"Failed to merge profiles: {r.msg()}",
+        return
+    try:
+        r = await llm_complete(
+            PROMPTS[USE_LANGUAGE]["merge"].get_input(
+                KEY[0],
+                KEY[1],
+                runtime_profile.content if runtime_profile else None,
+                profile_content,
+                update_instruction=define_sub_topic.update_description,  # maybe none
+                topic_description=define_sub_topic.description,  # maybe none
+            ),
+            system_prompt=PROMPTS[USE_LANGUAGE]["merge"].get_prompt(),
+            temperature=0.2,
+            config=config,
+            **PROMPTS[USE_LANGUAGE]["merge"].get_kwargs(),
         )
-        return Promise.reject(r.code(), r.msg())
-    update_response: UpdateResponse | None = parse_string_into_merge_action(r.data())
-    if update_response is None:
-        TRACE_LOG.warning(
-            user_id,
-            f"Failed to parse merge action: {r.data()}",
-        )
-        return Promise.reject(
-            CODE.SERVER_PARSE_ERROR, "Failed to parse merge action of Memobase"
-        )
-    if update_response["action"] == "UPDATE":
-        if runtime_profile is None:
-            session_merge_validate_results["add"].append(
-                {
-                    "content": update_response["memo"],
-                    "attributes": profile_attributes,
-                }
-            )
-        else:
-            if ConstantsTable.update_hits not in runtime_profile.attributes:
-                runtime_profile.attributes[ConstantsTable.update_hits] = 1
-            else:
-                runtime_profile.attributes[ConstantsTable.update_hits] += 1
-            session_merge_validate_results["update"].append(
-                {
-                    "profile_id": runtime_profile.id,
-                    "content": update_response["memo"],
-                    "attributes": runtime_profile.attributes,
-                }
-            )
-            session_merge_validate_results["update_delta"].append(
-                {
-                    "content": profile_content,
-                    "attributes": profile_attributes,
-                }
-            )
-    elif update_response["action"] == "APPEND":
-        if runtime_profile is None:
-            session_merge_validate_results["add"].append(
-                {
-                    "content": profile_content,
-                    "attributes": profile_attributes,
-                }
-            )
-        else:
-            if ConstantsTable.update_hits not in runtime_profile.attributes:
-                runtime_profile.attributes[ConstantsTable.update_hits] = 1
-            else:
-                runtime_profile.attributes[ConstantsTable.update_hits] += 1
-            # Use ;; separator to mark for later splitting
-            session_merge_validate_results["update"].append(
-                {
-                    "profile_id": runtime_profile.id,
-                    "content": f"{runtime_profile.content};; {profile_content}",
-                    "attributes": runtime_profile.attributes,
-                }
-            )
-            session_merge_validate_results["update_delta"].append(
-                {
-                    "content": profile_content,
-                    "attributes": profile_attributes,
-                }
-            )
-    elif update_response["action"] == "ABORT":
-        if runtime_profile is None:
-            TRACE_LOG.info(
+        # print(KEY, profile_content)
+        # print(r)
+        update_response: UpdateResponse | None = parse_string_into_merge_action(r)
+        if update_response is None:
+            TRACE_LOG.warning(
                 user_id,
-                f"Invalid profile: {KEY}::{profile_content}, abort it\n<raw_response>\n{r.data()}\n</raw_response>",
+                f"Failed to parse merge action: {r}",
             )
+            raise ExtractionError("Failed to parse merge action of Memobase")
+        if update_response["action"] == "UPDATE":
+            if runtime_profile is None:
+                session_merge_validate_results["add"].append(
+                    {
+                        "content": update_response["memo"],
+                        "attributes": profile_attributes,
+                    }
+                )
+            else:
+                if ConstantsTable.update_hits not in runtime_profile.attributes:
+                    runtime_profile.attributes[ConstantsTable.update_hits] = 1
+                else:
+                    runtime_profile.attributes[ConstantsTable.update_hits] += 1
+                session_merge_validate_results["update"].append(
+                    {
+                        "profile_id": runtime_profile.id,
+                        "content": update_response["memo"],
+                        "attributes": runtime_profile.attributes,
+                    }
+                )
+                session_merge_validate_results["update_delta"].append(
+                    {
+                        "content": profile_content,
+                        "attributes": profile_attributes,
+                    }
+                )
+        elif update_response["action"] == "APPEND":
+            if runtime_profile is None:
+                session_merge_validate_results["add"].append(
+                    {
+                        "content": profile_content,
+                        "attributes": profile_attributes,
+                    }
+                )
+            else:
+                if ConstantsTable.update_hits not in runtime_profile.attributes:
+                    runtime_profile.attributes[ConstantsTable.update_hits] = 1
+                else:
+                    runtime_profile.attributes[ConstantsTable.update_hits] += 1
+                # Use ;; separator to mark for later splitting
+                session_merge_validate_results["update"].append(
+                    {
+                        "profile_id": runtime_profile.id,
+                        "content": f"{runtime_profile.content};; {profile_content}",
+                        "attributes": runtime_profile.attributes,
+                    }
+                )
+                session_merge_validate_results["update_delta"].append(
+                    {
+                        "content": profile_content,
+                        "attributes": profile_attributes,
+                    }
+                )
+        elif update_response["action"] == "ABORT":
+            if runtime_profile is None:
+                TRACE_LOG.info(
+                    user_id,
+                    f"Invalid profile: {KEY}::{profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
+                )
+            else:
+                TRACE_LOG.info(
+                    user_id,
+                    f"Invalid merge: {runtime_profile.attributes}, {profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
+                )
+                # session_merge_validate_results["delete"].append(runtime_profile.id)
         else:
-            TRACE_LOG.info(
+            TRACE_LOG.warning(
                 user_id,
-                f"Invalid merge: {runtime_profile.attributes}, {profile_content}, abort it\n<raw_response>\n{r.data()}\n</raw_response>",
+                f"Invalid action: {update_response['action']}",
             )
-            # session_merge_validate_results["delete"].append(runtime_profile.id)
-        return Promise.resolve(None)
-    else:
+            raise ExtractionError("Failed to parse merge action of Memobase")
+    except Exception as e:
         TRACE_LOG.warning(
             user_id,
-            f"Invalid action: {update_response['action']}",
+            f"Failed to merge profiles: {str(e)}",
         )
-        return Promise.reject(
-            CODE.SERVER_PARSE_ERROR, "Failed to parse merge action of Memobase"
-        )
-    return Promise.resolve(None)
+        raise ExtractionError(f"Failed to merge profiles: {str(e)}") from e
 
 
 async def handle_merge_or_validate_new_event_gists(
@@ -215,12 +210,12 @@ async def handle_merge_or_validate_new_event_gists(
         event_gists: list[EventGist],
         profile_config: ProfileConfig,
         config,
-) -> Promise[list]:
+) -> list:
     """
     对单个query，由LLM进行判断增加，删除，改造，并返回处理结果
     """
     if len(event_gists) == 0:
-        return Promise.resolve([])
+        return []
 
     USE_LANGUAGE = profile_config.language or config.language
 
@@ -248,7 +243,7 @@ async def handle_merge_or_validate_new_event_gists(
         else:
             TRACE_LOG.warning(user_id, f"Unexpected result type: {type(result)}")
 
-    return Promise.resolve(all_results)
+    return all_results
 
 
 async def process_single_event_gist(
@@ -269,25 +264,24 @@ async def process_single_event_gist(
         )]
 
     # 2. 搜索相似的已有事件
-    r = await search_user_event_gists_with_embedding(
-        user_id=user_id,
-        query=eg.text,
-        query_vector=eg.embedding.tolist(),
-        config=config,
-        topk=5,
-        similarity_threshold=0.6,
-        time_range_in_days=100
-    )
-
-    if not r.ok():
-        TRACE_LOG.error(user_id, f"Failed to search event gists: {r.msg()}")
+    try:
+        r = await search_user_event_gists_with_embedding(
+            user_id=user_id,
+            query=eg.text,
+            query_vector=eg.embedding.tolist(),
+            config=config,
+            topk=5,
+            similarity_threshold=0.6,
+            time_range_in_days=100
+        )
+        existing_events = r
+    except Exception as e:
+        TRACE_LOG.error(user_id, f"Failed to search event gists: {str(e)}")
         return [EventGistWithAction(
             text=eg.text,
             embedding=eg.embedding,
             action="ABORT",
         )]
-
-    existing_events = r.data()
 
     if not existing_events:
         return [EventGistWithAction(
@@ -310,19 +304,19 @@ async def process_single_event_gist(
         retrieved_old_events[idx]["id"] = str(idx)
 
     # 5. 调用 LLM
-    r = await llm_complete(
-        PROMPTS[language]["merge_events"].get_input(
-            eg.text,
-            retrieved_old_events
-        ),
-        system_prompt=PROMPTS[language]["merge_events"].get_prompt(),
-        temperature=0.2,
-        config=config,
-        **PROMPTS[language]["merge_events"].get_kwargs(),
-    )
-
-    if not r.ok():
-        TRACE_LOG.error(user_id, f"Failed to complete merge events: {r.msg()}")
+    try:
+        r = await llm_complete(
+            PROMPTS[language]["merge_events"].get_input(
+                eg.text,
+                retrieved_old_events
+            ),
+            system_prompt=PROMPTS[language]["merge_events"].get_prompt(),
+            temperature=0.2,
+            config=config,
+            **PROMPTS[language]["merge_events"].get_kwargs(),
+        )
+    except Exception as e:
+        TRACE_LOG.error(user_id, f"Failed to complete merge events: {str(e)}")
         return [EventGistWithAction(
             text=eg.text,
             embedding=eg.embedding,
@@ -330,7 +324,7 @@ async def process_single_event_gist(
         )]
 
     # 6. 解析 LLM 响应
-    response = remove_code_blocks(r.data())
+    response = remove_code_blocks(r)
     if not response or not response.strip():
         TRACE_LOG.warning(user_id, f"Empty LLM response for event: {eg.text[:50]}...")
         return [EventGistWithAction(

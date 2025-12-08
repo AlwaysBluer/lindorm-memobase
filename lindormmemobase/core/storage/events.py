@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from opensearchpy import OpenSearch
 from typing import Optional, Dict, List, Any
-from ...models.promise import Promise, CODE
+from ...utils.errors import SearchStorageError
 from ...config import Config, TRACE_LOG
 
 # Backward compatibility - delegate to StorageManager
@@ -113,7 +113,7 @@ class LindormSearchStorage:
             event_id: str,
             event_data: Dict[str, Any],
             embedding: Optional[List[float]] = None
-    ) -> Promise[str]:
+    ) -> str:
         try:
             doc = {
                 "user_id": user_id,
@@ -129,9 +129,9 @@ class LindormSearchStorage:
                 routing=user_id
             )
 
-            return Promise.resolve(event_id)
+            return event_id
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to store event: {str(e)}")
+            raise SearchStorageError(f"Failed to store event: {str(e)}") from e
 
     async def store_event_gist_with_embedding(
             self,
@@ -139,7 +139,7 @@ class LindormSearchStorage:
             event_id: str,
             gist_data: Dict[str, Any],
             embedding: Optional[List[float]] = None
-    ) -> Promise[str]:
+    ) -> str:
         try:
             gist_id = str(uuid.uuid4())
             doc = {
@@ -157,9 +157,9 @@ class LindormSearchStorage:
                 routing=user_id,
             )
 
-            return Promise.resolve(gist_id)
+            return gist_id
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to store event gist: {str(e)}")
+            raise SearchStorageError(f"Failed to store event gist: {str(e)}") from e
 
     async def update_event_with_embedding(
             self,
@@ -167,7 +167,7 @@ class LindormSearchStorage:
             event_id: str,
             event_data: Dict[str, Any],
             embedding: Optional[List[float]] = None
-    ) -> Promise[str]:
+    ) -> str:
         try:
             doc = {
                 "event_data": event_data,
@@ -181,9 +181,9 @@ class LindormSearchStorage:
                 routing=user_id
             )
 
-            return Promise.resolve(event_id)
+            return event_id
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to update event: {str(e)}")
+            raise SearchStorageError(f"Failed to update event: {str(e)}") from e
 
     async def update_event_gist_with_embedding(
             self,
@@ -191,7 +191,7 @@ class LindormSearchStorage:
             gist_id: str,
             gist_data: Dict[str, Any],
             embedding: Optional[List[float]] = None
-    ) -> Promise[str]:
+    ) -> str:
         try:
             doc = {
                 "gist_data": gist_data,
@@ -205,15 +205,15 @@ class LindormSearchStorage:
                 routing=user_id
             )
 
-            return Promise.resolve(gist_id)
+            return gist_id
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to update event gist: {str(e)}")
+            raise SearchStorageError(f"Failed to update event gist: {str(e)}") from e
 
     async def delete_event(
             self,
             user_id: str,
             event_id: str
-    ) -> Promise[str]:
+    ) -> str:
         try:
             response = self.client.delete(
                 index=self.config.lindorm_search_events_index,
@@ -221,15 +221,15 @@ class LindormSearchStorage:
                 routing=user_id
             )
 
-            return Promise.resolve(event_id)
+            return event_id
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to delete event: {str(e)}")
+            raise SearchStorageError(f"Failed to delete event: {str(e)}") from e
 
     async def delete_event_gist(
             self,
             user_id: str,
             gist_id: str
-    ) -> Promise[str]:
+    ) -> str:
         try:
             response = self.client.delete(
                 index=self.config.lindorm_search_event_gists_index,
@@ -237,15 +237,15 @@ class LindormSearchStorage:
                 routing=user_id
             )
 
-            return Promise.resolve(gist_id)
+            return gist_id
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to delete event gist: {str(e)}")
+            raise SearchStorageError(f"Failed to delete event gist: {str(e)}") from e
 
     async def delete_event_gists_by_event_id(
             self,
             user_id: str,
             event_id: str
-    ) -> Promise[int]:
+    ) -> int:
         """Delete all gists associated with an event_id"""
         try:
             query = {
@@ -267,9 +267,9 @@ class LindormSearchStorage:
             )
 
             deleted_count = response.get('deleted', 0)
-            return Promise.resolve(deleted_count)
+            return deleted_count
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to delete event gists: {str(e)}")
+            raise SearchStorageError(f"Failed to delete event gists: {str(e)}") from e
 
     async def hybrid_search_events(
             self,
@@ -279,7 +279,7 @@ class LindormSearchStorage:
             size: int = 10,
             min_score: float = 0.6,
             time_range_in_days: int = 21,
-    ) -> Promise[List[Dict[str, Any]]]:
+    ) -> List[Dict[str, Any]]:
         try:
             time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
             query = {
@@ -346,9 +346,9 @@ class LindormSearchStorage:
                     'created_at': hit['_source']['created_at']
                 })
 
-            return Promise.resolve(results)
+            return results
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to search events: {str(e)}")
+            raise SearchStorageError(f"Failed to search events: {str(e)}") from e
 
     async def hybrid_search_gist_events(
             self,
@@ -358,7 +358,7 @@ class LindormSearchStorage:
             size: int = 10,
             min_score: float = 0.6,
             time_range_in_days: int = 21
-    ) -> Promise[List[Dict[str, Any]]]:
+    ) -> List[Dict[str, Any]]:
         try:
             time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
             search_query = {
@@ -419,7 +419,7 @@ class LindormSearchStorage:
             )
             if not response or 'hits' not in response or 'hits' not in response['hits']:
                 TRACE_LOG.error(user_id, f"Invalid search response structure: {response}")
-                return Promise.resolve([])
+                return []
 
             gists = []
             for hit in response['hits']['hits']:
@@ -440,9 +440,9 @@ class LindormSearchStorage:
                     "similarity": similarity
                 })
 
-            return Promise.resolve(gists)
+            return gists
         except Exception as e:
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to search gist events: {str(e)}")
+            raise SearchStorageError(f"Failed to search gist events: {str(e)}") from e
 
 
 async def search_user_event_gists_with_embedding(
@@ -453,7 +453,7 @@ async def search_user_event_gists_with_embedding(
         topk: int = 10,
         similarity_threshold: float = 0.2,
         time_range_in_days: int = 21
-) -> Promise[List[Dict[str, Any]]]:
+) -> List[Dict[str, Any]]:
     storage = get_lindorm_search_storage(config)
     return await storage.hybrid_search_gist_events(user_id, query, query_vector, topk, similarity_threshold, time_range_in_days)
 
@@ -466,7 +466,7 @@ async def search_user_events_with_embedding(
         topk: int = 10,
         similarity_threshold: float = 0.2,
         time_range_in_days: int = 21
-)-> Promise[List[Dict[str, Any]]]:
+)-> List[Dict[str, Any]]:
     storage = get_lindorm_search_storage(config)
     return await storage.hybrid_search_events(user_id, query, query_vector, topk,
                                               similarity_threshold, time_range_in_days)
@@ -478,7 +478,7 @@ async def store_event_with_embedding(
         event_data: Dict[str, Any],
         embedding: Optional[List[float]] = None,
         config: Config = None
-) -> Promise[str]:
+) -> str:
     storage = get_lindorm_search_storage(config)
     return await storage.store_event_with_embedding(user_id, event_id, event_data, embedding)
 
@@ -489,7 +489,7 @@ async def store_event_gist_with_embedding(
         gist_data: Dict[str, Any],
         embedding: Optional[List[float]] = None,
         config: Config = None
-) -> Promise[str]:
+) -> str:
     storage = get_lindorm_search_storage(config)
     return await storage.store_event_gist_with_embedding(user_id, event_id, gist_data, embedding)
 
@@ -500,7 +500,7 @@ async def update_event_with_embedding(
         event_data: Dict[str, Any],
         embedding: Optional[List[float]] = None,
         config: Config = None
-) -> Promise[str]:
+) -> str:
     storage = get_lindorm_search_storage(config)
     return await storage.update_event_with_embedding(user_id, event_id, event_data, embedding)
 
@@ -511,7 +511,7 @@ async def update_event_gist_with_embedding(
         gist_data: Dict[str, Any],
         embedding: Optional[List[float]] = None,
         config: Config = None
-) -> Promise[str]:
+) -> str:
     storage = get_lindorm_search_storage(config)
     return await storage.update_event_gist_with_embedding(user_id, gist_id, gist_data, embedding)
 
@@ -520,7 +520,7 @@ async def delete_event(
         user_id: str,
         event_id: str,
         config: Config = None
-) -> Promise[str]:
+) -> str:
     storage = get_lindorm_search_storage(config)
     return await storage.delete_event(user_id, event_id)
 
@@ -529,7 +529,7 @@ async def delete_event_gist(
         user_id: str,
         event_gist_id: str,
         config: Config = None
-) -> Promise[str]:
+) -> str:
     storage = get_lindorm_search_storage(config)
     return await storage.delete_event_gist(user_id, event_gist_id)
 
@@ -538,6 +538,6 @@ async def delete_event_gists_by_event_id(
         user_id: str,
         event_id: str,
         config: Config = None
-) -> Promise[int]:
+) -> int:
     storage = get_lindorm_search_storage(config)
     return await storage.delete_event_gists_by_event_id(user_id, event_id)

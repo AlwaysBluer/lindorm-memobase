@@ -1,9 +1,9 @@
 from typing import List
 
 from ...config import Config, TRACE_LOG
-from ...models.response import UserEventGistsData, CODE, UserEventData
+from ...models.response import UserEventGistsData, UserEventData
 from ...models.blob import OpenAICompatibleMessage
-from ...models.promise import Promise
+from ...utils.errors import SearchError
 from ...utils.tools import get_encoded_tokens
 from ..storage.events import get_lindorm_search_storage, search_user_event_gists_with_embedding, \
     search_user_events_with_embedding
@@ -18,9 +18,9 @@ def pack_latest_chat(chats: list[OpenAICompatibleMessage], chat_num: int = 3) ->
 async def truncate_event_gists(
         events: UserEventGistsData,
         max_token_size: int | None,
-) -> Promise[UserEventGistsData]:
+) -> UserEventGistsData:
     if max_token_size is None:
-        return Promise.resolve(events)
+        return events
     c_tokens = 0
     truncated_results = []
     for r in events.gists:
@@ -29,7 +29,7 @@ async def truncate_event_gists(
             break
         truncated_results.append(r)
     events.gists = truncated_results
-    return Promise.resolve(events)
+    return events
 
 
 async def get_user_event_gists_data(
@@ -40,7 +40,7 @@ async def get_user_event_gists_data(
         time_range_in_days: int,
         global_config: Config,
         topk=60
-) -> Promise[UserEventGistsData]:
+) -> UserEventGistsData:
     """Retrieve user events data."""
     if chats and global_config.enable_event_embedding:
         search_query = pack_latest_chat(chats)
@@ -67,7 +67,7 @@ async def get_user_event_gists(
         config: Config,
         topk: int = 10,
         time_range_in_days: int = 21,
-) -> Promise[UserEventGistsData]:
+) -> UserEventGistsData:
     """Get user event gists from Lindorm Search without vector search."""
     try:
         storage = get_lindorm_search_storage(config)
@@ -98,7 +98,7 @@ async def get_user_event_gists(
         # Debug logging to understand response structure
         if not response or 'hits' not in response or 'hits' not in response['hits']:
             TRACE_LOG.error(user_id, f"Invalid search response structure: {response}")
-            return Promise.resolve(UserEventGistsData(gists=[]))
+            return UserEventGistsData(gists=[])
 
         gists = []
         for hit in response['hits']['hits']:
@@ -117,10 +117,10 @@ async def get_user_event_gists(
                 "updated_at": source.get('updated_at', source['created_at'])
             })
 
-        return Promise.resolve(UserEventGistsData(gists=gists))
+        return UserEventGistsData(gists=gists)
     except Exception as e:
         TRACE_LOG.error(user_id, f"Failed to get user event gists: {str(e)}")
-        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get user event gists: {str(e)}")
+        raise SearchError(f"Failed to get user event gists: {str(e)}") from e
 
 
 async def search_user_event_gists(
@@ -130,54 +130,38 @@ async def search_user_event_gists(
         topk: int = 10,
         similarity_threshold: float = 0.2,
         time_range_in_days: int = 21,
-) -> Promise[UserEventGistsData]:
+) -> UserEventGistsData:
     """Search user event gists using vector similarity in Lindorm Search."""
     if not config.enable_event_embedding:
         TRACE_LOG.warning(
             user_id,
             "Event embedding is not enabled, skip search",
         )
-        return Promise.reject(
-            CODE.NOT_IMPLEMENTED,
-            "Event embedding is not enabled",
-        )
+        raise SearchError("Event embedding is not enabled")
 
     try:
         query_embeddings = await get_embedding(
             [query], phase="query", model=config.embedding_model, config=config
         )
-        if not query_embeddings.ok():
-            TRACE_LOG.error(
-                user_id,
-                f"Failed to get embeddings: {query_embeddings.msg()}",
-            )
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to get embeddings: {query_embeddings.msg()}")
-
-        query_embedding = query_embeddings.data()[0]
+        query_embedding = query_embeddings[0]
         # Convert ndarray to list if necessary
         if hasattr(query_embedding, 'tolist'):
             query_embedding = query_embedding.tolist()
 
         data = await search_user_event_gists_with_embedding(user_id, query, query_embedding,
                                                       config, topk, similarity_threshold, time_range_in_days)
-        if not data.ok():
-            TRACE_LOG.error(
-                user_id,
-                f"Failed to search user event gists: {data.msg()}",
-            )
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to search user event gists: {data.msg()}")
 
-        gists = data.data()
+        gists = data
         user_event_gists_data = UserEventGistsData(gists=gists)
         TRACE_LOG.info(
             user_id,
             f"Event Query: {query[:50]}" + ("..." if len(query) > 50 else "") + f" Found {len(gists)} results",
         )
 
-        return Promise.resolve(user_event_gists_data)
+        return user_event_gists_data
     except Exception as e:
         TRACE_LOG.error(user_id, f"Failed to search user event gists: {str(e)}")
-        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to search user event gists: {str(e)}")
+        raise SearchError(f"Failed to search user event gists: {str(e)}") from e
 
 
 async def search_user_event(
@@ -187,42 +171,26 @@ async def search_user_event(
         topk: int = 10,
         similarity_threshold: float = 0.2,
         time_range_in_days: int = 21,
-) -> Promise[List[UserEventData]]:
+) -> List[UserEventData]:
     if not config.enable_event_embedding:
         TRACE_LOG.warning(
             user_id,
             "Event embedding is not enabled, skip search",
         )
-        return Promise.reject(
-            CODE.NOT_IMPLEMENTED,
-            "Event embedding is not enabled",
-        )
+        raise SearchError("Event embedding is not enabled")
     try:
         query_embeddings = await get_embedding(
             [query], phase="query", model=config.embedding_model, config=config
         )
-        if not query_embeddings.ok():
-            TRACE_LOG.error(
-                user_id,
-                f"Failed to get embeddings: {query_embeddings.msg()}",
-            )
-            return query_embeddings
-
-        query_embedding = query_embeddings.data()[0]
+        query_embedding = query_embeddings[0]
         # Convert ndarray to list if necessary
         if hasattr(query_embedding, 'tolist'):
             query_embedding = query_embedding.tolist()
 
-        data = search_user_events_with_embedding(user_id, query, query_embedding,
+        data = await search_user_events_with_embedding(user_id, query, query_embedding,
                                                  config, topk, similarity_threshold, time_range_in_days)
-        if not data.ok():
-            TRACE_LOG.error(
-                user_id,
-                f"Failed to search user event: {data.msg()}",
-            )
-            return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to search user event gists: {data.msg()}")
 
-        responses = data.data()
+        responses = data
         results = []
         for resp in responses:
             user_event_gists_data = UserEventData(
@@ -238,8 +206,8 @@ async def search_user_event(
             f"Event Query: {query[:50]}" + ("..." if len(query) > 50 else "") + f" Found {len(responses)} results",
         )
 
-        return Promise.resolve(results)
+        return results
 
     except Exception as e:
         TRACE_LOG.error(user_id, f"Failed to search user event gists: {str(e)}")
-        return Promise.reject(CODE.SERVER_PROCESS_ERROR, f"Failed to search user event gists: {str(e)}")
+        raise SearchError(f"Failed to search user event gists: {str(e)}") from e
