@@ -83,8 +83,21 @@ async def handle_profile_merge_or_valid(
         if profile_config.profile_validate_mode is not None
         else config.profile_validate_mode
     )
+    STRICT_MODE = (
+        profile_config.profile_strict_mode
+        if profile_config.profile_strict_mode is not None
+        else config.profile_strict_mode
+    )
     runtime_profile = profile_runtime_maps.get(KEY, None)
     define_sub_topic = profile_define_maps.get(KEY, SubTopic(name=""))
+    
+    # In strict mode, reject profiles with undefined topic/subtopic combinations
+    if STRICT_MODE and KEY not in profile_define_maps:
+        TRACE_LOG.warning(
+            user_id,
+            f"Rejecting undefined topic/subtopic in strict mode: {KEY}"
+        )
+        return
 
     if (
             not PROFILE_VALIDATE_MODE
@@ -169,7 +182,7 @@ async def handle_profile_merge_or_valid(
                 session_merge_validate_results["update"].append(
                     {
                         "profile_id": runtime_profile.id,
-                        "content": f"{runtime_profile.content};; {profile_content}",
+                        "content": f"{runtime_profile.content};{profile_content}",
                         "attributes": runtime_profile.attributes,
                     }
                 )
@@ -181,12 +194,12 @@ async def handle_profile_merge_or_valid(
                 )
         elif update_response["action"] == "ABORT":
             if runtime_profile is None:
-                TRACE_LOG.info(
+                TRACE_LOG.debug(
                     user_id,
                     f"Invalid profile: {KEY}::{profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
                 )
             else:
-                TRACE_LOG.info(
+                TRACE_LOG.debug(
                     user_id,
                     f"Invalid merge: {runtime_profile.attributes}, {profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
                 )
@@ -374,7 +387,7 @@ def parse_llm_action(
     try:
         action_text = resp.get("text")
         if not action_text:
-            TRACE_LOG.info(user_id, "Skipping memory entry because of empty `text` field.")
+            TRACE_LOG.debug(user_id, "Skipping memory entry because of empty `text` field.")
             return None
 
         action_type = resp.get("action")
@@ -419,7 +432,7 @@ def parse_llm_action(
             )
 
         elif action_type == "ABORT":
-            TRACE_LOG.info(user_id, f"LLM decided to abort event: {action_text[:50]}...")
+            TRACE_LOG.debug(user_id, f"LLM decided to abort event: {action_text[:50]}...")
             return EventGistWithAction(
                 text=action_text,
                 embedding=eg.embedding,

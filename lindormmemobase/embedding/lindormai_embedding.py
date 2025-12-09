@@ -28,7 +28,7 @@ async def lindormai_embedding(
             total_tokens += getattr(response.usage, "total_tokens", 0)
             all_embeddings.extend([dp.embedding for dp in response.data])
 
-        LOG.info(f"Lindormai embedding, {model}, {phase}, {total_prompt_tokens}/{total_tokens}")
+        LOG.debug(f"Lindormai embedding, {model}, {phase}, {total_prompt_tokens}/{total_tokens}")
         return np.array(all_embeddings)
     except Exception as e:
         LOG.error(f"Error in Lindormai embedding: {e}")

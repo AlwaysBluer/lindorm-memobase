@@ -32,18 +32,33 @@ async def summary_memo(
     content = content_pack["content"]
     if len(get_encoded_tokens(content)) <= config.max_pre_profile_token_size:
         return
+    
+    target_tokens = config.max_pre_profile_token_size
+    
     try:
         r = await llm_complete(
             content_pack["content"],
-            system_prompt=summary_profile.get_prompt(),
-            temperature=0.2, 
+            system_prompt=summary_profile.get_prompt(max_tokens=target_tokens),
+            temperature=0.1, 
             model=config.summary_llm_model,
             config=config,
             **summary_profile.get_kwargs(),
         )
-        content_pack["content"] = truncate_string(
-            r, config.max_pre_profile_token_size // 2
-        )
+        
+        # Verify the LLM output length
+        result_tokens = len(get_encoded_tokens(r))
+        
+        if result_tokens <= target_tokens:
+            # LLM successfully controlled the length
+            content_pack["content"] = r
+        else:
+            # Fallback: LLM exceeded limit, apply soft truncation
+            TRACE_LOG.warning(
+                user_id,
+                f"LLM summary exceeded target ({result_tokens} > {target_tokens}), applying truncation"
+            )
+            content_pack["content"] = truncate_string(r, target_tokens)
+            
     except Exception as e:
         TRACE_LOG.error(
             user_id, 

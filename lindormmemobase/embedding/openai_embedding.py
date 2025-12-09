@@ -38,5 +38,5 @@ async def openai_embedding(
         total_prompt_tokens += prompt_tokens
         total_tokens += batch_total_tokens
         all_embeddings.extend([dp.embedding for dp in response.data])
-    LOG.info(f"OpenAI embedding, {model}, {phase}, {total_prompt_tokens}/{total_tokens}")
+    LOG.debug(f"OpenAI embedding, {model}, {phase}, {total_prompt_tokens}/{total_tokens}")
     return np.array(all_embeddings)

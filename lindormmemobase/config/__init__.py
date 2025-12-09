@@ -30,7 +30,7 @@ class Config:
 
     system_prompt: str = None
     max_profile_subtopics: int = 15
-    max_pre_profile_token_size: int = 128
+    max_pre_profile_token_size: int = 256
     llm_tab_separator: str = "::"
 
     max_chat_blob_buffer_token_size: int = 8192
@@ -94,6 +94,7 @@ class Config:
     lindorm_buffer_username: str = None
     lindorm_buffer_password: str = None
     lindorm_buffer_database: str = None
+    lindorm_buffer_pool_size: int = 32  # Connection pool size for buffer storage (max=32, MySQL connector limit)
 
     # Test option
     test_skip_persist: bool = False  # Fixed: Changed to False to enable event persistence
@@ -180,6 +181,13 @@ class Config:
         return cls(**filtered_config)
 
     def __post_init__(self):
+        # Validate buffer pool size (MySQL connector limitation)
+        if self.lindorm_buffer_pool_size < 1 or self.lindorm_buffer_pool_size > 32:
+            raise ValueError(
+                f"lindorm_buffer_pool_size must be between 1 and 32 (got {self.lindorm_buffer_pool_size}). "
+                "This is a MySQL Connector library limitation."
+            )
+        
         if self.enable_event_embedding:
             if self.embedding_api_key is None and (
                 self.llm_style == self.embedding_provider == "openai"

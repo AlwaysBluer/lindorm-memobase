@@ -68,7 +68,7 @@ class LindormBufferStorage:
 
             self._pool = pooling.MySQLConnectionPool(
                 pool_name="buffer_pool",
-                pool_size=10,
+                pool_size=self.config.lindorm_buffer_pool_size,
                 pool_reset_session=True,
                 host=host,
                 port=port,

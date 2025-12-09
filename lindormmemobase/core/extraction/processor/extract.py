@@ -63,13 +63,17 @@ async def extract_topics(
                 for p in profiles
             ]
         )
-        already_topic_subtopics_values = {
-            (
+        # Aggregate content values for same topic::subtopic with semicolon delimiter
+        already_topic_subtopics_values = {}
+        for p in profiles:
+            key = (
                 attribute_unify(p.attributes[ConstantsTable.topic]),
                 attribute_unify(p.attributes[ConstantsTable.sub_topic]),
-            ): p.content
-            for p in profiles
-        }
+            )
+            if key in already_topic_subtopics_values:
+                already_topic_subtopics_values[key] += f"; {p.content}"
+            else:
+                already_topic_subtopics_values[key] = p.content
         if STRICT_MODE:
             already_topics_subtopics = already_topics_subtopics.intersection(
                 allowed_topic_subtopics
@@ -80,7 +84,7 @@ async def extract_topics(
         already_topics_subtopics = sorted(already_topics_subtopics)
         already_topics_prompt = "\n".join(
             [
-                f"- {topic}{config.llm_tab_separator}{sub_topic}{config.llm_tab_separator}{truncate_string(already_topic_subtopics_values[(topic, sub_topic)], 10)}"
+                f"- {topic}{config.llm_tab_separator}{sub_topic}{config.llm_tab_separator}{truncate_string(already_topic_subtopics_values[(topic, sub_topic)], 30)}"
                 for topic, sub_topic in already_topics_subtopics
             ]
         )

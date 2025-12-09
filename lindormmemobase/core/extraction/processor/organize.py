@@ -73,7 +73,7 @@ async def organize_profiles_by_topic(
         p.attributes[ConstantsTable.topic] == profiles[0].attributes[ConstantsTable.topic]
         for p in profiles
     ), f"Unknown Error, all profiles are not in the same topic: {profiles[0].attributes['topic']}"
-    TRACE_LOG.info(
+    TRACE_LOG.debug(
         user_id,
         f"Organizing profiles for topic: {profiles[0].attributes['topic']} with sub_topics {len(profiles)}",
     )

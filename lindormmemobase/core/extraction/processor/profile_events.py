@@ -39,9 +39,9 @@ def split_concatenated_profiles(
         content = profile["content"]
         attributes = profile["attributes"]
         
-        if ";;" in content:
+        if ";" in content:
             # Split by ;; and create separate profiles
-            split_contents = [c.strip() for c in content.split(";;") if c.strip()]
+            split_contents = [c.strip() for c in content.split(";") if c.strip()]
             for split_content in split_contents:
                 expanded_add.append({
                     "content": split_content,
@@ -57,12 +57,12 @@ def split_concatenated_profiles(
         profile_id = profile["profile_id"]
         attributes = profile["attributes"]
         
-        if ";;" in content:
+        if ";" in content:
             # Mark old profile for deletion
             expanded_delete.append(profile_id)
             
             # Split content and create new profiles
-            split_contents = [c.strip() for c in content.split(";;") if c.strip()]
+            split_contents = [c.strip() for c in content.split(";") if c.strip()]
             for split_content in split_contents:
                 expanded_add.append({
                     "content": split_content,

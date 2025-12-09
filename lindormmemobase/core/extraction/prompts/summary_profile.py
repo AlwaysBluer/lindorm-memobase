@@ -4,18 +4,18 @@ ADD_KWARGS = {
 SUMMARY_PROMPT = """You are given a user profile with some information about the user. Summarize it into shorter form.
 
 ## Requirement
-- Summary the given context in concise form, not more than 3 sentences.
-- Remove the redundant information and keep the most important information.
-- Look for the dates on infos, and always keep the latest infos in the profile
-- Keep the profile time info if possible
+- Extract high-level preference from the profile
+- The preference should be the most important and representative preference of the user.
+  For example, the original perference is "user likes Chocolate[mentioned in 2023/1/23], Ice cream, Cake, Cookies, Brownies[mentioned in 2023/1/24]...", then your extraction should be "user maybe likes sweet food(cake/cookies...)".
+- The preference should be concise and clear. strictly within {max_tokens} tokens.
 
 The result should use the same language as the input.
 结果应该使用与输入相同的语言。
 """
 
 
-def get_prompt() -> str:
-    return SUMMARY_PROMPT
+def get_prompt(max_tokens: int = 64) -> str:
+    return SUMMARY_PROMPT.format(max_tokens=max_tokens)
 
 
 def get_kwargs() -> dict:
