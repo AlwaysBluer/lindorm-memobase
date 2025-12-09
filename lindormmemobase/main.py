@@ -718,3 +718,48 @@ class LindormMemobase:
             if isinstance(e, LindormMemobaseError):
                 raise
             raise LindormMemobaseError(f"Failed to process buffer: {str(e)}") from e
+    
+    async def reset_all_storage(
+        self,
+        user_id: Optional[str] = None,
+        project_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Reset all storage tables (buffer, events, user profiles).
+        
+        This is an administrative operation that clears data from all storage backends.
+        When user_id and project_id are not specified, tables are dropped and recreated.
+        Otherwise, data is deleted based on the provided filters.
+        
+        Args:
+            user_id: Optional user ID filter. If None, resets all users.
+            project_id: Optional project ID filter. If None, resets all projects.
+            
+        Returns:
+            Dictionary containing reset statistics:
+            - buffer_deleted: Number of buffer rows deleted
+            - events_deleted: Number of event rows deleted
+            - gists_deleted: Number of event gist rows deleted
+            - profiles_deleted: Number of profile rows deleted
+            - tables_recreated: Whether tables were dropped and recreated
+            
+        Raises:
+            LindormMemobaseError: If reset operation fails
+            
+        Example:
+            # Reset all data (drops and recreates tables)
+            result = await memobase.reset_all_storage()
+            
+            # Reset data for specific user across all projects
+            result = await memobase.reset_all_storage(user_id="user123")
+            
+            # Reset data for specific user and project
+            result = await memobase.reset_all_storage(user_id="user123", project_id="proj1")
+        """
+        try:
+            from .core.storage.manager import StorageManager
+            return await StorageManager.reset_all_storage(self.config, user_id, project_id)
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to reset storage: {str(e)}") from e

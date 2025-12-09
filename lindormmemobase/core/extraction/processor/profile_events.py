@@ -12,7 +12,7 @@ from ....utils.errors import StorageError
 from ....utils.tools import event_embedding_str
 
 from ....core.storage.events import store_event_with_embedding, store_event_gist_with_embedding, \
-    update_event_gist_with_embedding, delete_event, delete_event_gists_by_event_id, delete_event_gist
+    delete_event, delete_event_gists_by_event_id, delete_event_gist
 from ....core.storage.user_profiles import add_user_profiles, update_user_profiles, delete_user_profiles
 
 
@@ -164,13 +164,14 @@ async def add_update_delete_user_profiles(
 
 async def handle_session_event(
         user_id: str,
+        project_id: str,
         event_id: str,
         memo_str: str,
         delta_profile_data: list[dict],
         event_tags: list | None,
         config: Config,
-) -> str:
-    eid = await append_user_event(
+) -> None:
+    return await append_user_event(
         user_id,
         event_id,
         {
@@ -180,72 +181,26 @@ async def handle_session_event(
         },
         config
     )
-    return eid
 
 
 async def handle_session_event_gists(
         user_id: str,
+        project_id: str,
         event_id: str,
-        event_gists_with_actions: list[EventGistWithAction],
+        memo_str: str,
         config: Config,
 ) -> None:
-    """
-    并发处理所有 event gist 操作
-    """
-    if not config.enable_event_embedding:
-        return
-
-    if not event_gists_with_actions:
-        return
-
-    tasks = []
-    for event in event_gists_with_actions:
-        if event.action == "ADD":
-            tasks.append(
-                store_event_gist_with_embedding(
-                    user_id,
-                    event_id,
-                    {"content": event.text},
-                    event.embedding,
-                    config,
-                )
-            )
-        elif event.action == "UPDATE":
-            tasks.append(
-                update_event_gist_with_embedding(
-                    user_id,
-                    event.event_gist_id,
-                    {"content": event.text},
-                    event.embedding,
-                    config,
-                )
-            )
-        elif event.action == "DELETE":
-            tasks.append(
-                delete_event_gist(
-                    user_id,
-                    event.event_gist_id,
-                    config
-                )
-            )
-        elif event.action == "ABORT":
-            continue
-
-    if tasks:
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        errors = []
-        for idx, result in enumerate(results):
-            if isinstance(result, Exception):
-                errors.append(f"Task {idx} failed: {str(result)}")
-                TRACE_LOG.error(user_id, f"Event gist operation failed: {str(result)}")
-
-        if errors:
-            raise StorageError(f"Failed to process event gists: {'; '.join(errors)}")
+    return await append_user_event_gist(
+        user_id, 
+        project_id,
+        event_id, 
+        memo_str, 
+        config
+    )
 
 
 async def append_user_event(
-        user_id: str, event_id: str, event_data: dict, config: Config
+        user_id: str, project_id: str, event_id: str, event_data: dict, config: Config
 ) -> str:
     try:
         validated_event = EventData(**event_data)
@@ -283,10 +238,60 @@ async def append_user_event(
 
     event_id = await store_event_with_embedding(
         user_id,
+        project_id,  # Pass project_id
         event_id,
         validated_event.model_dump(),
         embedding[0],
         config=config,
     )
 
+    return event_id
+
+async def append_user_event_gist(
+        user_id: str, project_id: str, event_id: str, event_gist_data: str, config: Config
+) -> str:
+    """Store event gists as plain text VARCHAR in UserEventsGists table.
+    
+    Each gist line (starting with '-') is stored as a separate row.
+    """
+    if not event_gist_data :
+        return event_id
+    
+    event_gists = event_gist_data.split("\n")
+    event_gists = [l.strip() for l in event_gists if l.strip().startswith("-")]
+    
+    TRACE_LOG.debug(
+        user_id, f"Processing {len(event_gists)} event gists"
+    )
+    
+    if len(event_gists) == 0:
+        return event_id
+    
+    # Get embeddings for all gists
+    if config.enable_event_embedding:
+        try:
+            event_gist_embeddings = await get_embedding(
+                event_gists,
+                phase="document",
+                model=config.embedding_model,
+                config=config,
+            )
+        except Exception as e:
+            TRACE_LOG.error(user_id, f"Failed to get gist embeddings: {str(e)}")
+            event_gist_embeddings = [None] * len(event_gists)
+    else:
+        event_gist_embeddings = [None] * len(event_gists)
+    
+    # Store each gist as plain text with gist_idx (0-based)
+    for gist_idx, (event_gist, event_gist_embedding) in enumerate(zip(event_gists, event_gist_embeddings)):
+        await store_event_gist_with_embedding(
+            user_id,
+            project_id,
+            event_id,
+            gist_idx,  # Index of this gist within the event (0-based)
+            event_gist,  # Plain text, not dict
+            event_gist_embedding,
+            config=config,
+        )
+    
     return event_id

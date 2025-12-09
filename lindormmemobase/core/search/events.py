@@ -130,8 +130,13 @@ async def search_user_event_gists(
         topk: int = 10,
         similarity_threshold: float = 0.2,
         time_range_in_days: int = 21,
+        project_id: str = None,
 ) -> UserEventGistsData:
-    """Search user event gists using vector similarity in Lindorm Search."""
+    """Search user event gists using vector similarity in Lindorm Search.
+    
+    Args:
+        project_id: Optional project filter. If None, searches across all projects.
+    """
     if not config.enable_event_embedding:
         TRACE_LOG.warning(
             user_id,
@@ -149,7 +154,7 @@ async def search_user_event_gists(
             query_embedding = query_embedding.tolist()
 
         data = await search_user_event_gists_with_embedding(user_id, query, query_embedding,
-                                                      config, topk, similarity_threshold, time_range_in_days)
+                                                      config, topk, similarity_threshold, time_range_in_days, project_id)
 
         gists = data
         user_event_gists_data = UserEventGistsData(gists=gists)
@@ -171,7 +176,13 @@ async def search_user_event(
         topk: int = 10,
         similarity_threshold: float = 0.2,
         time_range_in_days: int = 21,
+        project_id: str = None,
 ) -> List[UserEventData]:
+    """Search user events using vector similarity.
+    
+    Args:
+        project_id: Optional project filter. If None, searches across all projects.
+    """
     if not config.enable_event_embedding:
         TRACE_LOG.warning(
             user_id,
@@ -188,7 +199,7 @@ async def search_user_event(
             query_embedding = query_embedding.tolist()
 
         data = await search_user_events_with_embedding(user_id, query, query_embedding,
-                                                 config, topk, similarity_threshold, time_range_in_days)
+                                                 config, topk, similarity_threshold, time_range_in_days, project_id)
 
         responses = data
         results = []

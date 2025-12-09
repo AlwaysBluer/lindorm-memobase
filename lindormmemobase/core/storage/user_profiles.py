@@ -7,6 +7,7 @@ from mysql.connector import pooling
 
 from ...models.response import UserProfilesData
 from ...utils.errors import TableStorageError
+from ...config import TRACE_LOG
 
 # Default project_id constant
 DEFAULT_PROJECT_ID = "default"
@@ -44,6 +45,9 @@ class LindormTableStorage:
     
     def initialize_tables(self):
         """Create UserProfilesV2 table and indexes. Called during StorageManager initialization."""
+        # Configure Lindorm system settings first
+        self._configure_lindorm_settings()
+        
         pool = self._get_pool()
         conn = pool.get_connection()
         try:
@@ -83,6 +87,41 @@ class LindormTableStorage:
                 pass
             
             conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _configure_lindorm_settings(self):
+        """Configure Lindorm system settings for wide table operations.
+        
+        This method sets necessary Lindorm-specific configurations that are required
+        for proper operation of wide table storage.
+        """
+        pool = self._get_pool()
+        conn = pool.get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Enable range delete to allow DELETE operations with partial primary keys
+            # Required for deleting by user_id or project_id without specifying all PK columns
+            try:
+                cursor.execute("ALTER SYSTEM SET `lindorm.allow.range.delete`=TRUE")
+                TRACE_LOG.info("system", "Lindorm setting configured: lindorm.allow.range.delete=TRUE")
+            except Exception as e:
+                # Setting might already be enabled or not supported in this Lindorm version
+                TRACE_LOG.warning("system", f"Failed to set lindorm.allow.range.delete: {str(e)}")
+            
+            # Add other Lindorm-specific settings here as needed
+            # Example:
+            # try:
+            #     cursor.execute("ALTER SYSTEM SET `lindorm.some.other.setting`=VALUE")
+            #     TRACE_LOG.info("system", "Lindorm setting configured: lindorm.some.other.setting=VALUE")
+            # except Exception as e:
+            #     TRACE_LOG.warning("system", f"Failed to set lindorm.some.other.setting: {str(e)}")
+            
+            conn.commit()
+        except Exception as e:
+            TRACE_LOG.warning("system", f"Lindorm settings configuration encountered errors: {str(e)}")
         finally:
             cursor.close()
             conn.close()
@@ -349,6 +388,65 @@ class LindormTableStorage:
             return profiles
         except Exception as e:
             raise TableStorageError(f"Failed to get profiles: {str(e)}") from e
+
+    async def reset(self, user_id: Optional[str] = None, project_id: Optional[str] = None) -> int:
+        """Reset (delete all) user profiles data.
+        
+        Args:
+            user_id: If provided, only delete data for this user. If None, delete all data.
+            project_id: If provided, only delete data for this project. If None, delete all projects.
+        
+        Returns:
+            Number of rows deleted
+        
+        Note: Administrative use only. Use with caution.
+        """
+        def _reset_sync():
+            pool = self._get_pool()
+            conn = pool.get_connection()
+            try:
+                cursor = conn.cursor()
+                
+                if user_id and project_id:
+                    cursor.execute(
+                        "DELETE FROM UserProfilesV2 WHERE user_id = %s AND project_id = %s",
+                        (user_id, project_id)
+                    )
+                elif user_id:
+                    cursor.execute(
+                        "DELETE FROM UserProfilesV2 WHERE user_id = %s",
+                        (user_id,)
+                    )
+                elif project_id:
+                    raise ValueError("Project ID cannot be specified without user ID") 
+                else:
+                    # Delete all data (use TRUNCATE for better performance)
+                    cursor.execute("TRUNCATE TABLE UserProfilesV2")
+                    # TRUNCATE doesn't return rowcount, return -1 to indicate full reset
+                    conn.commit()
+                    return -1
+                
+                affected_rows = cursor.rowcount
+                conn.commit()
+                return affected_rows
+            except Exception as e:
+                raise
+            finally:
+                cursor.close()
+                conn.close()
+        
+        from ...config import TRACE_LOG
+        
+        try:
+            loop = asyncio.get_event_loop()
+            count = await loop.run_in_executor(None, _reset_sync)
+            TRACE_LOG.info(
+                user_id or "system",
+                f"User profiles reset: deleted {count} rows (user_id={user_id}, project_id={project_id})"
+            )
+            return count
+        except Exception as e:
+            raise TableStorageError(f"Failed to reset user profiles: {str(e)}") from e
 
 
 async def add_user_profiles(

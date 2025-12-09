@@ -20,7 +20,7 @@ class StorageManager:
     
     # Class-level storage caches
     _table_storage_cache: Dict[Tuple, 'LindormTableStorage'] = {}
-    _search_storage_cache: Dict[Tuple, 'LindormSearchStorage'] = {}
+    _search_storage_cache: Dict[Tuple, 'LindormEventsStorage'] = {}
     _buffer_storage_cache: Dict[Tuple, 'LindormBufferStorage'] = {}
     
     # Thread-safe locks
@@ -58,7 +58,7 @@ class StorageManager:
                 
                 # Initialize search storage
                 search_storage = cls.get_search_storage(config)
-                search_storage.initialize_indices()
+                search_storage.initialize_tables_and_indices()
                 
                 # Initialize buffer storage
                 buffer_storage = cls.get_buffer_storage(config)
@@ -104,15 +104,15 @@ class StorageManager:
     @classmethod
     def get_search_storage(cls, config: Config):
         """
-        Get or create a LindormSearchStorage instance.
+        Get or create a LindormEventsStorage instance.
         
         Args:
             config: Configuration object
             
         Returns:
-            LindormSearchStorage instance
+            LindormEventsStorage instance
         """
-        from .events import LindormSearchStorage
+        from .events import LindormEventsStorage
         
         cache_key = (
             config.lindorm_search_host,
@@ -122,7 +122,7 @@ class StorageManager:
         
         with cls._search_lock:
             if cache_key not in cls._search_storage_cache:
-                cls._search_storage_cache[cache_key] = LindormSearchStorage(config)
+                cls._search_storage_cache[cache_key] = LindormEventsStorage(config)
             return cls._search_storage_cache[cache_key]
     
     @classmethod
@@ -201,6 +201,141 @@ class StorageManager:
         """
         with cls._init_lock:
             return cls._initialized
+    
+    @classmethod
+    async def reset_all_storage(
+        cls,
+        config: Config,
+        user_id: Optional[str] = None,
+        project_id: Optional[str] = None
+    ):
+        """
+        Reset all storage tables (buffer, events, user profiles).
+        
+        When user_id and project_id are both None, tables are dropped and recreated.
+        Otherwise, data is deleted based on the provided filters.
+        
+        Args:
+            config: Configuration object
+            user_id: Optional user ID filter. If None, resets all users.
+            project_id: Optional project ID filter. If None, resets all projects.
+            
+        Returns:
+            Dictionary containing reset statistics:
+            - buffer_deleted: Number of buffer rows deleted
+            - events_deleted: Number of event rows deleted  
+            - gists_deleted: Number of event gist rows deleted
+            - profiles_deleted: Number of profile rows deleted
+            - tables_recreated: Whether tables were dropped and recreated
+        """
+        import asyncio
+        
+        result = {
+            "buffer_deleted": 0,
+            "events_deleted": 0,
+            "gists_deleted": 0,
+            "profiles_deleted": 0,
+            "tables_recreated": False
+        }
+        
+        # If both user_id and project_id are None, drop and recreate tables
+        if user_id is None and project_id is None:
+            # Get storage instances
+            buffer_storage = cls.get_buffer_storage(config)
+            events_storage = cls.get_search_storage(config)
+            profiles_storage = cls.get_table_storage(config)
+            
+            # Drop and recreate buffer table
+            await cls._drop_and_recreate_buffer_table(buffer_storage)
+            
+            # Drop and recreate events tables
+            await cls._drop_and_recreate_events_tables(events_storage)
+            
+            # Drop and recreate profiles table
+            await cls._drop_and_recreate_profiles_table(profiles_storage)
+            
+            result["tables_recreated"] = True
+        else:
+            # Delete data using existing reset methods
+            buffer_storage = cls.get_buffer_storage(config)
+            events_storage = cls.get_search_storage(config)
+            profiles_storage = cls.get_table_storage(config)
+            
+            # Reset buffer
+            buffer_count = await buffer_storage.reset(user_id or "", project_id)
+            result["buffer_deleted"] = buffer_count
+            
+            # Reset events
+            events_result = await events_storage.reset(user_id or "", project_id)
+            result["events_deleted"] = events_result.get("events", 0)
+            result["gists_deleted"] = events_result.get("gists", 0)
+            
+            # Reset profiles
+            profiles_count = await profiles_storage.reset(user_id, project_id)
+            result["profiles_deleted"] = profiles_count
+        
+        return result
+    
+    @classmethod
+    async def _drop_and_recreate_buffer_table(cls, storage) -> None:
+        """Drop and recreate BufferStorage table."""
+        import asyncio
+        
+        def _drop_and_recreate_sync():
+            pool = storage._get_pool()
+            conn = pool.get_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DROP TABLE IF EXISTS BufferStorage")
+                conn.commit()
+            finally:
+                cursor.close()
+                conn.close()
+        
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _drop_and_recreate_sync)
+        storage.initialize_tables()
+    
+    @classmethod
+    async def _drop_and_recreate_events_tables(cls, storage) -> None:
+        """Drop and recreate UserEvents and UserEventsGists tables."""
+        import asyncio
+        
+        def _drop_and_recreate_sync():
+            pool = storage._get_pool()
+            conn = pool.get_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DROP TABLE IF EXISTS UserEvents")
+                cursor.execute("DROP TABLE IF EXISTS UserEventsGists")
+                conn.commit()
+            finally:
+                cursor.close()
+                conn.close()
+        
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _drop_and_recreate_sync)
+        storage.initialize_tables_and_indices()
+    
+    @classmethod
+    async def _drop_and_recreate_profiles_table(cls, storage) -> None:
+        """Drop and recreate UserProfilesV2 table."""
+        import asyncio
+        
+        def _drop_and_recreate_sync():
+            pool = storage._get_pool()
+            conn = pool.get_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DROP TABLE IF EXISTS UserProfilesV2")
+                conn.commit()
+            finally:
+                cursor.close()
+                conn.close()
+        
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _drop_and_recreate_sync)
+        storage.initialize_tables()
 
 
 # Backward compatibility functions

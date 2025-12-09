@@ -78,6 +78,8 @@ class Config:
     lindorm_search_use_ssl: bool = False
     lindorm_search_username: str = None
     lindorm_search_password: str = None
+    
+    #Now deprecated
     lindorm_search_events_index: str = "memobase_events"
     lindorm_search_event_gists_index: str = "memobase_event_gists"
 
@@ -87,6 +89,7 @@ class Config:
     lindorm_table_username: str = "root"
     lindorm_table_password: str = None
     lindorm_table_database: str = "memobase"
+    lindorm_table_pool_size: int = 10  # Connection pool size for table storage (events, profiles)
 
     # Lindorm Buffer专用 MySQL协议配置 (可选，未设置时使用lindorm_table_配置)
     lindorm_buffer_host: str = None

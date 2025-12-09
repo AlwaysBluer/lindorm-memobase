@@ -32,6 +32,9 @@ class LindormBufferStorage:
     
     def initialize_tables(self):
         """Create BufferStorage table. Called during StorageManager initialization."""
+        # Configure Lindorm system settings first
+        self._configure_lindorm_settings()
+        
         def _init_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
@@ -57,6 +60,41 @@ class LindormBufferStorage:
                 conn.close()
         
         _init_sync()
+
+    def _configure_lindorm_settings(self):
+        """Configure Lindorm system settings for wide table operations.
+        
+        This method sets necessary Lindorm-specific configurations that are required
+        for proper operation of wide table storage.
+        """
+        pool = self._get_pool()
+        conn = pool.get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Enable range delete to allow DELETE operations with partial primary keys
+            # Required for deleting by user_id or project_id without specifying all PK columns
+            try:
+                cursor.execute("ALTER SYSTEM SET `lindorm.allow.range.delete`=TRUE")
+                TRACE_LOG.info("system", "Lindorm setting configured: lindorm.allow.range.delete=TRUE")
+            except Exception as e:
+                # Setting might already be enabled or not supported in this Lindorm version
+                TRACE_LOG.warning("system", f"Failed to set lindorm.allow.range.delete: {str(e)}")
+            
+            # Add other Lindorm-specific settings here as needed
+            # Example:
+            # try:
+            #     cursor.execute("ALTER SYSTEM SET `lindorm.some.other.setting`=VALUE")
+            #     TRACE_LOG.info("system", "Lindorm setting configured: lindorm.some.other.setting=VALUE")
+            # except Exception as e:
+            #     TRACE_LOG.warning("system", f"Failed to set lindorm.some.other.setting: {str(e)}")
+            
+            conn.commit()
+        except Exception as e:
+            TRACE_LOG.warning("system", f"Lindorm settings configuration encountered errors: {str(e)}")
+        finally:
+            cursor.close()
+            conn.close()
 
     def _get_pool(self) -> pooling.MySQLConnectionPool:
         if self._pool is None:
@@ -186,6 +224,61 @@ class LindormBufferStorage:
             return blob_ids
         except Exception as e:
             raise BufferStorageError(f"Failed to check overflow: {str(e)}") from e
+
+    async def reset(self, user_id:str, project_id: Optional[str] = None) -> int:
+        """Reset (delete all) buffer data.
+        
+        Args:
+            user_id: If provided, only delete data for this user. If None, delete all data.
+            project_id: If provided, only delete data for this project. If None, delete all projects.
+        
+        Returns:
+            Number of rows deleted
+        
+        Note: Administrative use only. Use with caution.
+        """
+        def _reset_sync():
+            pool = self._get_pool()
+            conn = pool.get_connection()
+            try:
+                cursor = conn.cursor()
+                
+                if user_id and project_id:
+                    # Delete for specific user and project
+                    cursor.execute(
+                        "DELETE FROM BufferStorage WHERE user_id = %s AND project_id = %s",
+                        (user_id, project_id)
+                    )
+                elif user_id:
+                    # Delete for specific user, all projects
+                    cursor.execute(
+                        "DELETE FROM BufferStorage WHERE user_id = %s",
+                        (user_id,)
+                    )
+                elif project_id:
+                    raise ValueError("Project ID cannot be specified without user ID") 
+                else:
+                    # Delete all data (use TRUNCATE for better performance)
+                    cursor.execute("TRUNCATE TABLE BufferStorage")
+                
+                affected_rows = cursor.rowcount
+                return affected_rows
+            except Exception as e:
+                raise
+            finally:
+                cursor.close()
+                conn.close()
+        
+        try:
+            loop = asyncio.get_event_loop()
+            count = await loop.run_in_executor(None, _reset_sync)
+            TRACE_LOG.info(
+                user_id or "system",
+                f"Buffer reset: deleted {count} rows (user_id={user_id}, project_id={project_id})"
+            )
+            return count
+        except Exception as e:
+            raise BufferStorageError(f"Failed to reset buffer: {str(e)}") from e
 
     async def _load_blobs(self, user_id: str, blob_ids: List[str], project_id: str) -> List[Tuple[Blob, str]]:
         def _load_blobs_sync():

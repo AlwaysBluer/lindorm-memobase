@@ -88,6 +88,7 @@ async def process_blobs(
     persistence_results = await asyncio.gather(
         handle_session_event(
             user_id,
+            project_id,  # Add project_id
             event_id,
             user_memo_str,
             delta_profile_data,
@@ -96,6 +97,7 @@ async def process_blobs(
         ),
         handle_session_event_gists(
             user_id,
+            project_id,  # Add project_id
             event_id,
             event_data.event_gists_with_actions,
             config,
@@ -192,11 +194,6 @@ async def process_event_res(
             event_tags=event_tags,
             event_gists_with_actions=[]
         )
-
-    returned_events_with_actions = await handle_merge_or_validate_new_event_gists(
-        user_id, event_gists, profile_config, config
-    )
-
     return EventProcessResult(
         event_tags=event_tags,
         event_gists_with_actions=returned_events_with_actions
