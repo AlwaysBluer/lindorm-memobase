@@ -62,7 +62,7 @@ class LindormEventsStorage(LindormStorageBase):
     def initialize_tables_and_indices(self):
         """Create UserEvents table and search index. Called during StorageManager initialization."""
         # Configure Lindorm system settings first (from base class)
-        self._configure_lindorm_settings()
+        # self._configure_lindorm_settings()
         
         self._create_table()
         self._create_search_index()

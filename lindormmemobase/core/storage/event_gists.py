@@ -69,7 +69,7 @@ class LindormEventGistsStorage(LindormStorageBase):
         Called during StorageManager initialization.
         """
         # Configure Lindorm system settings first (from base class)
-        self._configure_lindorm_settings()
+        # self._configure_lindorm_settings()
         self._create_table()
         self._create_search_index()
     

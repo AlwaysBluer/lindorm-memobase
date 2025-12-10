@@ -30,6 +30,7 @@ class TestConnectionDiagnostic:
             "config.yaml",
             os.path.join(os.getcwd(), "config.yaml")
         ]
+        print("Config paths:", config_paths)
         
         config_file_found = None
         for config_path in config_paths:

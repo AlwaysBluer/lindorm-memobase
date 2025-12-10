@@ -127,6 +127,7 @@ def integration_config():
         "config.yaml",                              # Current directory
         os.path.join(os.getcwd(), "config.yaml")    # Workspace root
     ]
+    print("Config paths:", config_paths)
     
     config = None
     for config_path in config_paths:

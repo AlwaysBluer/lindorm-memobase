@@ -174,7 +174,7 @@ async def get_user_event_gists_data(
         event_similarity_threshold: float,
         time_range_in_days: int,
         global_config: Config,
-        topk=60
+        topk=30
 ) -> UserEventGistsData:
     """Retrieve user event gists data with optional vector search.
     

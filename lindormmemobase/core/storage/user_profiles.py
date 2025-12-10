@@ -43,7 +43,7 @@ class LindormTableStorage(LindormStorageBase):
     def initialize_tables(self):
         """Create UserProfilesV2 table and indexes. Called during StorageManager initialization."""
         # Configure Lindorm system settings first (from base class)
-        self._configure_lindorm_settings()
+        # self._configure_lindorm_settings()
         
         pool = self._get_pool()
         conn = pool.get_connection()

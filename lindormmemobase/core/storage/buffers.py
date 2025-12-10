@@ -51,7 +51,7 @@ class LindormBufferStorage(LindormStorageBase):
     def initialize_tables(self):
         """Create BufferStorage table. Called during StorageManager initialization."""
         # Configure Lindorm system settings first (from base class)
-        self._configure_lindorm_settings()
+        # self._configure_lindorm_settings()
         
         def _init_sync():
             pool = self._get_pool()

@@ -29,7 +29,6 @@ async def demo_memory_extraction():
     config = Config.from_yaml_file("config.yaml")
 
     memobase = LindormMemobase(config)
-    await memobase.reset_all_storage()
     user_id = f"demo_user_{int(datetime.now().timestamp())}"
     project_id = "memory_extraction_demo"
     print(f"✓ 用户ID: {user_id}")
