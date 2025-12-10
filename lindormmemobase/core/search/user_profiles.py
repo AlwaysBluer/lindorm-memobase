@@ -1,14 +1,14 @@
 import json
 import re
-from ...config import Config, TRACE_LOG
-from ..extraction.prompts import pick_related_profiles as pick_prompt
-from ...llm.complete import llm_complete
-from ...models.blob import OpenAICompatibleMessage
-from ...models.response import UserProfilesData
-from ...utils.tools import get_encoded_tokens, truncate_string, find_list_int_or_none
-from ...utils.errors import SearchError
+from lindormmemobase.config import Config, TRACE_LOG
+from lindormmemobase.core.extraction.prompts import pick_related_profiles as pick_prompt
+from lindormmemobase.llm.complete import llm_complete
+from lindormmemobase.models.blob import OpenAICompatibleMessage
+from lindormmemobase.models.response import UserProfilesData
+from lindormmemobase.utils.tools import get_encoded_tokens, truncate_string, find_list_int_or_none
+from lindormmemobase.utils.errors import SearchError
 
-from ..storage.user_profiles import get_user_profiles
+from lindormmemobase.core.storage.user_profiles import get_user_profiles
 
 JSON_BODY_REGEX = re.compile(r"({[\s\S]*})")
 

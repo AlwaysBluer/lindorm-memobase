@@ -7,7 +7,7 @@ and access to all storage backends (table, search, buffer) with consistent patte
 
 import threading
 from typing import Optional, Dict, Tuple
-from ...config import Config, TRACE_LOG
+from lindormmemobase.config import Config, TRACE_LOG
 
 
 class StorageManager:
@@ -21,11 +21,13 @@ class StorageManager:
     # Class-level storage caches
     _table_storage_cache: Dict[Tuple, 'LindormTableStorage'] = {}
     _search_storage_cache: Dict[Tuple, 'LindormEventsStorage'] = {}
+    _event_gists_storage_cache: Dict[Tuple, 'LindormEventGistsStorage'] = {}
     _buffer_storage_cache: Dict[Tuple, 'LindormBufferStorage'] = {}
     
     # Thread-safe locks
     _table_lock = threading.Lock()
     _search_lock = threading.Lock()
+    _event_gists_lock = threading.Lock()
     _buffer_lock = threading.Lock()
     
     # Initialization state
@@ -56,9 +58,13 @@ class StorageManager:
                 table_storage = cls.get_table_storage(config)
                 table_storage.initialize_tables()
                 
-                # Initialize search storage
+                # Initialize search storage for events
                 search_storage = cls.get_search_storage(config)
                 search_storage.initialize_tables_and_indices()
+                
+                # Initialize search storage for event gists
+                event_gists_storage = cls.get_event_gists_storage(config)
+                event_gists_storage.initialize_tables_and_indices()
                 
                 # Initialize buffer storage
                 buffer_storage = cls.get_buffer_storage(config)
@@ -126,6 +132,30 @@ class StorageManager:
             return cls._search_storage_cache[cache_key]
     
     @classmethod
+    def get_event_gists_storage(cls, config: Config):
+        """
+        Get or create a LindormEventGistsStorage instance.
+        
+        Args:
+            config: Configuration object
+            
+        Returns:
+            LindormEventGistsStorage instance
+        """
+        from .event_gists import LindormEventGistsStorage
+        
+        cache_key = (
+            config.lindorm_search_host,
+            config.lindorm_search_port,
+            config.lindorm_search_username
+        )
+        
+        with cls._event_gists_lock:
+            if cache_key not in cls._event_gists_storage_cache:
+                cls._event_gists_storage_cache[cache_key] = LindormEventGistsStorage(config)
+            return cls._event_gists_storage_cache[cache_key]
+    
+    @classmethod
     def get_buffer_storage(cls, config: Config):
         """
         Get or create a LindormBufferStorage instance.
@@ -176,6 +206,15 @@ class StorageManager:
                 except Exception as e:
                     TRACE_LOG.warning("system", f"Error closing search storage: {str(e)}")
             cls._search_storage_cache.clear()
+        
+        with cls._event_gists_lock:
+            for storage in cls._event_gists_storage_cache.values():
+                try:
+                    if hasattr(storage, 'client') and storage.client:
+                        storage.client.close()
+                except Exception as e:
+                    TRACE_LOG.warning("system", f"Error closing event gists storage: {str(e)}")
+            cls._event_gists_storage_cache.clear()
         
         with cls._buffer_lock:
             for storage in cls._buffer_storage_cache.values():
@@ -238,38 +277,34 @@ class StorageManager:
             "tables_recreated": False
         }
         
+            # Get storage instances
+        buffer_storage = cls.get_buffer_storage(config)
+        events_storage = cls.get_search_storage(config)
+        event_gists_storage = cls.get_event_gists_storage(config)
+        profiles_storage = cls.get_table_storage(config)
         # If both user_id and project_id are None, drop and recreate tables
         if user_id is None and project_id is None:
-            # Get storage instances
-            buffer_storage = cls.get_buffer_storage(config)
-            events_storage = cls.get_search_storage(config)
-            profiles_storage = cls.get_table_storage(config)
-            
             # Drop and recreate buffer table
             await cls._drop_and_recreate_buffer_table(buffer_storage)
-            
-            # Drop and recreate events tables
-            await cls._drop_and_recreate_events_tables(events_storage)
-            
+            # Drop and recreate events table
+            await cls._drop_and_recreate_events_table(events_storage)
+            # Drop and recreate event gists table
+            await cls._drop_and_recreate_event_gists_table(event_gists_storage)
             # Drop and recreate profiles table
             await cls._drop_and_recreate_profiles_table(profiles_storage)
-            
             result["tables_recreated"] = True
+        elif user_id is None or user_id == "":
+            raise ValueError("user_id cannot be None or empty")
         else:
-            # Delete data using existing reset methods
-            buffer_storage = cls.get_buffer_storage(config)
-            events_storage = cls.get_search_storage(config)
-            profiles_storage = cls.get_table_storage(config)
-            
             # Reset buffer
-            buffer_count = await buffer_storage.reset(user_id or "", project_id)
+            buffer_count = await buffer_storage.reset(user_id, project_id)
             result["buffer_deleted"] = buffer_count
-            
             # Reset events
-            events_result = await events_storage.reset(user_id or "", project_id)
-            result["events_deleted"] = events_result.get("events", 0)
-            result["gists_deleted"] = events_result.get("gists", 0)
-            
+            events_count = await events_storage.reset(user_id, project_id)
+            result["events_deleted"] = events_count
+            # Reset event gists
+            gists_count = await event_gists_storage.reset(user_id, project_id)
+            result["gists_deleted"] = gists_count
             # Reset profiles
             profiles_count = await profiles_storage.reset(user_id, project_id)
             result["profiles_deleted"] = profiles_count
@@ -297,8 +332,8 @@ class StorageManager:
         storage.initialize_tables()
     
     @classmethod
-    async def _drop_and_recreate_events_tables(cls, storage) -> None:
-        """Drop and recreate UserEvents and UserEventsGists tables."""
+    async def _drop_and_recreate_events_table(cls, storage) -> None:
+        """Drop and recreate UserEvents table."""
         import asyncio
         
         def _drop_and_recreate_sync():
@@ -307,6 +342,25 @@ class StorageManager:
             try:
                 cursor = conn.cursor()
                 cursor.execute("DROP TABLE IF EXISTS UserEvents")
+                conn.commit()
+            finally:
+                cursor.close()
+                conn.close()
+        
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _drop_and_recreate_sync)
+        storage.initialize_tables_and_indices()
+    
+    @classmethod
+    async def _drop_and_recreate_event_gists_table(cls, storage) -> None:
+        """Drop and recreate UserEventsGists table."""
+        import asyncio
+        
+        def _drop_and_recreate_sync():
+            pool = storage._get_pool()
+            conn = pool.get_connection()
+            try:
+                cursor = conn.cursor()
                 cursor.execute("DROP TABLE IF EXISTS UserEventsGists")
                 conn.commit()
             finally:

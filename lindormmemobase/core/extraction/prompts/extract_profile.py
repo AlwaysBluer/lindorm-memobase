@@ -1,7 +1,6 @@
 from . import user_profile_topics
 from .utils import pack_profiles_into_string
-from ....models.response import AIUserProfiles
-from ....config import CONFIG
+from lindormmemobase.models.response import AIUserProfiles
 
 ADD_KWARGS = {
     "prompt_id": "extract_profile",

@@ -10,16 +10,15 @@ This package provides core functionality for:
 
 __version__ = "0.1.5"
 
-from .main import LindormMemobase, LindormMemobaseError, ConfigurationError
-from .config import Config
-from .models.blob import Blob, ChatBlob, BlobType
-from .models.types import FactResponse, MergeAddResult, Profile, ProfileEntry
-from .models.profile_topic import ProfileConfig
+from lindormmemobase.utils.errors import LindormMemobaseError, ConfigurationError
+from lindormmemobase.config import Config
+from lindormmemobase.models.blob import Blob, ChatBlob, BlobType
+from lindormmemobase.models.types import FactResponse, MergeAddResult, Profile, ProfileEntry
+from lindormmemobase.models.profile_topic import ProfileConfig
 
 __all__ = [
     "LindormMemobaseError",
     "ConfigurationError",
-    "LindormMemobase",
     "Config",
     "ProfileConfig",
     "Blob",

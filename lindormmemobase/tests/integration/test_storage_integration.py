@@ -107,25 +107,23 @@ class TestSearchStorageIntegration:
         """Test adding events and searching them."""
         # Initialize storage
         StorageManager.initialize(integration_config)
-        storage = StorageManager.get_search_storage(integration_config)
+        storage = StorageManager.get_event_gists_storage(integration_config)
         
         user_id = f"test_user_{datetime.now().timestamp()}"
+        project_id = "test_project"
         event_id = f"event_{datetime.now().timestamp()}"
         
-        # Add event gist (the correct method)
-        add_result = await storage.store_event_gist_with_embedding(
+        # Add event gist
+        event_id_result = await storage.store_event_gist_with_embedding(
             user_id=user_id,
+            project_id=project_id,
             event_id=event_id,
-            gist_data={"content": "User discussed travel plans"},
+            gist_idx=0,
+            gist_text="User discussed travel plans",
             embedding=mock_embedding_vector
         )
         
-        assert add_result.ok()
-        gist_id = add_result.data()
-        
-        # Note: Hybrid search requires text query and vector, which needs Search to be working
-        # Since Search connection failed in diagnostic test, we'll just verify the add succeeded
-        assert gist_id is not None
+        assert event_id_result is not None
         
         # Cleanup
         StorageManager.cleanup()

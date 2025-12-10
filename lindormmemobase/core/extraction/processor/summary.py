@@ -1,15 +1,12 @@
 import asyncio
-from ....config import TRACE_LOG
+from lindormmemobase.config import TRACE_LOG
 
-from ....utils.tools import get_encoded_tokens, truncate_string
-from ....utils.errors import ExtractionError
+from lindormmemobase.utils.tools import get_encoded_tokens, truncate_string
+from lindormmemobase.utils.errors import ExtractionError
 
-from ....models.types import AddProfile, UpdateProfile
-
-from ....llm.complete import llm_complete
-from ....core.extraction.prompts import summary_profile
-
-
+from lindormmemobase.models.types import AddProfile, UpdateProfile
+from lindormmemobase.llm.complete import llm_complete
+from lindormmemobase.core.extraction.prompts import summary_profile
 
 async def re_summary(
     user_id: str,

@@ -1,7 +1,7 @@
 import numpy as np
+from lindormmemobase.config import LOG
 from typing import Literal
 from .utils import get_lindormai_async_client_instance
-from ..config import LOG
 
 
 async def lindormai_embedding(

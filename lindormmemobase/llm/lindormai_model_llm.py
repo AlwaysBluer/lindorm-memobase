@@ -1,5 +1,5 @@
 from .utils import exclude_special_kwargs, get_lindormai_async_client_instance
-from ..config import LOG
+from lindormmemobase.config import LOG
 
 
 async def lindormai_complete(

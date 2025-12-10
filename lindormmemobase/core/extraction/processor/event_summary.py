@@ -1,15 +1,15 @@
 from typing import Optional
-from ....models.profile_topic import ProfileConfig
+from lindormmemobase.models.profile_topic import ProfileConfig
 
-from ....core.extraction.prompts.utils import(
+from lindormmemobase.core.extraction.prompts.utils import(
     parse_string_into_subtopics,
     attribute_unify
 )
-from ....core.extraction.prompts.profile_init_utils import read_out_event_tags 
-from ....core.extraction.prompts import event_tagging as event_tagging_prompt
+from lindormmemobase.core.extraction.prompts.profile_init_utils import read_out_event_tags 
+from lindormmemobase.core.extraction.prompts import event_tagging as event_tagging_prompt
 
-from ....llm.complete import llm_complete
-from ....utils.errors import ExtractionError
+from lindormmemobase.llm.complete import llm_complete
+from lindormmemobase.utils.errors import ExtractionError
 
 
 async def tag_event(

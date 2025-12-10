@@ -1,20 +1,20 @@
-from ....config import TRACE_LOG
-from ....core.constants import ConstantsTable
-from ....core.storage.user_profiles import get_user_profiles 
-from ....core.extraction.prompts.router import PROMPTS
-from ....core.extraction.prompts.utils import (
+from lindormmemobase.config import TRACE_LOG
+from lindormmemobase.core.constants import ConstantsTable
+from lindormmemobase.core.storage.user_profiles import get_user_profiles 
+from lindormmemobase.core.extraction.prompts.router import PROMPTS
+from lindormmemobase.core.extraction.prompts.utils import (
     parse_string_into_profiles,
     attribute_unify,
 )
 
-from ....utils.tools import truncate_string
+from lindormmemobase.utils.tools import truncate_string
 
-from ....models.response import AIUserProfiles
-from ....models.profile_topic import ProfileConfig
-from ....models.types import FactResponse
+from lindormmemobase.models.response import AIUserProfiles
+from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.models.types import FactResponse
 
-from ....models.profile_topic import read_out_profile_config
-from ....llm.complete import llm_complete
+from lindormmemobase.models.profile_topic import read_out_profile_config
+from lindormmemobase.llm.complete import llm_complete
 
 def merge_by_topic_sub_topics(new_facts: list[FactResponse]):
     """Merge facts with same topic-subtopic using ;; separator for later splitting."""

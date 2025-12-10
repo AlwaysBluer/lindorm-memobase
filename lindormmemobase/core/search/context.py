@@ -1,14 +1,14 @@
 from functools import partial
 
-from ...config import Config, TRACE_LOG
-from ...models.blob import OpenAICompatibleMessage
-from ...models.response import ContextData
-from ...models.profile_topic import ProfileConfig
-from ..extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
-from ...utils.errors import SearchError
-from ...utils.tools import get_encoded_tokens
+from lindormmemobase.config import Config, TRACE_LOG
+from lindormmemobase.models.blob import OpenAICompatibleMessage
+from lindormmemobase.models.response import ContextData
+from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
+from lindormmemobase.utils.errors import SearchError
+from lindormmemobase.utils.tools import get_encoded_tokens
 
-from .events import get_user_event_gists_data, truncate_event_gists
+from .event_gists import get_user_event_gists_data, truncate_event_gists
 from .user_profiles import get_user_profiles_data
 
 

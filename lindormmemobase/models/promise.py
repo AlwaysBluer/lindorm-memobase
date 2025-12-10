@@ -1,8 +1,8 @@
 from dataclasses import dataclass
+from lindormmemobase.config import LOG
 from typing import TypeVar, Optional, Type, Generic
 from pydantic import ValidationError
 from .response import BaseResponse, CODE
-from ..config import LOG
 
 
 class PromiseUnpackError(Exception):

@@ -2,13 +2,13 @@ import re
 import json
 import difflib
 
-from ....config import LOG, CONFIG
+from lindormmemobase.config import LOG, CONFIG
 
-from ....models.blob import ChatBlob 
-from ....models.response import AIUserProfile, AIUserProfiles
-from ....utils.text_utils import attribute_unify
+from lindormmemobase.models.blob import ChatBlob 
+from lindormmemobase.models.response import AIUserProfile, AIUserProfiles
+from lindormmemobase.utils.tools import attribute_unify
 
-from ....utils.tools import get_blob_str
+from lindormmemobase.utils.tools import get_blob_str
 
 EXCLUDE_PROFILE_VALUES = [
     # Chinese variations

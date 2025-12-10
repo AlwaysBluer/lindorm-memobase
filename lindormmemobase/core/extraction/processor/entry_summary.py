@@ -1,14 +1,11 @@
-from ....config import Config
-from ....models.profile_topic import ProfileConfig
-from ....llm.openai_model_llm import openai_complete
-from ....models.blob import Blob, BlobType
-
-from ....core.extraction.prompts.router import PROMPTS
-from ....core.extraction.prompts.utils import tag_chat_blobs_in_order_xml
-from ....core.extraction.prompts.profile_init_utils import read_out_event_tags
-from ....core.extraction.prompts.profile_init_utils import read_out_profile_config
-
-from ....llm.complete import llm_complete
+from lindormmemobase.config import Config
+from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.models.blob import Blob, BlobType
+from lindormmemobase.core.extraction.prompts.router import PROMPTS
+from lindormmemobase.core.extraction.prompts.utils import tag_chat_blobs_in_order_xml
+from lindormmemobase.core.extraction.prompts.profile_init_utils import read_out_event_tags
+from lindormmemobase.core.extraction.prompts.profile_init_utils import read_out_profile_config
+from lindormmemobase.llm.complete import llm_complete
 
 
 async def entry_chat_summary(

@@ -1,4 +1,3 @@
-from ....config import LOG
 from .profile_init_utils import (
     UserProfileTopic,
     formate_profile_topic,

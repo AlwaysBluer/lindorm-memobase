@@ -5,7 +5,7 @@ All exceptions inherit from LindormMemobaseError for easy catching.
 """
 
 from typing import Optional
-from ..models.response import CODE
+from lindormmemobase.models.response import CODE
 
 
 class LindormMemobaseError(Exception):

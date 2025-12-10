@@ -1,19 +1,17 @@
-import asyncio
-import uuid
 from pydantic import ValidationError
 
-from ....config import TRACE_LOG, Config
+from lindormmemobase.config import TRACE_LOG, Config
 
-from ....models.types import MergeAddResult
-from ....models.response import IdsData, EventData, EventGistWithAction
-from ....embedding import get_embedding
-from ....utils.errors import StorageError
+from lindormmemobase.models.types import MergeAddResult
+from lindormmemobase.models.response import IdsData, EventData
+from lindormmemobase.embedding import get_embedding
+from lindormmemobase.utils.errors import StorageError
 
-from ....utils.tools import event_embedding_str
+from lindormmemobase.utils.tools import event_embedding_str
 
-from ....core.storage.events import store_event_with_embedding, store_event_gist_with_embedding, \
-    delete_event, delete_event_gists_by_event_id, delete_event_gist
-from ....core.storage.user_profiles import add_user_profiles, update_user_profiles, delete_user_profiles
+from lindormmemobase.core.storage.events import store_event_with_embedding
+from lindormmemobase.core.storage.event_gists import store_event_gist_with_embedding
+from lindormmemobase.core.storage.user_profiles import add_user_profiles, update_user_profiles, delete_user_profiles
 
 
 def split_concatenated_profiles(
@@ -173,6 +171,7 @@ async def handle_session_event(
 ) -> None:
     return await append_user_event(
         user_id,
+        project_id,
         event_id,
         {
             "event_tip": memo_str,
@@ -254,7 +253,7 @@ async def append_user_event_gist(
     
     Each gist line (starting with '-') is stored as a separate row.
     """
-    if not event_gist_data :
+    if not event_gist_data:
         return event_id
     
     event_gists = event_gist_data.split("\n")
@@ -281,7 +280,6 @@ async def append_user_event_gist(
             event_gist_embeddings = [None] * len(event_gists)
     else:
         event_gist_embeddings = [None] * len(event_gists)
-    
     # Store each gist as plain text with gist_idx (0-based)
     for gist_idx, (event_gist, event_gist_embedding) in enumerate(zip(event_gists, event_gist_embeddings)):
         await store_event_gist_with_embedding(

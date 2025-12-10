@@ -1,4 +1,4 @@
-from typing import TypedDict, Optional, Literal
+from typing import TypedDict, Optional
 from dataclasses import dataclass, field
 from .response import ProfileData
 

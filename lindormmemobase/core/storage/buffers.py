@@ -2,18 +2,17 @@ import asyncio
 import json
 from datetime import datetime
 from typing import Callable, Awaitable, List, Optional, Tuple
-from mysql.connector import pooling
 
-from ...config import TRACE_LOG, Config
-from ..constants import BufferStatus
-from ...models.blob import BlobType, Blob
-from ...utils.errors import BufferStorageError
-from ...models.response import ChatModalResponse
-from ...models.profile_topic import ProfileConfig
-from .user_profiles import DEFAULT_PROJECT_ID
+from lindormmemobase.config import TRACE_LOG, Config
+from lindormmemobase.core.constants import BufferStatus
+from lindormmemobase.models.blob import BlobType, Blob
+from lindormmemobase.utils.errors import BufferStorageError
+from lindormmemobase.models.response import ChatModalResponse
+from lindormmemobase.models.profile_topic import ProfileConfig
+from .base import LindormStorageBase
 
-from ...utils.tools import get_blob_token_size
-from ..extraction.processor.process_blobs import process_blobs
+from lindormmemobase.utils.tools import get_blob_token_size
+from lindormmemobase.core.extraction.processor.process_blobs import process_blobs
 
 BlobProcessFunc = Callable[
     [str, Optional[ProfileConfig], list[Blob], Config],
@@ -23,16 +22,37 @@ BlobProcessFunc = Callable[
 BLOBS_PROCESS: dict[BlobType, BlobProcessFunc] = {BlobType.chat: process_blobs}
 
 
-class LindormBufferStorage:
+class LindormBufferStorage(LindormStorageBase):
     def __init__(self, config: Config):
-        self.config = config
+        super().__init__(config)
         self._pool = None
         # Don't call _ensure_tables in __init__ anymore
         # Tables are created explicitly via initialize_tables()
     
+    def _get_pool_name(self) -> str:
+        """Return unique pool name for buffer storage."""
+        return "buffer_pool"
+    
+    def _get_pool_config(self) -> dict:
+        """Return connection pool configuration for buffer storage."""
+        host = self.config.lindorm_buffer_host or self.config.lindorm_table_host
+        port = self.config.lindorm_buffer_port or self.config.lindorm_table_port
+        username = self.config.lindorm_buffer_username or self.config.lindorm_table_username
+        password = self.config.lindorm_buffer_password or self.config.lindorm_table_password
+        database = self.config.lindorm_buffer_database or self.config.lindorm_table_database
+        
+        return {
+            'host': host,
+            'port': port,
+            'user': username,
+            'password': password,
+            'database': database,
+            'pool_size': self.config.lindorm_buffer_pool_size
+        }
+    
     def initialize_tables(self):
         """Create BufferStorage table. Called during StorageManager initialization."""
-        # Configure Lindorm system settings first
+        # Configure Lindorm system settings first (from base class)
         self._configure_lindorm_settings()
         
         def _init_sync():
@@ -61,62 +81,6 @@ class LindormBufferStorage:
         
         _init_sync()
 
-    def _configure_lindorm_settings(self):
-        """Configure Lindorm system settings for wide table operations.
-        
-        This method sets necessary Lindorm-specific configurations that are required
-        for proper operation of wide table storage.
-        """
-        pool = self._get_pool()
-        conn = pool.get_connection()
-        try:
-            cursor = conn.cursor()
-            
-            # Enable range delete to allow DELETE operations with partial primary keys
-            # Required for deleting by user_id or project_id without specifying all PK columns
-            try:
-                cursor.execute("ALTER SYSTEM SET `lindorm.allow.range.delete`=TRUE")
-                TRACE_LOG.info("system", "Lindorm setting configured: lindorm.allow.range.delete=TRUE")
-            except Exception as e:
-                # Setting might already be enabled or not supported in this Lindorm version
-                TRACE_LOG.warning("system", f"Failed to set lindorm.allow.range.delete: {str(e)}")
-            
-            # Add other Lindorm-specific settings here as needed
-            # Example:
-            # try:
-            #     cursor.execute("ALTER SYSTEM SET `lindorm.some.other.setting`=VALUE")
-            #     TRACE_LOG.info("system", "Lindorm setting configured: lindorm.some.other.setting=VALUE")
-            # except Exception as e:
-            #     TRACE_LOG.warning("system", f"Failed to set lindorm.some.other.setting: {str(e)}")
-            
-            conn.commit()
-        except Exception as e:
-            TRACE_LOG.warning("system", f"Lindorm settings configuration encountered errors: {str(e)}")
-        finally:
-            cursor.close()
-            conn.close()
-
-    def _get_pool(self) -> pooling.MySQLConnectionPool:
-        if self._pool is None:
-            host = self.config.lindorm_buffer_host or self.config.lindorm_table_host
-            port = self.config.lindorm_buffer_port or self.config.lindorm_table_port
-            username = self.config.lindorm_buffer_username or self.config.lindorm_table_username
-            password = self.config.lindorm_buffer_password or self.config.lindorm_table_password
-            database = self.config.lindorm_buffer_database or self.config.lindorm_table_database
-
-            self._pool = pooling.MySQLConnectionPool(
-                pool_name="buffer_pool",
-                pool_size=self.config.lindorm_buffer_pool_size,
-                pool_reset_session=True,
-                host=host,
-                port=port,
-                user=username,
-                password=password,
-                database=database,
-                autocommit=False
-            )
-        return self._pool
-
     async def insert_blob(self, user_id: str, blob_id: str, blob_data: Blob, project_id: Optional[str] = None) -> None:
         def _insert_sync():
             actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
@@ -135,11 +99,7 @@ class LindormBufferStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _insert_sync)
-        except Exception as e:
-            raise BufferStorageError(f"Failed to insert blob: {str(e)}") from e
+        await self._execute_sync_operation(_insert_sync, "Failed to insert blob")
 
     async def get_capacity(self, user_id: str, blob_type: BlobType, project_id: Optional[str] = None) -> int:
         def _get_capacity_sync():
@@ -159,12 +119,7 @@ class LindormBufferStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            count = await loop.run_in_executor(None, _get_capacity_sync)
-            return count
-        except Exception as e:
-            raise BufferStorageError(f"Failed to get capacity: {str(e)}") from e
+        return await self._execute_sync_operation(_get_capacity_sync, "Failed to get capacity")
 
     async def get_ids_by_status(self, user_id: str, blob_type: BlobType, status: str = BufferStatus.idle, project_id: Optional[str] = None) -> List[str]:
         def _get_ids_sync():
@@ -184,12 +139,7 @@ class LindormBufferStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            blob_ids = await loop.run_in_executor(None, _get_ids_sync)
-            return blob_ids
-        except Exception as e:
-            raise BufferStorageError(f"Failed to get pending ids: {str(e)}") from e
+        return await self._execute_sync_operation(_get_ids_sync, "Failed to get pending ids")
 
     async def check_overflow(self, user_id: str, blob_type: BlobType, max_tokens: int, project_id: Optional[str] = None) -> List[str]:
         def _check_overflow_sync():
@@ -218,12 +168,7 @@ class LindormBufferStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            blob_ids = await loop.run_in_executor(None, _check_overflow_sync)
-            return blob_ids
-        except Exception as e:
-            raise BufferStorageError(f"Failed to check overflow: {str(e)}") from e
+        return await self._execute_sync_operation(_check_overflow_sync, "Failed to check overflow")
 
     async def reset(self, user_id:str, project_id: Optional[str] = None) -> int:
         """Reset (delete all) buffer data.
@@ -270,8 +215,10 @@ class LindormBufferStorage:
                 conn.close()
         
         try:
-            loop = asyncio.get_event_loop()
-            count = await loop.run_in_executor(None, _reset_sync)
+            count = await self._execute_sync_operation(
+                _reset_sync,
+                "Failed to reset buffer"
+            )
             TRACE_LOG.info(
                 user_id or "system",
                 f"Buffer reset: deleted {count} rows (user_id={user_id}, project_id={project_id})"
@@ -317,8 +264,7 @@ class LindormBufferStorage:
                 cursor.close()
                 conn.close()
         
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _load_blobs_sync)
+        return await self._execute_sync_operation(_load_blobs_sync, "Failed to load blobs")
 
     async def _update_status(self, user_id: str, blob_ids: List[str], status: str, project_id: str):
         """Update status for multiple blobs using batch UPDATE with IN clause."""
@@ -340,8 +286,7 @@ class LindormBufferStorage:
                 cursor.close()
                 conn.close()
         
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _update_status_sync)
+        await self._execute_sync_operation(_update_status_sync, "Failed to update status")
 
     async def flush(self, user_id: str, blob_type: BlobType, blob_ids: List[str],
                     status: str = BufferStatus.idle, profile_config=None, project_id: Optional[str] = None) -> Optional[ChatModalResponse]:

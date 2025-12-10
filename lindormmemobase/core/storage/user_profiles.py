@@ -1,13 +1,11 @@
-import json
 import uuid
-import asyncio
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-from mysql.connector import pooling
 
-from ...models.response import UserProfilesData
-from ...utils.errors import TableStorageError
-from ...config import TRACE_LOG
+from lindormmemobase.models.response import UserProfilesData
+from lindormmemobase.utils.errors import TableStorageError
+from lindormmemobase.config import TRACE_LOG
+from .base import LindormStorageBase
 
 # Default project_id constant
 DEFAULT_PROJECT_ID = "default"
@@ -21,31 +19,30 @@ def get_lindorm_table_storage(config):
 
 # class MySQLProfileStorage:
 # Lindorm 宽表部分兼容Mysql协议
-class LindormTableStorage:
+class LindormTableStorage(LindormStorageBase):
     def __init__(self, config):
-        self.config = config
-        self.pool = None
+        super().__init__(config)
         # Don't call _ensure_tables in __init__ anymore
         # Tables are created explicitly via initialize_tables()
-
-    def _get_pool(self):
-        if self.pool is None:
-            self.pool = pooling.MySQLConnectionPool(
-                pool_name="memobase_pool",
-                pool_size=10,
-                pool_reset_session=True,
-                host=self.config.lindorm_table_host,
-                port=self.config.lindorm_table_port,
-                user=self.config.lindorm_table_username,
-                password=self.config.lindorm_table_password,
-                database=self.config.lindorm_table_database,
-                autocommit=False
-            )
-        return self.pool
+    
+    def _get_pool_name(self) -> str:
+        """Return unique pool name for table storage."""
+        return "memobase_pool"
+    
+    def _get_pool_config(self) -> dict:
+        """Return connection pool configuration for table storage."""
+        return {
+            'host': self.config.lindorm_table_host,
+            'port': self.config.lindorm_table_port,
+            'user': self.config.lindorm_table_username,
+            'password': self.config.lindorm_table_password,
+            'database': self.config.lindorm_table_database,
+            'pool_size': 10
+        }
     
     def initialize_tables(self):
         """Create UserProfilesV2 table and indexes. Called during StorageManager initialization."""
-        # Configure Lindorm system settings first
+        # Configure Lindorm system settings first (from base class)
         self._configure_lindorm_settings()
         
         pool = self._get_pool()
@@ -91,41 +88,6 @@ class LindormTableStorage:
             cursor.close()
             conn.close()
 
-    def _configure_lindorm_settings(self):
-        """Configure Lindorm system settings for wide table operations.
-        
-        This method sets necessary Lindorm-specific configurations that are required
-        for proper operation of wide table storage.
-        """
-        pool = self._get_pool()
-        conn = pool.get_connection()
-        try:
-            cursor = conn.cursor()
-            
-            # Enable range delete to allow DELETE operations with partial primary keys
-            # Required for deleting by user_id or project_id without specifying all PK columns
-            try:
-                cursor.execute("ALTER SYSTEM SET `lindorm.allow.range.delete`=TRUE")
-                TRACE_LOG.info("system", "Lindorm setting configured: lindorm.allow.range.delete=TRUE")
-            except Exception as e:
-                # Setting might already be enabled or not supported in this Lindorm version
-                TRACE_LOG.warning("system", f"Failed to set lindorm.allow.range.delete: {str(e)}")
-            
-            # Add other Lindorm-specific settings here as needed
-            # Example:
-            # try:
-            #     cursor.execute("ALTER SYSTEM SET `lindorm.some.other.setting`=VALUE")
-            #     TRACE_LOG.info("system", "Lindorm setting configured: lindorm.some.other.setting=VALUE")
-            # except Exception as e:
-            #     TRACE_LOG.warning("system", f"Failed to set lindorm.some.other.setting: {str(e)}")
-            
-            conn.commit()
-        except Exception as e:
-            TRACE_LOG.warning("system", f"Lindorm settings configuration encountered errors: {str(e)}")
-        finally:
-            cursor.close()
-            conn.close()
-
     async def add_profiles(
         self,
         user_id: str,
@@ -167,12 +129,10 @@ class LindormTableStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            profile_ids = await loop.run_in_executor(None, _add_profiles_sync)
-            return profile_ids
-        except Exception as e:
-            raise TableStorageError(f"Failed to add profiles: {str(e)}") from e
+        return await self._execute_sync_operation(
+            _add_profiles_sync,
+            "Failed to add profiles"
+        )
 
     async def update_profiles(
         self,
@@ -235,12 +195,10 @@ class LindormTableStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            updated_ids = await loop.run_in_executor(None, _update_profiles_sync)
-            return updated_ids
-        except Exception as e:
-            raise TableStorageError(f"Failed to update profiles: {str(e)}") from e
+        return await self._execute_sync_operation(
+            _update_profiles_sync,
+            "Failed to update profiles"
+        )
 
     async def delete_profiles(
         self,
@@ -301,12 +259,10 @@ class LindormTableStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            deleted_count = await loop.run_in_executor(None, _delete_profiles_sync)
-            return deleted_count
-        except Exception as e:
-            raise TableStorageError(f"Failed to delete profiles: {str(e)}") from e
+        return await self._execute_sync_operation(
+            _delete_profiles_sync,
+            "Failed to delete profiles"
+        )
 
     async def get_user_profiles(
         self,
@@ -382,12 +338,10 @@ class LindormTableStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            profiles = await loop.run_in_executor(None, _get_profiles_sync)
-            return profiles
-        except Exception as e:
-            raise TableStorageError(f"Failed to get profiles: {str(e)}") from e
+        return await self._execute_sync_operation(
+            _get_profiles_sync,
+            "Failed to get profiles"
+        )
 
     async def reset(self, user_id: Optional[str] = None, project_id: Optional[str] = None) -> int:
         """Reset (delete all) user profiles data.
@@ -435,11 +389,12 @@ class LindormTableStorage:
                 cursor.close()
                 conn.close()
         
-        from ...config import TRACE_LOG
-        
         try:
-            loop = asyncio.get_event_loop()
-            count = await loop.run_in_executor(None, _reset_sync)
+            # Use base class helper method instead of manual executor pattern
+            count = await self._execute_sync_operation(
+                _reset_sync,
+                "Failed to reset user profiles"
+            )
             TRACE_LOG.info(
                 user_id or "system",
                 f"User profiles reset: deleted {count} rows (user_id={user_id}, project_id={project_id})"

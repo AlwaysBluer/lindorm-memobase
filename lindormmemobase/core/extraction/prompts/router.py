@@ -11,7 +11,6 @@ from .import (
     zh_summary_entry_chats,
     zh_merge_events,
 )
-from ....models.types import UpdateResponse
 
 PROMPTS = {
     "en": {

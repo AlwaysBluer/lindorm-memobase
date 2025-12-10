@@ -1,7 +1,7 @@
 from . import zh_user_profile_topics
-from ....models.response import AIUserProfiles
+from lindormmemobase.models.response import AIUserProfiles
 from .utils import pack_profiles_into_string
-from ....config import Config
+from lindormmemobase.config import Config
 
 ADD_KWARGS = {
     "prompt_id": "zh_extract_profile",

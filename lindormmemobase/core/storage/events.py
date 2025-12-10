@@ -3,61 +3,13 @@ import asyncio
 import uuid
 from datetime import datetime, timezone, timedelta
 from opensearchpy import OpenSearch
-from mysql.connector import pooling
 from typing import Optional, Dict, List, Any
 
-from lindormmemobase.utils.tools import event_embedding_str
-from ...utils.errors import SearchStorageError, StorageError
-from ...config import Config, TRACE_LOG
+from lindormmemobase.utils.tools import validate_and_format_embedding
+from lindormmemobase.utils.errors import SearchStorageError, StorageError
+from lindormmemobase.config import Config, TRACE_LOG
+from .base import LindormStorageBase
 
-
-def validate_and_format_embedding(embedding: Optional[List[float]], expected_dim: int, user_id: str = "system") -> Optional[str]:
-    """Validate embedding format and dimensions, return JSON string or None.
-    
-    Args:
-        embedding: Embedding vector to validate
-        expected_dim: Expected dimension from config
-        user_id: User ID for logging purposes
-    
-    Returns:
-        JSON string representation of embedding if valid, empty string otherwise
-    """
-    if embedding is None:
-        return None
-    
-    try:
-        # Convert to list if numpy array
-        if hasattr(embedding, 'tolist'):
-            embedding_list = embedding.tolist()
-        else:
-            embedding_list = embedding
-        
-        # Validate it's a list
-        if not isinstance(embedding_list, list):
-            TRACE_LOG.warning(user_id, f"Invalid embedding type: {type(embedding_list)}, expected list. Using empty string.")
-            return ""
-        
-        # Validate dimension
-        if len(embedding_list) != expected_dim:
-            TRACE_LOG.warning(user_id, f"Invalid embedding dimension: {len(embedding_list)}, expected {expected_dim}. Using empty string.")
-            return ""
-        
-        # Validate all elements are numbers
-        for i, val in enumerate(embedding_list):
-            if not isinstance(val, (int, float)):
-                TRACE_LOG.warning(user_id, f"Invalid embedding value at index {i}: {type(val)}, expected number. Using empty string.")
-                return ""
-            # Check for NaN or Inf
-            if isinstance(val, float) and (val != val or abs(val) == float('inf')):
-                TRACE_LOG.warning(user_id, f"Invalid embedding value at index {i}: {val} (NaN or Inf). Using empty string.")
-                return ""
-        
-        # Return JSON string representation
-        return json.dumps(embedding_list)
-    
-    except Exception as e:
-        TRACE_LOG.warning(user_id, f"Failed to validate embedding: {str(e)}. Using empty string.")
-        return ""
 
 # Default project_id constant
 DEFAULT_PROJECT_ID = "default"
@@ -71,10 +23,10 @@ def get_lindorm_search_storage(config: Config) -> 'LindormEventsStorage':
 
 # class OpenSearchEventStorage:
 # Lindorm is compatible with Opensearch .
-class LindormEventsStorage:
+class LindormEventsStorage(LindormStorageBase):
     def __init__(self, config: Config):
-        self.config = config
-        self.pool = None  # SQL connection pool for table operations
+        super().__init__(config)
+        self.event_index_name = f"{self.config.lindorm_table_database}.UserEvents.srh_idx"
         # OpenSearch client for search operations
         self.client = OpenSearch(
             hosts=[{
@@ -92,67 +44,31 @@ class LindormEventsStorage:
         # Don't call _ensure methods in __init__ anymore
         # Tables and indices are created explicitly via initialize_tables_and_indices()
     
-    def _get_pool(self):
-        """Get or create SQL connection pool for table operations."""
-        if self.pool is None:
-            self.pool = pooling.MySQLConnectionPool(
-                pool_name="memobase_events_pool",
-                pool_size=self.config.lindorm_table_pool_size,
-                pool_reset_session=True,
-                host=self.config.lindorm_table_host,
-                port=self.config.lindorm_table_port,
-                user=self.config.lindorm_table_username,
-                password=self.config.lindorm_table_password,
-                database=self.config.lindorm_table_database,
-                autocommit=False
-            )
-        return self.pool
+    def _get_pool_name(self) -> str:
+        """Return unique pool name for events storage."""
+        return "memobase_events_pool"
+    
+    def _get_pool_config(self) -> dict:
+        """Return connection pool configuration for events storage."""
+        return {
+            'host': self.config.lindorm_table_host,
+            'port': self.config.lindorm_table_port,
+            'user': self.config.lindorm_table_username,
+            'password': self.config.lindorm_table_password,
+            'database': self.config.lindorm_table_database,
+            'pool_size': self.config.lindorm_table_pool_size
+        }
     
     def initialize_tables_and_indices(self):
-        """Create tables and search indices. Called during StorageManager initialization."""
-        # Configure Lindorm system settings first
+        """Create UserEvents table and search index. Called during StorageManager initialization."""
+        # Configure Lindorm system settings first (from base class)
         self._configure_lindorm_settings()
         
-        self._create_tables()
-        self._create_search_indices()
+        self._create_table()
+        self._create_search_index()
     
-    def _configure_lindorm_settings(self):
-        """Configure Lindorm system settings for wide table operations.
-        
-        This method sets necessary Lindorm-specific configurations that are required
-        for proper operation of wide table storage.
-        """
-        pool = self._get_pool()
-        conn = pool.get_connection()
-        try:
-            cursor = conn.cursor()
-            
-            # Enable range delete to allow DELETE operations with partial primary keys
-            # Required for deleting by user_id or project_id without specifying all PK columns
-            try:
-                cursor.execute("ALTER SYSTEM SET `lindorm.allow.range.delete`=TRUE")
-                TRACE_LOG.info("system", "Lindorm setting configured: lindorm.allow.range.delete=TRUE")
-            except Exception as e:
-                # Setting might already be enabled or not supported in this Lindorm version
-                TRACE_LOG.warning("system", f"Failed to set lindorm.allow.range.delete: {str(e)}")
-            
-            # Add other Lindorm-specific settings here as needed
-            # Example:
-            # try:
-            #     cursor.execute("ALTER SYSTEM SET `lindorm.some.other.setting`=VALUE")
-            #     TRACE_LOG.info("system", "Lindorm setting configured: lindorm.some.other.setting=VALUE")
-            # except Exception as e:
-            #     TRACE_LOG.warning("system", f"Failed to set lindorm.some.other.setting: {str(e)}")
-            
-            conn.commit()
-        except Exception as e:
-            TRACE_LOG.warning("system", f"Lindorm settings configuration encountered errors: {str(e)}")
-        finally:
-            cursor.close()
-            conn.close()
-    
-    def _create_tables(self):
-        """Create UserEvents and UserEventsGists wide tables via SQL."""
+    def _create_table(self):
+        """Create UserEvents wide table via SQL."""
         pool = self._get_pool()
         conn = pool.get_connection()
         try:
@@ -172,28 +88,13 @@ class LindormEventsStorage:
                 )
             """)
             
-            # Create UserEventsGists table with gist_idx for one-to-many relationship
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS UserEventsGists (
-                    user_id VARCHAR(255) NOT NULL,
-                    project_id VARCHAR(255) NOT NULL,
-                    event_id VARCHAR(255) NOT NULL,
-                    gist_idx INT NOT NULL,
-                    event_gist_data VARCHAR NOT NULL,
-                    embedding VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    PRIMARY KEY(user_id, project_id, event_id, gist_idx)
-                )
-            """)
-            
             conn.commit()
         finally:
             cursor.close()
             conn.close()
     
-    def _create_search_indices(self):
-        """Create search indices for UserEvents and UserEventsGists tables via SQL CREATE INDEX.
+    def _create_search_index(self):
+        """Create search index for UserEvents table via SQL CREATE INDEX.
         
         Lindorm automatically syncs table changes to search indices.
         No need to write directly to search indices via OpenSearch API.
@@ -212,44 +113,6 @@ class LindormEventsStorage:
                     created_at,
                     updated_at,
                     event_data,
-                    embedding(mapping='{{
-                        "type": "knn_vector",
-                        "dimension": {self.config.embedding_dim},
-                        "data_type": "float",
-                        "method": {{
-                            "engine": "lvector",
-                            "name": "hnsw",
-                            "space_type": "l2",
-                            "parameters": {{
-                                "m": 24,
-                                "ef_construction": 500
-                            }}
-                        }}
-                    }}')
-                ) PARTITION BY hash(user_id) WITH (
-                    SOURCE_SETTINGS='{{
-                        "excludes": ["embedding"]
-                    }}',
-                    INDEX_SETTINGS='{{
-                        "index": {{
-                            "knn": "true",
-                            "knn_routing": "true",
-                            "knn.vector_empty_value_to_keep": true
-                        }}
-                    }}'
-                )
-            """)
-            
-            # Create search index on UserEventsGists table
-            cursor.execute(f"""
-                CREATE INDEX IF NOT EXISTS srh_idx USING SEARCH ON UserEventsGists(
-                    user_id,
-                    project_id,
-                    event_id,
-                    gist_idx,
-                    created_at,
-                    updated_at,
-                    event_gist_data,
                     embedding(mapping='{{
                         "type": "knn_vector",
                         "dimension": {self.config.embedding_dim},
@@ -332,73 +195,12 @@ class LindormEventsStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, _store_event_sync)
-            return result
-        except Exception as e:
-            raise StorageError(f"Failed to store event: {str(e)}") from e
+        return await self._execute_sync_operation(
+            _store_event_sync,
+            "Failed to store event"
+        )
 
-    async def store_event_gist_with_embedding(
-            self,
-            user_id: str,
-            project_id: str,
-            event_id: str,
-            gist_idx: int,
-            gist_text: str,
-            embedding: Optional[List[float]] = None
-    ) -> str:
-        """Store event gist in UserEventsGists table via SQL INSERT.
-        
-        Args:
-            gist_idx: Index of this gist within the event (0-based)
-            gist_text: Plain text gist content (VARCHAR, not JSON)
-        
-        Note: Multiple gists for the same event_id are stored with different gist_idx.
-        """
-        def _store_gist_sync():
-            pool = self._get_pool()
-            conn = pool.get_connection()
-            
-            # Use default project_id if not provided
-            actual_project_id = project_id or DEFAULT_PROJECT_ID
-            
-            try:
-                cursor = conn.cursor()
-                now = datetime.now(timezone.utc)
-                
-                # Validate and format embedding with strict dimension check
-                embedding_str = validate_and_format_embedding(
-                    embedding, 
-                    self.config.embedding_dim, 
-                    str(user_id)
-                )
-                
-                cursor.execute(
-                    """
-                    INSERT INTO UserEventsGists 
-                    (user_id, project_id, event_id, gist_idx, event_gist_data, embedding, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (str(user_id), str(actual_project_id), str(event_id), 
-                     int(gist_idx), str(gist_text), embedding_str, now, now)
-                )
-                
-                conn.commit()
-                return event_id
-            except Exception as e:
-                conn.rollback()
-                raise StorageError(f"Failed to store event gist: {str(e)}") from e
-            finally:
-                cursor.close()
-                conn.close()
-        
-        try:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, _store_gist_sync)
-            return result
-        except Exception as e:
-            raise StorageError(f"Failed to store event gist: {str(e)}") from e
+
 
     async def delete_event(
             self,
@@ -439,124 +241,96 @@ class LindormEventsStorage:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, _delete_event_sync)
-            return result
-        except Exception as e:
-            raise StorageError(f"Failed to delete event: {str(e)}") from e
+        return await self._execute_sync_operation(
+            _delete_event_sync,
+            "Failed to delete event"
+        )
 
-    async def delete_event_gist(
+    async def get_events_by_filter(
             self,
             user_id: str,
-            project_id: str,
-            event_id: str
-    ) -> str:
-        """Delete event gists from UserEventsGists table via SQL.
+            project_id: Optional[str] = None,
+            time_range_in_days: int = 21,
+            limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Retrieve UserEvents by SQL filters without vector search.
         
-        Note: Administrative use only. Events are immutable in normal operation.
-        Used for data cleanup or GDPR compliance.
-        Lindorm automatically syncs deletion to search indices.
+        Args:
+            user_id: User identifier to filter by
+            project_id: Optional project filter. If None, searches all projects.
+            time_range_in_days: Number of days to look back from now
+            limit: Maximum number of results to return
+        
+        Returns:
+            List of event dictionaries with id, event_data, created_at, updated_at
         """
-        def _delete_gist_sync():
+        def _get_events_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
             
             actual_project_id = project_id or DEFAULT_PROJECT_ID
             
             try:
-                cursor = conn.cursor()
+                cursor = conn.cursor(dictionary=True)
                 
-                # DELETE requires all primary key columns in Lindorm
-                cursor.execute(
+                # Calculate time cutoff
+                time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
+                
+                # Build query based on whether project_id is specified
+                if project_id:
+                    query = """
+                        SELECT event_id, event_data, created_at, updated_at
+                        FROM UserEvents
+                        WHERE user_id = %s AND project_id = %s AND created_at >= %s
+                        ORDER BY created_at DESC
+                        LIMIT %s
                     """
-                    DELETE FROM UserEventsGists 
-                    WHERE user_id = %s AND project_id = %s AND event_id = %s
-                    """,
-                    (str(user_id), str(actual_project_id), str(event_id))
-                )
+                    cursor.execute(query, (str(user_id), str(actual_project_id), time_cutoff, limit))
+                else:
+                    query = """
+                        SELECT event_id, event_data, created_at, updated_at
+                        FROM UserEvents
+                        WHERE user_id = %s AND created_at >= %s
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                    """
+                    cursor.execute(query, (str(user_id), time_cutoff, limit))
                 
-                conn.commit()
-                return event_id
+                rows = cursor.fetchall()
+                
+                results = []
+                for row in rows:
+                    # Parse event_data from JSON string to dict
+                    event_data_dict = json.loads(row['event_data']) if isinstance(row['event_data'], str) else row['event_data']
+                    
+                    results.append({
+                        'id': row['event_id'],
+                        'event_data': event_data_dict,
+                        'created_at': row['created_at'],
+                        'updated_at': row['updated_at']
+                    })
+                
+                return results
             except Exception as e:
-                conn.rollback()
-                raise StorageError(f"Failed to delete event gist: {str(e)}") from e
+                raise StorageError(f"Failed to get events by filter: {str(e)}") from e
             finally:
                 cursor.close()
                 conn.close()
         
-        try:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, _delete_gist_sync)
-            return result
-        except Exception as e:
-            raise StorageError(f"Failed to delete event gist: {str(e)}") from e
+        return await self._execute_sync_operation(
+            _get_events_sync,
+            "Failed to get events by filter"
+        )
 
-    async def delete_event_gists_by_event_id(
-            self,
-            user_id: str,
-            project_id: str,
-            event_id: str
-    ) -> int:
-        """Delete all gists associated with an event_id via SQL.
-        
-        Note: Administrative use only. Events are immutable in normal operation.
-        Used for cascade cleanup when deleting an event.
-        Lindorm automatically syncs deletion to search indices.
-        """
-        def _delete_gists_sync():
-            pool = self._get_pool()
-            conn = pool.get_connection()
-            
-            actual_project_id = project_id or DEFAULT_PROJECT_ID
-            
-            try:
-                cursor = conn.cursor()
-                
-                # First count how many will be deleted
-                cursor.execute(
-                    """
-                    SELECT COUNT(*) FROM UserEventsGists 
-                    WHERE user_id = %s AND project_id = %s AND event_id = %s
-                    """,
-                    (str(user_id), str(actual_project_id), str(event_id))
-                )
-                count = cursor.fetchone()[0]
-                
-                # Then delete them
-                cursor.execute(
-                    """
-                    DELETE FROM UserEventsGists 
-                    WHERE user_id = %s AND project_id = %s AND event_id = %s
-                    """,
-                    (str(user_id), str(actual_project_id), str(event_id))
-                )
-                
-                conn.commit()
-                return count
-            except Exception as e:
-                conn.rollback()
-                raise StorageError(f"Failed to delete event gists: {str(e)}") from e
-            finally:
-                cursor.close()
-                conn.close()
-        
-        try:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, _delete_gists_sync)
-            return result
-        except Exception as e:
-            raise StorageError(f"Failed to delete event gists: {str(e)}") from e
-
-    async def reset(self, user_id:str, project_id: Optional[str] = None) -> Dict[str, int]:
-        """Reset (delete all) events data from both UserEvents and UserEventsGists tables.
+    async def reset(self, user_id:str, project_id: Optional[str] = None) -> int:
+        """Reset (delete all) events data from UserEvents table.
         
         Args:
             user_id: If provided, only delete data for this user. If None, delete all data.
             project_id: If provided, only delete data for this project. If None, delete all projects.
         
         Returns:
-            Dictionary with counts: {"events": count, "gists": count}
+            Number of deleted event rows
         
         Note: Administrative use only. Use with caution.
         """
@@ -567,7 +341,6 @@ class LindormEventsStorage:
                 cursor = conn.cursor()
                 
                 events_count = 0
-                gists_count = 0
                 
                 if user_id and project_id:
                     # Delete for specific user and project
@@ -576,12 +349,6 @@ class LindormEventsStorage:
                         (user_id, project_id)
                     )
                     events_count = cursor.rowcount
-                    
-                    cursor.execute(
-                        "DELETE FROM UserEventsGists WHERE user_id = %s AND project_id = %s",
-                        (user_id, project_id)
-                    )
-                    gists_count = cursor.rowcount
                 elif user_id:
                     # Delete all projects for this user
                     cursor.execute(
@@ -589,22 +356,14 @@ class LindormEventsStorage:
                         (user_id,)
                     )
                     events_count = cursor.rowcount
-                    
-                    cursor.execute(
-                        "DELETE FROM UserEventsGists WHERE user_id = %s",
-                        (user_id,)
-                    )
-                    gists_count = cursor.rowcount
                 elif project_id:
                     raise ValueError("Project ID cannot be specified without user ID") 
                 else:
                     cursor.execute("TRUNCATE TABLE UserEvents")
-                    cursor.execute("TRUNCATE TABLE UserEventsGists")
                     events_count = -1
-                    gists_count = -1
                 
                 conn.commit()
-                return {"events": events_count, "gists": gists_count}
+                return events_count
             except Exception as e:
                 conn.rollback()
                 raise
@@ -613,14 +372,16 @@ class LindormEventsStorage:
                 conn.close()
         
         try:
-            loop = asyncio.get_event_loop()
-            counts = await loop.run_in_executor(None, _reset_sync)
+            events_count = await self._execute_sync_operation(
+                _reset_sync,
+                "Failed to reset events"
+            )
             TRACE_LOG.info(
                 user_id or "system",
-                f"Events reset: deleted {counts['events']} events and {counts['gists']} gists "
+                f"Events reset: deleted {events_count} events "
                 f"(user_id={user_id}, project_id={project_id})"
             )
-            return counts
+            return events_count
         except Exception as e:
             raise StorageError(f"Failed to reset events: {str(e)}") from e
 
@@ -680,9 +441,8 @@ class LindormEventsStorage:
                 }
             }
             
-            event_index_name = f"{self.config.lindorm_table_database}.UserEvents.srh_idx"
             response = self.client.search(
-                index=event_index_name,
+                index=self.event_index_name,
                 body=search_query,
                 routing=user_id
             )
@@ -700,113 +460,6 @@ class LindormEventsStorage:
         except Exception as e:
             raise SearchStorageError(f"Failed to search events: {str(e)}") from e
 
-    async def hybrid_search_gist_events(
-            self,
-            user_id: str,
-            query: str,
-            query_vector: List[float],
-            size: int = 10,
-            min_score: float = 0.6,
-            time_range_in_days: int = 21,
-            project_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """Hybrid vector + keyword search on UserEventsGists table.
-        
-        Args:
-            project_id: Optional project filter. If None, searches across all projects.
-        """
-        try:
-            time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
-            # Convert to milliseconds timestamp for TIMESTAMP field
-            time_cutoff_ms = int(time_cutoff.timestamp() * 1000)
-            
-            # Build filter conditions
-            filter_conditions = [
-                {"term": {"_routing": user_id}},
-                {"range": {"created_at": {"gte": time_cutoff_ms}}},
-                {"match": {"event_gist_data": {"query": query}}}
-            ]
-            
-            # Add project_id filter if specified
-            if project_id:
-                filter_conditions.append({"term": {"project_id": project_id}})
-            
-            search_query = {
-                "size": size,
-                "_source": {
-                    "exclude": ["embedding"]
-                },
-                "query": {
-                    "knn": {
-                        "embedding": {
-                            "vector": query_vector,
-                            "filter": {
-                                "bool": {
-                                    "must": [{"bool": {"must": filter_conditions}}]
-                                }
-                            },
-                            "k": size,
-                        }
-                    }
-                },
-                "ext": {
-                    "lvector": {
-                        "min_score": str(min_score),
-                        "hybrid_search_type": "filter_rrf",
-                        "rrf_knn_weight_factor": "0.5"
-                    }
-                }
-            }
-
-            
-            event_gist_index_name = f"{self.config.lindorm_table_database}.UserEventsGists.srh_idx"
-            response = self.client.search(
-                index=event_gist_index_name,
-                body=search_query,
-                routing=user_id
-            )
-            
-            if not response or 'hits' not in response or 'hits' not in response['hits']:
-                TRACE_LOG.error(user_id, f"Invalid search response structure: {response}")
-                return []
-
-            gists = []
-            for hit in response['hits']['hits']:
-                if '_source' not in hit:
-                    TRACE_LOG.error(user_id, f"Missing _source in search hit: {hit.keys()}")
-                    continue
-                source = hit['_source']
-                # Check if required fields exist in source
-                if 'event_gist_data' not in source or 'created_at' not in source:
-                    TRACE_LOG.error(user_id, f"Missing required fields in _source: {source.keys()}")
-                    continue
-                similarity = hit.get('_score', 0.0)
-                # Wrap plain text gist in dict for backward compatibility
-                gists.append({
-                    "id": hit['_id'],
-                    "gist_data": {"content": source['event_gist_data']},
-                    "created_at": source['created_at'],
-                    "updated_at": source.get('updated_at', source['created_at']),
-                    "similarity": similarity
-                })
-
-            return gists
-        except Exception as e:
-            raise SearchStorageError(f"Failed to search gist events: {str(e)}") from e
-
-
-async def search_user_event_gists_with_embedding(
-        user_id: str,
-        query: str,
-        query_vector: List[float],
-        config: Config,
-        topk: int = 10,
-        similarity_threshold: float = 0.2,
-        time_range_in_days: int = 21,
-        project_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    storage = get_lindorm_search_storage(config)
-    return await storage.hybrid_search_gist_events(user_id, query, query_vector, topk, similarity_threshold, time_range_in_days, project_id)
 
 
 async def search_user_events_with_embedding(
@@ -836,18 +489,6 @@ async def store_event_with_embedding(
     return await storage.store_event_with_embedding(user_id, project_id, event_id, event_data, embedding)
 
 
-async def store_event_gist_with_embedding(
-        user_id: str,
-        project_id: str,
-        event_id: str,
-        gist_idx: int,
-        gist_text: str,
-        embedding: Optional[List[float]] = None,
-        config: Config = None
-) -> str:
-    storage = get_lindorm_search_storage(config)
-    return await storage.store_event_gist_with_embedding(user_id, project_id, event_id, gist_idx, gist_text, embedding)
-
 
 async def delete_event(
         user_id: str,
@@ -860,23 +501,15 @@ async def delete_event(
     return await storage.delete_event(user_id, project_id, event_id)
 
 
-async def delete_event_gist(
-        user_id: str,
-        project_id: str,
-        event_id: str,
-        config: Config = None
-) -> str:
-    """Delete event gist - administrative use only."""
-    storage = get_lindorm_search_storage(config)
-    return await storage.delete_event_gist(user_id, project_id, event_id)
 
 
-async def delete_event_gists_by_event_id(
+async def get_events_by_filter(
         user_id: str,
-        project_id: str,
-        event_id: str,
+        project_id: Optional[str] = None,
+        time_range_in_days: int = 21,
+        limit: int = 20,
         config: Config = None
-) -> int:
-    """Delete all event gists for an event - administrative use only."""
+) -> List[Dict[str, Any]]:
+    """Retrieve UserEvents by SQL filters without vector search."""
     storage = get_lindorm_search_storage(config)
-    return await storage.delete_event_gists_by_event_id(user_id, project_id, event_id)
+    return await storage.get_events_by_filter(user_id, project_id, time_range_in_days, limit)

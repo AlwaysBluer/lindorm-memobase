@@ -1,5 +1,3 @@
-from . import user_profile_topics
-
 ADD_KWARGS = {
     "prompt_id": "organize_profile",
 }

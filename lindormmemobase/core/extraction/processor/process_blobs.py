@@ -1,20 +1,17 @@
 import asyncio
 import uuid
 
-import numpy
+from lindormmemobase.utils.tools import get_blob_str, get_encoded_tokens
+from lindormmemobase.utils.errors import ExtractionError
 
-from ....embedding import get_embedding
-from ....utils.tools import get_blob_str, get_encoded_tokens
-from ....utils.errors import ExtractionError
-
-from ....config import Config, TRACE_LOG
-from ....models.blob import Blob
-from ....models.response import ChatModalResponse, EventProcessResult, EventGist
-from ....models.types import MergeAddResult
-from ....models.profile_topic import ProfileConfig
+from lindormmemobase.config import Config, TRACE_LOG
+from lindormmemobase.models.blob import Blob
+from lindormmemobase.models.response import ChatModalResponse
+from lindormmemobase.models.types import MergeAddResult
+from lindormmemobase.models.profile_topic import ProfileConfig
 
 from .extract import extract_topics
-from .merge import merge_or_valid_new_profile, handle_merge_or_validate_new_event_gists
+from .merge import merge_or_valid_new_profile
 from .organize import organize_profiles
 from .event_summary import tag_event
 from .entry_summary import entry_chat_summary
@@ -47,31 +44,9 @@ async def process_blobs(
 
     user_memo_str = await entry_chat_summary(blobs, profile_config, config)
 
-    event_gists_texts = user_memo_str.split("\n")
-    event_gists_texts = [l.strip() for l in event_gists_texts if l.strip().startswith("-")]
-    TRACE_LOG.info(user_id, f"Processing {len(event_gists_texts)} event gists")
-    if config.enable_event_embedding and len(event_gists_texts) > 0:
-        try:
-            event_gists_embeddings = await get_embedding(
-                event_gists_texts,
-                phase="document",
-                model=config.embedding_model,
-                config=config,
-            )
-        except Exception as e:
-            TRACE_LOG.error(user_id, f"Failed to get embeddings: {str(e)}")
-            event_gists_embeddings = [None] * len(event_gists_texts)
-    else:
-        event_gists_embeddings = [None] * len(event_gists_texts)
-
-    event_gists = [
-        EventGist(text=text, embedding=emb)
-        for text, emb in zip(event_gists_texts, event_gists_embeddings)
-    ]
-
     processing_results = await asyncio.gather(
         process_profile_res(user_id, user_memo_str, profile_config, config),
-        process_event_res(user_id, user_memo_str, event_gists, profile_config, config),
+        process_event_res(user_id, user_memo_str, profile_config, config),
         return_exceptions=True
     )
 
@@ -81,7 +56,7 @@ async def process_blobs(
         raise ExtractionError(f"Failed to process event: {str(processing_results[1])}") from processing_results[1]
 
     intermediate_profile, delta_profile_data = processing_results[0]
-    event_data: EventProcessResult = processing_results[1]
+    event_tags = processing_results[1]
 
     # Handle session events and user profiles (only skip if test_skip_persist is True)
     event_id = str(uuid.uuid4())
@@ -92,14 +67,14 @@ async def process_blobs(
             event_id,
             user_memo_str,
             delta_profile_data,
-            event_data.event_tags,
+            event_tags,
             config,
         ),
         handle_session_event_gists(
             user_id,
             project_id,  # Add project_id
             event_id,
-            event_data.event_gists_with_actions,
+            user_memo_str,
             config,
         ),
         handle_user_profile_db(user_id, intermediate_profile, config, project_id),
@@ -183,18 +158,9 @@ async def process_profile_res(
 async def process_event_res(
         user_id: str,
         memo_str: str,
-        event_gists: list[EventGist],
         profile_config: ProfileConfig,
         config: Config,
-) -> EventProcessResult:
+) -> list:
     # event index
     event_tags = await tag_event(profile_config, memo_str, config)
-    if len(event_gists) == 0:
-        return EventProcessResult(
-            event_tags=event_tags,
-            event_gists_with_actions=[]
-        )
-    return EventProcessResult(
-        event_tags=event_tags,
-        event_gists_with_actions=returned_events_with_actions
-    )
+    return event_tags

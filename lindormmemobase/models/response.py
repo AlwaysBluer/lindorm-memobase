@@ -1,12 +1,9 @@
 from datetime import datetime
-from typing import NamedTuple
 from enum import IntEnum
-from typing import Optional, Literal, Any
+from typing import Optional, Any
 
 import numpy as np
-from pydantic import BaseModel, UUID4, UUID5, Field
-
-UUID = UUID4 | UUID5
+from pydantic import BaseModel, Field
 
 
 class CODE(IntEnum):
@@ -38,7 +35,7 @@ class AIUserProfiles(BaseModel):
 
 
 class ProfileData(BaseModel):
-    id: UUID = Field(..., description="The profile's unique identifier")
+    id: str = Field(..., description="The profile's unique identifier")
     content: str = Field(..., description="User profile content value")
     created_at: datetime = Field(
         None, description="Timestamp when the profile was created"
@@ -71,7 +68,7 @@ class UserProfilesData(BaseModel):
 
 
 class IdsData(BaseModel):
-    ids: list[UUID] = Field(..., description="List of UUID identifiers")
+    ids: list[str] = Field(..., description="List of identifiers")
 
 
 class ProfileDelta(BaseModel):
@@ -121,7 +118,7 @@ class EventData(BaseModel):
 
 
 class UserEventData(BaseModel):
-    id: UUID = Field(..., description="The event's unique identifier")
+    id: str = Field(..., description="The event's unique identifier")
     event_data: EventData = Field(None, description="User event data in JSON")
     created_at: datetime = Field(
         None, description="Timestamp when the event was created"
@@ -137,7 +134,7 @@ class ContextData(BaseModel):
 
 
 class UserEventGistData(BaseModel):
-    id: UUID = Field(..., description="The event gist's unique identifier")
+    id: str = Field(..., description="The event gist's unique identifier (composite key from Lindorm Search)")
     gist_data: EventGistData = Field(None, description="User event gist data")
     created_at: datetime = Field(
         None, description="Timestamp when the event gist was created"
@@ -150,23 +147,3 @@ class UserEventGistData(BaseModel):
 
 class UserEventGistsData(BaseModel):
     gists: list[UserEventGistData] = Field(..., description="List of user event gists")
-
-
-class EventGist(NamedTuple):
-    text: str
-    embedding: np.ndarray | None
-
-
-class EventGistWithAction(NamedTuple):
-    """带动作的事件片段"""
-    text: str
-    embedding: np.ndarray | None
-    action: Literal["ADD", "UPDATE", "DELETE", "ABORT"]
-    event_gist_id: str | None = None
-    event_id: str | None = None
-    similarity: float | None = None
-
-
-class EventProcessResult(NamedTuple):
-    event_tags: list
-    event_gists_with_actions: list[EventGistWithAction]

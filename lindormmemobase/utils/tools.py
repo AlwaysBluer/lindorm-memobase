@@ -5,10 +5,10 @@ from typing import cast
 from datetime import  datetime
 from functools import wraps
 from pydantic import ValidationError
-from ..config import ENCODER, LOG
-from ..models.profile_topic import ProfileConfig
-from ..models.blob import Blob, BlobType, ChatBlob, DocBlob, OpenAICompatibleMessage
-from ..models.response import UserEventData, EventData
+from lindormmemobase.config import ENCODER, LOG
+from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.models.blob import Blob, BlobType, ChatBlob, DocBlob, OpenAICompatibleMessage
+from lindormmemobase.models.response import UserEventData, EventData
 from .errors import ValidationError as LindormValidationError
 
 LIST_INT_REGEX = re.compile(r"\[\s*(?:\d+(?:\s*,\s*\d+)*\s*)?\]")
@@ -157,3 +157,52 @@ def find_list_int_or_none(content: str) -> list[int] | None:
     if not ids:
         return []
     return [int(i.strip()) for i in ids.split(",")]
+
+
+def validate_and_format_embedding(embedding: Optional[List[float]], expected_dim: int, user_id: str = "system") -> Optional[str]:
+    """Validate embedding format and dimensions, return JSON string or None.
+    
+    Args:
+        embedding: Embedding vector to validate
+        expected_dim: Expected dimension from config
+        user_id: User ID for logging purposes
+    
+    Returns:
+        JSON string representation of embedding if valid, empty string otherwise
+    """
+    if embedding is None:
+        return None
+    
+    try:
+        # Convert to list if numpy array
+        if hasattr(embedding, 'tolist'):
+            embedding_list = embedding.tolist()
+        else:
+            embedding_list = embedding
+        
+        # Validate it's a list
+        if not isinstance(embedding_list, list):
+            TRACE_LOG.warning(user_id, f"Invalid embedding type: {type(embedding_list)}, expected list. Using empty string.")
+            return ""
+        
+        # Validate dimension
+        if len(embedding_list) != expected_dim:
+            TRACE_LOG.warning(user_id, f"Invalid embedding dimension: {len(embedding_list)}, expected {expected_dim}. Using empty string.")
+            return ""
+        
+        # Validate all elements are numbers
+        for i, val in enumerate(embedding_list):
+            if not isinstance(val, (int, float)):
+                TRACE_LOG.warning(user_id, f"Invalid embedding value at index {i}: {type(val)}, expected number. Using empty string.")
+                return ""
+            # Check for NaN or Inf
+            if isinstance(val, float) and (val != val or abs(val) == float('inf')):
+                TRACE_LOG.warning(user_id, f"Invalid embedding value at index {i}: {val} (NaN or Inf). Using empty string.")
+                return ""
+        
+        # Return JSON string representation
+        return json.dumps(embedding_list)
+    
+    except Exception as e:
+        TRACE_LOG.warning(user_id, f"Failed to validate embedding: {str(e)}. Using empty string.")
+        return ""

@@ -1,19 +1,19 @@
 import asyncio
 from collections import defaultdict
-from ....config import TRACE_LOG
+from lindormmemobase.config import TRACE_LOG
 
-from ....core.extraction.prompts.router import PROMPTS
-from ....core.extraction.prompts.profile_init_utils import get_specific_subtopics
-from ....models.types import MergeAddResult, ProfileData, AddProfile
-from ....models.profile_topic import ProfileConfig
-from ....core.constants import ConstantsTable
-from ....core.extraction.prompts.utils import (
+from lindormmemobase.core.extraction.prompts.router import PROMPTS
+from lindormmemobase.core.extraction.prompts.profile_init_utils import get_specific_subtopics
+from lindormmemobase.models.types import MergeAddResult, ProfileData, AddProfile
+from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.core.constants import ConstantsTable
+from lindormmemobase.core.extraction.prompts.utils import (
     parse_string_into_subtopics,
     attribute_unify,
 )
 
-from ....llm.complete import llm_complete
-from ....utils.errors import ExtractionError
+from lindormmemobase.llm.complete import llm_complete
+from lindormmemobase.utils.errors import ExtractionError
 
 
 async def organize_profiles(

@@ -10,7 +10,6 @@ This test helps debug connection issues by:
 import pytest
 import asyncio
 import os
-from datetime import datetime
 from lindormmemobase.config import Config
 
 

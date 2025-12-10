@@ -12,23 +12,26 @@ from datetime import datetime
 from functools import wraps
 from typing import Optional, List, Dict, Any, Union, Callable, TypeVar, Awaitable
 from pathlib import Path
-from .config import Config
-from .models.profile_topic import ProfileConfig
-from .models.blob import Blob, BlobType, OpenAICompatibleMessage
-from .models.types import  Profile, ProfileEntry
-from .core.extraction.processor.process_blobs import process_blobs
-from .core.search.context import get_user_context
-from .core.search.events import get_user_event_gists, search_user_event_gists
-from .core.search.user_profiles import get_user_profiles_data, filter_profiles_with_chats
-from .core.storage.user_profiles import get_user_profiles
-from .core.storage.buffers import (
+from lindormmemobase.config import Config
+from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.models.blob import Blob, BlobType, OpenAICompatibleMessage
+from lindormmemobase.models.response import UserEventGistData, UserEventData
+from lindormmemobase.models.types import  Profile
+from lindormmemobase.core.extraction.processor.process_blobs import process_blobs
+from lindormmemobase.core.search.context import get_user_context
+from lindormmemobase.core.search.events import get_user_events, search_user_events
+from lindormmemobase.core.search.event_gists import get_user_event_gists_by_sql, search_user_event_gists
+from lindormmemobase.core.search.user_profiles import get_user_profiles_data
+from lindormmemobase.core.storage.user_profiles import get_user_profiles
+from lindormmemobase.core.storage.buffers import (
     insert_blob_to_buffer,
     detect_buffer_full_or_not,
     flush_buffer_by_ids,
     flush_buffer
 )
-from .core.constants import BufferStatus
-from .utils.errors import LindormMemobaseError, ConfigurationError
+from lindormmemobase.core.constants import BufferStatus
+from lindormmemobase.utils.errors import LindormMemobaseError, ConfigurationError
+from lindormmemobase.utils.profiles import convert_profile_data_to_profiles
 
 
 
@@ -169,49 +172,7 @@ class LindormMemobase:
                 raise
             raise LindormMemobaseError(f"Memory extraction failed: {str(e)}") from e
     
-    def _convert_profile_data_to_profiles(self, raw_profiles, topics: Optional[List[str]] = None, max_profiles: Optional[int] = None) -> List[Profile]:
-        """Convert ProfileData list to Profile list with topic grouping.
-        Concatenate all entries under each topic::subtopic into a single memo using a delimiter.
-        """
-        # topic_groups structure: { topic: { subtopic: ProfileEntry } }
-        topic_groups: dict[str, dict[str, ProfileEntry]] = {}
-        delimiter = self.config.profile_split_delimiter or "; "
 
-        profile_list = raw_profiles[:max_profiles] if max_profiles else raw_profiles
-
-        for profile_data in profile_list:
-            topic = profile_data.attributes.get("topic", "general")
-            subtopic = profile_data.attributes.get("sub_topic", "general")
-
-            if topics and topic not in topics:
-                continue
-
-            if topic not in topic_groups:
-                topic_groups[topic] = {}
-
-            ts = profile_data.updated_at.timestamp() if profile_data.updated_at else None
-
-            existing = topic_groups[topic].get(subtopic)
-            if existing is None:
-                # First entry for this (topic, subtopic)
-                topic_groups[topic][subtopic] = ProfileEntry(
-                    content=profile_data.content,
-                    last_updated=ts
-                )
-            else:
-                # Append content with delimiter, preserve non-destructive history
-                if profile_data.content:
-                    existing.content = (
-                        f"{existing.content}{delimiter}{profile_data.content}"
-                        if existing.content else profile_data.content
-                    )
-                # Update last_updated to the most recent timestamp
-                if ts is not None:
-                    if existing.last_updated is None or ts > existing.last_updated:
-                        existing.last_updated = ts
-
-        return [Profile(topic=topic, subtopics=subtopics) for topic, subtopics in topic_groups.items()]
-    
     async def get_user_profiles(
         self, 
         user_id: str, 
@@ -256,58 +217,126 @@ class LindormMemobase:
                 time_from=time_from,
                 time_to=time_to
             )
-            return self._convert_profile_data_to_profiles(raw_profiles_data.profiles, None)
+            return convert_profile_data_to_profiles(raw_profiles_data.profiles, self.config.profile_split_delimiter, None)
         except Exception as e:
             if isinstance(e, LindormMemobaseError):
                 raise
             raise LindormMemobaseError(f"Failed to get user profiles: {str(e)}") from e
     
-    
-    async def get_events(
+    async def get_user_event_gists(
         self, 
         user_id: str, 
+        project_id: Optional[str] = None,
         time_range_in_days: int = 21,
-        limit: int = 100
-    ) -> List[dict]:
+        limit: int = 20,
+        max_token_size: Optional[int] = None
+    ) -> List[UserEventGistData]:
         """
-        Get recent events from storage.
+        Get user event gists from storage using SQL-based time range queries.
+        
+        This method retrieves event gists without requiring vector embeddings,
+        making it suitable for simple time-based retrieval scenarios.
         
         Args:
             user_id: Unique identifier for the user
-            time_range_in_days: Number of days to look back for events (default: 21)
-            limit: Maximum number of events to return (default: 100)
+            project_id: Optional project filter. If None, returns gists from all projects.
+            time_range_in_days: Number of days to look back from now (default: 21)
+            limit: Maximum number of gists to return (default: 20)
+            max_token_size: Optional token budget to limit total content size
             
         Returns:
-            List of event dictionaries containing id, content, created_at, updated_at
+            List of UserEventGistData objects, ordered by created_at DESC
             
         Raises:
-            LindormMemobaseError: If event retrieval fails
+            LindormMemobaseError: If retrieval fails
             
         Example:
-            events = await memobase.get_events("user123", time_range_in_days=30, limit=50)
-        """
-        try:
-            events_data = await get_user_event_gists(
-                user_id=user_id,
-                config=self.config,
-                topk=limit,
-                time_range_in_days=time_range_in_days
+            # Get recent gists for a user
+            gists = await memobase.get_user_event_gists(
+                "user123",
+                time_range_in_days=7,
+                limit=10
             )
             
-            events = []
-            for gist in events_data.gists:
-                events.append({
-                    "id": str(gist.id),
-                    "content": gist.gist_data.content if gist.gist_data else "",
-                    "created_at": gist.created_at.isoformat() if gist.created_at else None,
-                    "updated_at": gist.updated_at.isoformat() if gist.updated_at else None
-                })
-                
-            return events
+            # Get gists for a specific project with token budget
+            gists = await memobase.get_user_event_gists(
+                "user123",
+                project_id="my_project",
+                max_token_size=1000
+            )
+        """
+        try:
+            result = await get_user_event_gists_by_sql(
+                user_id=user_id,
+                config=self.config,
+                project_id=project_id,
+                time_range_in_days=time_range_in_days,
+                limit=limit,
+                max_token_size=max_token_size
+            )
+            return result.gists
         except Exception as e:
             if isinstance(e, LindormMemobaseError):
                 raise
-            raise LindormMemobaseError(f"Failed to get events: {str(e)}") from e
+            raise LindormMemobaseError(f"Failed to get user event gists: {str(e)}") from e
+    
+    
+    async def get_user_events(
+        self, 
+        user_id: str, 
+        project_id: Optional[str] = None,
+        time_range_in_days: int = 21,
+        limit: int = 20,
+        max_token_size: Optional[int] = None
+    ) -> List[UserEventData]:
+        """
+        Get user events from storage using SQL-based time range queries.
+        
+        This method retrieves full events (not just gists) without requiring
+        vector embeddings, making it suitable for simple time-based retrieval.
+        
+        Args:
+            user_id: Unique identifier for the user
+            project_id: Optional project filter. If None, returns events from all projects.
+            time_range_in_days: Number of days to look back from now (default: 21)
+            limit: Maximum number of events to return (default: 20)
+            max_token_size: Optional token budget to limit total content size
+            
+        Returns:
+            List of UserEventData objects, ordered by created_at DESC
+            
+        Raises:
+            LindormMemobaseError: If retrieval fails
+            
+        Example:
+            # Get recent events for a user
+            events = await memobase.get_user_events(
+                "user123",
+                time_range_in_days=14,
+                limit=15
+            )
+            
+            # Get events for a specific project
+            events = await memobase.get_user_events(
+                "user123",
+                project_id="my_project",
+                max_token_size=2000
+            )
+        """
+        try:
+            result = await get_user_events(
+                user_id=user_id,
+                config=self.config,
+                project_id=project_id,
+                time_range_in_days=time_range_in_days,
+                limit=limit,
+                max_token_size=max_token_size
+            )
+            return result
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to get user events: {str(e)}") from e
     
     async def search_events(
         self, 
@@ -315,52 +344,125 @@ class LindormMemobase:
         query: str, 
         limit: int = 10,
         similarity_threshold: float = 0.2,
-        time_range_in_days: int = 21
-    ) -> List[dict]:
+        time_range_in_days: int = 21,
+        project_id: Optional[str] = None
+    ) -> List[UserEventData]:
         """
         Search events by query using vector similarity.
         
+        This method performs semantic search on event embeddings to find
+        the most relevant events matching the query.
+        
         Args:
             user_id: Unique identifier for the user
-            query: Search query string to find relevant events
+            query: Text query to search for
             limit: Maximum number of results to return (default: 10)
-            similarity_threshold: Minimum similarity score (0.0-1.0, default: 0.2)
+            similarity_threshold: Minimum similarity score 0.0-1.0 (default: 0.2)
             time_range_in_days: Number of days to look back (default: 21)
+            project_id: Optional project filter. If None, searches all projects.
             
         Returns:
-            List of event dictionaries with similarity scores, sorted by relevance
+            List of UserEventData objects with similarity scores, ordered by relevance
             
         Raises:
-            LindormMemobaseError: If search fails
+            LindormMemobaseError: If search fails or embeddings are not enabled
             
         Example:
-            events = await memobase.search_events("user123", "travel plans", limit=5, similarity_threshold=0.3)
+            # Search for cooking-related events
+            events = await memobase.search_events(
+                "user123",
+                "recipes and cooking tips",
+                limit=5,
+                similarity_threshold=0.3
+            )
+            
+            # Search within a specific project
+            events = await memobase.search_events(
+                "user123",
+                "machine learning algorithms",
+                project_id="ml_project",
+                time_range_in_days=30
+            )
         """
         try:
-            events_data = await search_user_event_gists(
+            result = await search_user_events(
                 user_id=user_id,
                 query=query,
                 config=self.config,
                 topk=limit,
                 similarity_threshold=similarity_threshold,
-                time_range_in_days=time_range_in_days
+                time_range_in_days=time_range_in_days,
+                project_id=project_id
             )
-            
-            events = []
-            for gist in events_data.gists:
-                events.append({
-                    "id": str(gist.id),
-                    "content": gist.gist_data.content if gist.gist_data else "",
-                    "created_at": gist.created_at.isoformat() if gist.created_at else None,
-                    "updated_at": gist.updated_at.isoformat() if gist.updated_at else None,
-                    "similarity": gist.similarity if gist.similarity is not None else 0.0
-                })
-                
-            return events
+            return result
         except Exception as e:
             if isinstance(e, LindormMemobaseError):
                 raise
             raise LindormMemobaseError(f"Failed to search events: {str(e)}") from e
+        
+
+    async def search_user_event_gists(
+        self,
+        user_id: str, 
+        query: str, 
+        limit: int = 10,
+        similarity_threshold: float = 0.2,
+        time_range_in_days: int = 21,
+        project_id: Optional[str] = None
+    ) -> List[UserEventGistData]:
+        """
+        Search user event gists by query using vector similarity.
+        
+        This method performs semantic search on event gist embeddings to find
+        the most relevant gists matching the query.
+        
+        Args:
+            user_id: Unique identifier for the user
+            query: Text query to search for
+            limit: Maximum number of results to return (default: 10)
+            similarity_threshold: Minimum similarity score 0.0-1.0 (default: 0.2)
+            time_range_in_days: Number of days to look back (default: 21)
+            project_id: Optional project filter. If None, searches all projects.
+            
+        Returns:
+            List of UserEventGistData objects with similarity scores, ordered by relevance
+            
+        Raises:
+            LindormMemobaseError: If search fails or embeddings are not enabled
+            
+        Example:
+            # Search for relevant event gists
+            gists = await memobase.search_user_event_gists(
+                "user123",
+                "travel destinations and plans",
+                limit=8,
+                similarity_threshold=0.25
+            )
+            
+            # Search within a specific project and time window
+            gists = await memobase.search_user_event_gists(
+                "user123",
+                "project milestones",
+                project_id="work_project",
+                time_range_in_days=7
+            )
+        """
+        try:
+            result = await search_user_event_gists(
+                user_id=user_id,
+                query=query,
+                config=self.config,
+                topk=limit,
+                similarity_threshold=similarity_threshold,
+                time_range_in_days=time_range_in_days,
+                project_id=project_id
+            )
+            return result.gists
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to search user event gists: {str(e)}") from e
+        
     
     async def get_relevant_profiles(
         self,
@@ -412,7 +514,7 @@ class LindormMemobase:
                 global_config=self.config
             )
             
-            return self._convert_profile_data_to_profiles(raw_profiles, None, max_profiles)
+            return convert_profile_data_to_profiles(raw_profiles, self.config.profile_split_delimiter, topics, max_profiles)
         except Exception as e:
             if isinstance(e, LindormMemobaseError):
                 raise

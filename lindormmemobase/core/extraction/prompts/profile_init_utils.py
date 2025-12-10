@@ -1,7 +1,7 @@
 import yaml
 
-from ....models.profile_topic import UserProfileTopic, ProfileConfig
-from ....models.profile_topic import UserProfileTopic, EventTag
+from lindormmemobase.models.profile_topic import UserProfileTopic, ProfileConfig
+from lindormmemobase.models.profile_topic import UserProfileTopic, EventTag
 
 
 def formate_profile_topic(topic: UserProfileTopic) -> str:
