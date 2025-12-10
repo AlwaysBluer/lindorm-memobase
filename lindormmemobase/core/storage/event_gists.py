@@ -11,7 +11,7 @@ from mysql.connector import pooling
 from typing import Optional, Dict, List, Any
 
 from lindormmemobase.utils.errors import StorageError, SearchStorageError
-from lindormmemobase.config import Config, TRACE_LOG
+from lindormmemobase.config import Config, TRACE_LOG, LOG
 from .base import LindormStorageBase
 from .events import validate_and_format_embedding
 
@@ -96,7 +96,7 @@ class LindormEventGistsStorage(LindormStorageBase):
             """)
             
             conn.commit()
-            TRACE_LOG.info("system", "UserEventsGists table created/verified")
+            LOG.info("UserEventsGists table created/verified")
         finally:
             cursor.close()
             conn.close()
@@ -120,7 +120,7 @@ class LindormEventGistsStorage(LindormStorageBase):
                     gist_idx,
                     created_at,
                     updated_at,
-                    event_gist_data,
+                    event_gist_data(type=text,analyzer=ik,indexed=true),
                     embedding(mapping='{{
                         "type": "knn_vector",
                         "dimension": {self.config.embedding_dim},
@@ -150,7 +150,7 @@ class LindormEventGistsStorage(LindormStorageBase):
             """)
             
             conn.commit()
-            TRACE_LOG.info("system", "UserEventsGists search index created/verified")
+            LOG.info("UserEventsGists search index created/verified")
         finally:
             cursor.close()
             conn.close()
@@ -241,7 +241,6 @@ class LindormEventGistsStorage(LindormStorageBase):
             
             try:
                 cursor = conn.cursor()
-                
                 # DELETE requires all primary key columns in Lindorm
                 cursor.execute(
                     """
@@ -426,7 +425,7 @@ class LindormEventGistsStorage(LindormStorageBase):
             
             # Build filter conditions
             filter_conditions = [
-                {"term": {"_routing": user_id}},
+                {"term": {"user_id": user_id}},
                 {"range": {"created_at": {"gte": time_cutoff_ms}}},
                 {"match": {"event_gist_data": {"query": query}}}
             ]
@@ -438,7 +437,7 @@ class LindormEventGistsStorage(LindormStorageBase):
             search_query = {
                 "size": size,
                 "_source": {
-                    "exclude": ["embedding"]
+                    "exclude": ["embedding", "_searchindex_id"]
                 },
                 "query": {
                     "knn": {
@@ -456,8 +455,10 @@ class LindormEventGistsStorage(LindormStorageBase):
                 "ext": {
                     "lvector": {
                         "min_score": str(min_score),
+                        "filter_type": "pre_filter",
                         "hybrid_search_type": "filter_rrf",
-                        "rrf_knn_weight_factor": "0.5"
+                        "rrf_knn_weight_factor": "0.5",
+                        "client_refactor":"true"
                     }
                 }
             }

@@ -4,7 +4,7 @@ from lindormmemobase.config import Config, TRACE_LOG
 from lindormmemobase.models.blob import OpenAICompatibleMessage
 from lindormmemobase.models.response import ContextData
 from lindormmemobase.models.profile_topic import ProfileConfig
-from lindormmemobase.extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
+from lindormmemobase.core.extraction.prompts.chat_context_pack import CONTEXT_PROMPT_PACK
 from lindormmemobase.utils.errors import SearchError
 from lindormmemobase.utils.tools import get_encoded_tokens
 

@@ -1,5 +1,5 @@
 import time
-from lindormmembase.config import LOG
+from lindormmemobase.config import LOG
 from lindormmemobase.utils.errors import LLMError
 from lindormmemobase.core.extraction.prompts.utils import convert_response_to_json
 from . import FACTORIES

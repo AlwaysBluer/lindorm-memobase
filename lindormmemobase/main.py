@@ -9,10 +9,9 @@ the memory extraction system using their own configuration.
 import yaml
 import uuid
 from datetime import datetime
-from functools import wraps
-from typing import Optional, List, Dict, Any, Union, Callable, TypeVar, Awaitable
+from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
-from lindormmemobase.config import Config
+from lindormmemobase.config import Config, LOG
 from lindormmemobase.models.profile_topic import ProfileConfig
 from lindormmemobase.models.blob import Blob, BlobType, OpenAICompatibleMessage
 from lindormmemobase.models.response import UserEventGistData, UserEventData
@@ -860,6 +859,7 @@ class LindormMemobase:
         """
         try:
             from .core.storage.manager import StorageManager
+            LOG.info("Start resetting all storage...")
             return await StorageManager.reset_all_storage(self.config, user_id, project_id)
         except Exception as e:
             if isinstance(e, LindormMemobaseError):

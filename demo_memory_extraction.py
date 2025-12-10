@@ -290,19 +290,44 @@ async def demo_memory_extraction():
     print("=" * 80)
     print()
     
-    # 获取所有事件
-    print("📅 查询最近的事件记录:")
-    events = await memobase.get_events(user_id, time_range_in_days=7, limit=10)
+    # 获取事件摘要 (Event Gists)
+    print("📋 查询最近的事件摘要 (Event Gists):")
+    event_gists = await memobase.get_user_event_gists(
+        user_id, 
+        project_id=project_id,
+        time_range_in_days=7, 
+        limit=10
+    )
+    print(f"共 {len(event_gists)} 条事件摘要\n")
+    
+    for i, gist in enumerate(event_gists, 1):
+        gist_preview = gist.content[:100] if len(gist.content) > 100 else gist.content
+        print(f"{i}. {gist_preview}")
+        print(f"   创建时间: {gist.created_at}")
+        if hasattr(gist, 'event_id'):
+            print(f"   事件ID: {gist.event_id}")
+    print()
+    
+    # 获取完整事件记录
+    print("📅 查询最近的完整事件记录:")
+    events = await memobase.get_user_events(
+        user_id, 
+        project_id=project_id,
+        time_range_in_days=7, 
+        limit=10
+    )
     print(f"共 {len(events)} 条事件记录\n")
     
     for i, event in enumerate(events, 1):
-        content_preview = event['content'][:100] if len(event['content']) > 100 else event['content']
+        content_preview = event.content[:100] if len(event.content) > 100 else event.content
         print(f"{i}. {content_preview}")
-        print(f"   创建时间: {event['created_at']}")
+        print(f"   创建时间: {event.created_at}")
+        if hasattr(event, 'event_id'):
+            print(f"   事件ID: {event.event_id}")
     print()
     
-    # 语义搜索测试
-    print("🔍 语义搜索测试:")
+    # 语义搜索事件测试
+    print("🔍 语义搜索事件测试:")
     search_queries = [
         "技术技能和编程语言",
         "运动和健身习惯",
@@ -315,17 +340,45 @@ async def demo_memory_extraction():
             user_id=user_id,
             query=query,
             limit=3,
-            similarity_threshold=0.1
+            similarity_threshold=0.1,
+            project_id=project_id
         )
         
         if search_results:
-            print(f"  找到 {len(search_results)} 条相关记录:")
+            print(f"  找到 {len(search_results)} 条相关事件:")
             for result in search_results:
-                similarity = result.get('similarity', 0)
-                content_preview = result['content'][:80] if len(result['content']) > 80 else result['content']
+                similarity = result.similarity if hasattr(result, 'similarity') else 0
+                content_preview = result.content[:80] if len(result.content) > 80 else result.content
                 print(f"    - (相似度: {similarity:.3f}) {content_preview}")
         else:
-            print("  未找到相关记录")
+            print("  未找到相关事件")
+    print()
+    
+    # 语义搜索事件摘要测试
+    print("🔍 语义搜索事件摘要测试:")
+    gist_search_queries = [
+        "编程学习和技术栈",
+        "健身和运动习惯变化"
+    ]
+    
+    for query in gist_search_queries:
+        print(f"\n  查询: \"{query}\"")
+        gist_results = await memobase.search_user_event_gists(
+            user_id=user_id,
+            query=query,
+            limit=3,
+            similarity_threshold=0.1,
+            project_id=project_id
+        )
+        
+        if gist_results:
+            print(f"  找到 {len(gist_results)} 条相关事件摘要:")
+            for result in gist_results:
+                similarity = result.similarity if hasattr(result, 'similarity') else 0
+                content_preview = result.content[:80] if len(result.content) > 80 else result.content
+                print(f"    - (相似度: {similarity:.3f}) {content_preview}")
+        else:
+            print("  未找到相关事件摘要")
     print()
     
     # ========== 第七部分：点查测试 ==========
@@ -403,9 +456,10 @@ async def demo_memory_extraction():
     print("  3. ✓ 记忆合并 - 同主题信息的累积和补充")
     print("  4. ✓ 多主题处理 - 一次对话涉及多个主题")
     print("  5. ✓ 档案查询 - 按主题和子主题查看")
-    print("  6. ✓ 事件搜索 - 语义相似度搜索")
-    print("  7. ✓ Topic-Subtopic 点查 - 精确查询特定档案")
-    print("  8. ✓ 时间范围查询 - 按创建时间过滤档案")
+    print("  6. ✓ 事件查询 - 获取事件摘要和完整事件")
+    print("  7. ✓ 事件语义搜索 - 搜索事件和事件摘要")
+    print("  8. ✓ Topic-Subtopic 点查 - 精确查询特定档案")
+    print("  9. ✓ 时间范围查询 - 按创建时间过滤档案")
     print()
     print(f"📈 统计数据:")
     print(f"  - 用户ID: {user_id}")

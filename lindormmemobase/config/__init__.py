@@ -6,7 +6,7 @@ import tiktoken
 
 
 # 1. Add logger
-LOG = logging.getLogger("memobase_server")
+LOG = logging.getLogger("memobase")
 LOG.setLevel(logging.INFO)
 formatter = logging.Formatter(
     f"{Colors.BOLD}{Colors.BLUE}%(name)s |{Colors.END}  %(levelname)s - %(asctime)s  -  %(message)s"

@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 
 from lindormmemobase.models.response import UserProfilesData
 from lindormmemobase.utils.errors import TableStorageError
-from lindormmemobase.config import TRACE_LOG
+from lindormmemobase.config import LOG
 from .base import LindormStorageBase
 
 # Default project_id constant
@@ -395,10 +395,7 @@ class LindormTableStorage(LindormStorageBase):
                 _reset_sync,
                 "Failed to reset user profiles"
             )
-            TRACE_LOG.info(
-                user_id or "system",
-                f"User profiles reset: deleted {count} rows (user_id={user_id}, project_id={project_id})"
-            )
+            LOG.info(f"User profiles reset: deleted {count} rows (user_id={user_id}, project_id={project_id})")
             return count
         except Exception as e:
             raise TableStorageError(f"Failed to reset user profiles: {str(e)}") from e

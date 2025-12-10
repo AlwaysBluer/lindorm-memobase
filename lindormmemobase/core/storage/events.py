@@ -7,8 +7,9 @@ from typing import Optional, Dict, List, Any
 
 from lindormmemobase.utils.tools import validate_and_format_embedding
 from lindormmemobase.utils.errors import SearchStorageError, StorageError
-from lindormmemobase.config import Config, TRACE_LOG
+from lindormmemobase.config import Config, LOG
 from .base import LindormStorageBase
+from .manager import StorageManager
 
 
 # Default project_id constant
@@ -17,7 +18,6 @@ DEFAULT_PROJECT_ID = "default"
 # Backward compatibility - delegate to StorageManager
 def get_lindorm_search_storage(config: Config) -> 'LindormEventsStorage':
     """Get or create a global LindormEventsStorage instance - delegates to StorageManager."""
-    from .manager import StorageManager
     return StorageManager.get_search_storage(config)
 
 
@@ -87,8 +87,8 @@ class LindormEventsStorage(LindormStorageBase):
                     PRIMARY KEY(user_id, project_id, event_id)
                 )
             """)
-            
             conn.commit()
+            LOG.info("UserEvents table created/verified")
         finally:
             cursor.close()
             conn.close()
@@ -104,7 +104,7 @@ class LindormEventsStorage(LindormStorageBase):
         try:
             cursor = conn.cursor()
             
-            # Create search index on UserEvents table
+            # Create search index on UserEvents table with fine-grained event_data mapping
             cursor.execute(f"""
                 CREATE INDEX IF NOT EXISTS srh_idx USING SEARCH ON UserEvents(
                     user_id,
@@ -112,7 +112,36 @@ class LindormEventsStorage(LindormStorageBase):
                     event_id,
                     created_at,
                     updated_at,
-                    event_data,
+                    event_data(mapping='{{
+                        "properties": {{
+                            "event_tip": {{
+                                "type": "text"
+                            }},
+                            "event_tags": {{
+                                "properties": {{
+                                    "tag":   { "type": "keyword" }, 
+                                    "value": { "type": "keyword" }  
+                                }}
+                            }},
+                            "profile_delta": {{
+                                "properties": {{
+                                    "attributes": {{
+                                        "properties": {{
+                                            "sub_topic": {{
+                                                "type": "keyword"
+                                            }},
+                                            "topic": {{
+                                                "type": "keyword"
+                                            }}
+                                        }}
+                                    }},
+                                    "content": {{
+                                        "type": "text"
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }}'),
                     embedding(mapping='{{
                         "type": "knn_vector",
                         "dimension": {self.config.embedding_dim},
@@ -133,8 +162,8 @@ class LindormEventsStorage(LindormStorageBase):
                     }}',
                     INDEX_SETTINGS='{{
                         "index": {{
-                            "knn": "true",
-                            "knn_routing": "true",
+                            "knn": true,
+                            "knn_routing": true,
                             "knn.vector_empty_value_to_keep": true
                         }}
                     }}'
@@ -142,6 +171,7 @@ class LindormEventsStorage(LindormStorageBase):
             """)
             
             conn.commit()
+            LOG.info("UserEvents search index created/verified")
         finally:
             cursor.close()
             conn.close()
@@ -376,8 +406,7 @@ class LindormEventsStorage(LindormStorageBase):
                 _reset_sync,
                 "Failed to reset events"
             )
-            TRACE_LOG.info(
-                user_id or "system",
+            LOG.info(
                 f"Events reset: deleted {events_count} events "
                 f"(user_id={user_id}, project_id={project_id})"
             )
@@ -407,7 +436,7 @@ class LindormEventsStorage(LindormStorageBase):
             
             # Build filter conditions
             filter_conditions = [
-                {"term": {"_routing": user_id}},
+                {"term": {"user_id": user_id}},
                 {"range": {"created_at": {"gte": time_cutoff_ms}}},
                 {"match": {"event_data.event_tip": {"query": query}}}
             ]
@@ -418,7 +447,9 @@ class LindormEventsStorage(LindormStorageBase):
             
             search_query = {
                 "size": size,
-                "sort": [{"_score": {"order": "desc"}}],
+                "_source": {
+                    "exclude": ["embedding", "_searchindex_id"]
+                },
                 "query": {
                     "knn": {
                         "embedding": {
@@ -428,7 +459,7 @@ class LindormEventsStorage(LindormStorageBase):
                                     "must": [{"bool": {"must": filter_conditions}}]
                                 }
                             },
-                            "topk": size,
+                            "k": size,
                         }
                     }
                 },
@@ -436,7 +467,9 @@ class LindormEventsStorage(LindormStorageBase):
                     "lvector": {
                         "min_score": str(min_score),
                         "hybrid_search_type": "filter_rrf",
-                        "rrf_knn_weight_factor": "0.5"
+                        "filter_type": "pre_filter",
+                        "rrf_knn_weight_factor": "0.4",
+                        "client_refactor":"true"
                     }
                 }
             }
@@ -499,8 +532,6 @@ async def delete_event(
     """Delete event - administrative use only."""
     storage = get_lindorm_search_storage(config)
     return await storage.delete_event(user_id, project_id, event_id)
-
-
 
 
 async def get_events_by_filter(

@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from typing import Callable, Awaitable, List, Optional, Tuple
 
-from lindormmemobase.config import TRACE_LOG, Config
+from lindormmemobase.config import TRACE_LOG, Config, LOG
 from lindormmemobase.core.constants import BufferStatus
 from lindormmemobase.models.blob import BlobType, Blob
 from lindormmemobase.utils.errors import BufferStorageError
@@ -12,22 +12,20 @@ from lindormmemobase.models.profile_topic import ProfileConfig
 from .base import LindormStorageBase
 
 from lindormmemobase.utils.tools import get_blob_token_size
-from lindormmemobase.core.extraction.processor.process_blobs import process_blobs
 
 BlobProcessFunc = Callable[
     [str, Optional[ProfileConfig], list[Blob], Config],
     Awaitable[ChatModalResponse],
 ]
 
-BLOBS_PROCESS: dict[BlobType, BlobProcessFunc] = {BlobType.chat: process_blobs}
+# Lazy initialization - will be populated when first accessed
+BLOBS_PROCESS: dict[BlobType, BlobProcessFunc] = {}
 
 
 class LindormBufferStorage(LindormStorageBase):
     def __init__(self, config: Config):
         super().__init__(config)
         self._pool = None
-        # Don't call _ensure_tables in __init__ anymore
-        # Tables are created explicitly via initialize_tables()
     
     def _get_pool_name(self) -> str:
         """Return unique pool name for buffer storage."""
@@ -75,6 +73,7 @@ class LindormBufferStorage(LindormStorageBase):
                     )
                 """)
                 conn.commit()
+                LOG.info("BufferStorage table created/verified")
             finally:
                 cursor.close()
                 conn.close()
@@ -267,19 +266,22 @@ class LindormBufferStorage(LindormStorageBase):
         return await self._execute_sync_operation(_load_blobs_sync, "Failed to load blobs")
 
     async def _update_status(self, user_id: str, blob_ids: List[str], status: str, project_id: str):
-        """Update status for multiple blobs using batch UPDATE with IN clause."""
+        """Update status for multiple blobs.
+        
+        Note: Lindorm does not support UPDATE with IN condition, so we update one by one.
+        """
         def _update_status_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
             now = int(datetime.now().timestamp())
             try:
                 cursor = conn.cursor()
-                # Use batch UPDATE with IN clause for better performance
-                if blob_ids:
-                    placeholders = ','.join(['%s'] * len(blob_ids))
+                # Lindorm limitation: UPDATE does not support IN condition
+                # Must update one by one using primary key scan
+                for blob_id in blob_ids:
                     cursor.execute(
-                        f"UPDATE BufferStorage SET status = %s, updated_at = %s WHERE user_id = %s AND project_id = %s AND blob_id IN ({placeholders})",
-                        [status, now, user_id, project_id] + blob_ids
+                        "UPDATE BufferStorage SET status = %s, updated_at = %s WHERE user_id = %s AND project_id = %s AND blob_id = %s",
+                        (status, now, user_id, project_id, blob_id)
                     )
                 conn.commit()
             finally:
@@ -290,6 +292,11 @@ class LindormBufferStorage(LindormStorageBase):
 
     async def flush(self, user_id: str, blob_type: BlobType, blob_ids: List[str],
                     status: str = BufferStatus.idle, profile_config=None, project_id: Optional[str] = None) -> Optional[ChatModalResponse]:
+        # Lazy import to avoid circular dependency
+        if not BLOBS_PROCESS:
+            from lindormmemobase.core.extraction.processor.process_blobs import process_blobs
+            BLOBS_PROCESS[BlobType.chat] = process_blobs
+        
         if blob_type not in BLOBS_PROCESS or not blob_ids:
             return None
 

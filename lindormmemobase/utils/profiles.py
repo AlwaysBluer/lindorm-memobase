@@ -1,5 +1,6 @@
+from typing import Optional, List
+from lindormmemobase.models.types import Profile, ProfileEntry
 from lindormmemobase.models.profile_topic import ProfileConfig, UserProfileTopic
-
 
 def read_out_profile_config(config: ProfileConfig, default_profiles: list, main_config=None):
     # Check ProfileConfig first (highest priority)

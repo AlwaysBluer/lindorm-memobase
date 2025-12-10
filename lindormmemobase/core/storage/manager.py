@@ -6,8 +6,11 @@ and access to all storage backends (table, search, buffer) with consistent patte
 """
 
 import threading
+import asyncio
 from typing import Optional, Dict, Tuple
-from lindormmemobase.config import Config, TRACE_LOG
+from lindormmemobase.config import Config, LOG
+from .event_gists import LindormEventGistsStorage
+from .buffers import LindormBufferStorage
 
 
 class StorageManager:
@@ -50,31 +53,27 @@ class StorageManager:
         """
         with cls._init_lock:
             if cls._initialized:
-                TRACE_LOG.warning("system", "StorageManager already initialized, skipping re-initialization")
+                LOG.warning("StorageManager already initialized, skipping re-initialization")
                 return
                 
             try:
                 # Initialize table storage
                 table_storage = cls.get_table_storage(config)
                 table_storage.initialize_tables()
-                
                 # Initialize search storage for events
                 search_storage = cls.get_search_storage(config)
                 search_storage.initialize_tables_and_indices()
-                
                 # Initialize search storage for event gists
                 event_gists_storage = cls.get_event_gists_storage(config)
                 event_gists_storage.initialize_tables_and_indices()
-                
                 # Initialize buffer storage
                 buffer_storage = cls.get_buffer_storage(config)
                 buffer_storage.initialize_tables()
-                
                 cls._initialized = True
-                TRACE_LOG.info("system", "StorageManager initialized successfully")
+                LOG.info("StorageManager initialized successfully")
                 
             except Exception as e:
-                TRACE_LOG.error("system", f"StorageManager initialization failed: {str(e)}")
+                LOG.error(f"StorageManager initialization failed: {str(e)}")
                 # Clear any partially initialized instances
                 cls.cleanup()
                 raise
@@ -94,7 +93,6 @@ class StorageManager:
             LindormTableStorage instance
         """
         from .user_profiles import LindormTableStorage
-        
         cache_key = (
             config.lindorm_table_host,
             config.lindorm_table_port,
@@ -118,6 +116,7 @@ class StorageManager:
         Returns:
             LindormEventsStorage instance
         """
+        # Import here to avoid circular dependency
         from .events import LindormEventsStorage
         
         cache_key = (
@@ -142,8 +141,6 @@ class StorageManager:
         Returns:
             LindormEventGistsStorage instance
         """
-        from .event_gists import LindormEventGistsStorage
-        
         cache_key = (
             config.lindorm_search_host,
             config.lindorm_search_port,
@@ -166,8 +163,6 @@ class StorageManager:
         Returns:
             LindormBufferStorage instance
         """
-        from .buffers import LindormBufferStorage
-        
         host = config.lindorm_buffer_host or config.lindorm_table_host
         port = config.lindorm_buffer_port or config.lindorm_table_port
         username = config.lindorm_buffer_username or config.lindorm_table_username
@@ -195,7 +190,7 @@ class StorageManager:
                         # Connection pools don't have explicit close in mysql.connector.pooling
                         pass
                 except Exception as e:
-                    TRACE_LOG.warning("system", f"Error closing table storage: {str(e)}")
+                    LOG.warning(f"Error closing table storage: {str(e)}")
             cls._table_storage_cache.clear()
         
         with cls._search_lock:
@@ -204,7 +199,7 @@ class StorageManager:
                     if hasattr(storage, 'client') and storage.client:
                         storage.client.close()
                 except Exception as e:
-                    TRACE_LOG.warning("system", f"Error closing search storage: {str(e)}")
+                    LOG.warning(f"Error closing search storage: {str(e)}")
             cls._search_storage_cache.clear()
         
         with cls._event_gists_lock:
@@ -213,7 +208,7 @@ class StorageManager:
                     if hasattr(storage, 'client') and storage.client:
                         storage.client.close()
                 except Exception as e:
-                    TRACE_LOG.warning("system", f"Error closing event gists storage: {str(e)}")
+                    LOG.warning(f"Error closing event gists storage: {str(e)}")
             cls._event_gists_storage_cache.clear()
         
         with cls._buffer_lock:
@@ -222,13 +217,13 @@ class StorageManager:
                     if hasattr(storage, '_pool') and storage._pool:
                         pass
                 except Exception as e:
-                    TRACE_LOG.warning("system", f"Error closing buffer storage: {str(e)}")
+                    LOG.warning(f"Error closing buffer storage: {str(e)}")
             cls._buffer_storage_cache.clear()
         
         with cls._init_lock:
             cls._initialized = False
         
-        TRACE_LOG.info("system", "StorageManager cleanup completed")
+        LOG.info("StorageManager cleanup completed")
     
     @classmethod
     def is_initialized(cls) -> bool:
@@ -267,8 +262,6 @@ class StorageManager:
             - profiles_deleted: Number of profile rows deleted
             - tables_recreated: Whether tables were dropped and recreated
         """
-        import asyncio
-        
         result = {
             "buffer_deleted": 0,
             "events_deleted": 0,
@@ -276,8 +269,7 @@ class StorageManager:
             "profiles_deleted": 0,
             "tables_recreated": False
         }
-        
-            # Get storage instances
+        # Get storage instances
         buffer_storage = cls.get_buffer_storage(config)
         events_storage = cls.get_search_storage(config)
         event_gists_storage = cls.get_event_gists_storage(config)
@@ -314,8 +306,6 @@ class StorageManager:
     @classmethod
     async def _drop_and_recreate_buffer_table(cls, storage) -> None:
         """Drop and recreate BufferStorage table."""
-        import asyncio
-        
         def _drop_and_recreate_sync():
             pool = storage._get_pool()
             conn = pool.get_connection()
@@ -334,8 +324,6 @@ class StorageManager:
     @classmethod
     async def _drop_and_recreate_events_table(cls, storage) -> None:
         """Drop and recreate UserEvents table."""
-        import asyncio
-        
         def _drop_and_recreate_sync():
             pool = storage._get_pool()
             conn = pool.get_connection()
@@ -354,8 +342,6 @@ class StorageManager:
     @classmethod
     async def _drop_and_recreate_event_gists_table(cls, storage) -> None:
         """Drop and recreate UserEventsGists table."""
-        import asyncio
-        
         def _drop_and_recreate_sync():
             pool = storage._get_pool()
             conn = pool.get_connection()
@@ -374,8 +360,6 @@ class StorageManager:
     @classmethod
     async def _drop_and_recreate_profiles_table(cls, storage) -> None:
         """Drop and recreate UserProfilesV2 table."""
-        import asyncio
-        
         def _drop_and_recreate_sync():
             pool = storage._get_pool()
             conn = pool.get_connection()

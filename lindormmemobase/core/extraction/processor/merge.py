@@ -3,12 +3,12 @@ import asyncio
 from lindormmemobase.config import TRACE_LOG
 from lindormmemobase.core.constants import ConstantsTable
 from lindormmemobase.core.extraction.prompts.utils import parse_string_into_merge_action
-from lindormmemobase.core.extraction.prompts.router import PROMPTS, UpdateResponse
+from lindormmemobase.core.extraction.prompts.router import PROMPTS
 from lindormmemobase.models.profile_topic import UserProfileTopic, SubTopic, ProfileConfig
 from lindormmemobase.llm.complete import llm_complete
 from lindormmemobase.utils.errors import ExtractionError
 from lindormmemobase.models.response import ProfileData
-from lindormmemobase.models.types import MergeAddResult
+from lindormmemobase.models.types import MergeAddResult, UpdateResponse
 
 
 async def merge_or_valid_new_profile(

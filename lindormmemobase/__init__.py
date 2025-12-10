@@ -15,8 +15,10 @@ from lindormmemobase.config import Config
 from lindormmemobase.models.blob import Blob, ChatBlob, BlobType
 from lindormmemobase.models.types import FactResponse, MergeAddResult, Profile, ProfileEntry
 from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.main import LindormMemobase
 
 __all__ = [
+    "LindormMemobase",
     "LindormMemobaseError",
     "ConfigurationError",
     "Config",

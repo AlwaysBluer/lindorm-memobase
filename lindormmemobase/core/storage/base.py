@@ -8,7 +8,7 @@ This module provides common functionality for storage classes including:
 """
 import asyncio
 from mysql.connector import pooling
-from lindormmemobase.config import Config, TRACE_LOG
+from lindormmemobase.config import Config, LOG
 
 
 class LindormStorageBase:
@@ -96,17 +96,17 @@ class LindormStorageBase:
             # Required for deleting by user_id or project_id without specifying all PK columns
             try:
                 cursor.execute("ALTER SYSTEM SET `lindorm.allow.range.delete`=TRUE")
-                TRACE_LOG.info("system", f"{self.__class__.__name__}: Lindorm setting configured: lindorm.allow.range.delete=TRUE")
+                LOG.info(f"{self.__class__.__name__}: Lindorm setting configured: lindorm.allow.range.delete=TRUE")
             except Exception as e:
                 # Setting might already be enabled or not supported in this Lindorm version
-                TRACE_LOG.warning("system", f"{self.__class__.__name__}: Failed to set lindorm.allow.range.delete: {str(e)}")
+                LOG.warning(f"{self.__class__.__name__}: Failed to set lindorm.allow.range.delete: {str(e)}")
             
             # Add other Lindorm-specific settings here as needed
             # Subclasses can override this method to add their own settings
             
             conn.commit()
         except Exception as e:
-            TRACE_LOG.warning("system", f"{self.__class__.__name__}: Lindorm settings configuration encountered errors: {str(e)}")
+            LOG.warning("Lindorm settings configuration encountered errors: {str(e)}")
         finally:
             cursor.close()
             conn.close()
