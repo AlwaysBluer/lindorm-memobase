@@ -29,6 +29,7 @@ async def demo_memory_extraction():
     config = Config.from_yaml_file("config.yaml")
 
     memobase = LindormMemobase(config)
+    await memobase.reset_all_storage()
     user_id = f"demo_user_{int(datetime.now().timestamp())}"
     project_id = "memory_extraction_demo"
     print(f"✓ 用户ID: {user_id}")
@@ -301,11 +302,13 @@ async def demo_memory_extraction():
     print(f"共 {len(event_gists)} 条事件摘要\n")
     
     for i, gist in enumerate(event_gists, 1):
-        gist_preview = gist.content[:100] if len(gist.content) > 100 else gist.content
+        # Access gist content via gist.gist_data.content
+        gist_content = gist.gist_data.content if gist.gist_data else "N/A"
+        gist_preview = gist_content[:100] if len(gist_content) > 100 else gist_content
         print(f"{i}. {gist_preview}")
         print(f"   创建时间: {gist.created_at}")
-        if hasattr(gist, 'event_id'):
-            print(f"   事件ID: {gist.event_id}")
+        if hasattr(gist, 'id'):
+            print(f"   Gist ID: {gist.id}")
     print()
     
     # 获取完整事件记录
@@ -319,11 +322,13 @@ async def demo_memory_extraction():
     print(f"共 {len(events)} 条事件记录\n")
     
     for i, event in enumerate(events, 1):
-        content_preview = event.content[:100] if len(event.content) > 100 else event.content
+        # Access event tip from event.event_data.event_tip
+        event_tip = event.event_data.event_tip if event.event_data and event.event_data.event_tip else "N/A"
+        content_preview = event_tip[:100] if len(event_tip) > 100 else event_tip
         print(f"{i}. {content_preview}")
         print(f"   创建时间: {event.created_at}")
-        if hasattr(event, 'event_id'):
-            print(f"   事件ID: {event.event_id}")
+        if hasattr(event, 'id'):
+            print(f"   事件ID: {event.id}")
     print()
     
     # 语义搜索事件测试
@@ -348,7 +353,9 @@ async def demo_memory_extraction():
             print(f"  找到 {len(search_results)} 条相关事件:")
             for result in search_results:
                 similarity = result.similarity if hasattr(result, 'similarity') else 0
-                content_preview = result.content[:80] if len(result.content) > 80 else result.content
+                # Get event tip from event_data
+                event_tip = result.event_data.event_tip if result.event_data and result.event_data.event_tip else "N/A"
+                content_preview = event_tip[:80] if len(event_tip) > 80 else event_tip
                 print(f"    - (相似度: {similarity:.3f}) {content_preview}")
         else:
             print("  未找到相关事件")
@@ -375,7 +382,9 @@ async def demo_memory_extraction():
             print(f"  找到 {len(gist_results)} 条相关事件摘要:")
             for result in gist_results:
                 similarity = result.similarity if hasattr(result, 'similarity') else 0
-                content_preview = result.content[:80] if len(result.content) > 80 else result.content
+                # Get gist content from gist_data
+                gist_content = result.gist_data.content if result.gist_data else "N/A"
+                content_preview = gist_content[:80] if len(gist_content) > 80 else gist_content
                 print(f"    - (相似度: {similarity:.3f}) {content_preview}")
         else:
             print("  未找到相关事件摘要")

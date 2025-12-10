@@ -119,8 +119,8 @@ class LindormEventsStorage(LindormStorageBase):
                             }},
                             "event_tags": {{
                                 "properties": {{
-                                    "tag":   { "type": "keyword" }, 
-                                    "value": { "type": "keyword" }  
+                                    "tag":   {{ "type": "keyword" }}, 
+                                    "value": {{ "type": "keyword" }}  
                                 }}
                             }},
                             "profile_delta": {{
