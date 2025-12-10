@@ -65,7 +65,7 @@ class Config:
     profile_strict_mode: bool = False
     profile_validate_mode: bool = True
 
-    # UserProfilesV2 configuration
+    # UserProfiles configuration
     default_project_id: str = "default"
     enable_profile_splitting: bool = True
     profile_split_delimiter: str = "; "

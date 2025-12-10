@@ -2,7 +2,13 @@
 
 **智能记忆管理系统** - 为LLM应用提供强大的记忆提取和用户画像管理能力
 
-LindormMemobase是一个专为大语言模型应用设计的轻量级记忆管理库，能够从对话中自动提取结构化信息、管理用户画像，并提供高效的向量搜索能力。基于阿里云Lindorm数据库，支持海量数据的高性能存储和检索。
+LindormMemobase是一个专为大语言模型应用设计的轻量级记忆管理库，能够从对话中自动提取结构化信息、管理用户画像，并提供高效的向量搜索能力。基于阿里云Lindorm数据库，支持海量数据的高性能存储和检索。需要在阿里云Lindorm购买并开通以下引擎
+* 宽表引擎
+* 搜索引擎
+* 向量引擎
+* LTS引擎
+* AI引擎
+
 
 ## 核心特性
 
@@ -27,6 +33,9 @@ pip install -e .
 git clone <repository-url>
 cd lindorm-memobase
 pip install -e .
+
+# from pip
+pip install lindormmemobase
 ```
 
 ### 基本使用
@@ -99,7 +108,7 @@ if status["is_full"]:
 ### 上下文增强示例
 
 ```python
-# 获取记忆增强的对话上下文
+# 获取LLM记忆增强的对话上下文
 context = await memobase.get_conversation_context(
     user_id="user123",
     conversation=current_messages,

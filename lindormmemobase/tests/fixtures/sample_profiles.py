@@ -1,7 +1,7 @@
 """
 Sample user profile data for testing.
 
-Provides realistic profile structures matching the UserProfilesV2 schema.
+Provides realistic profile structures matching the UserProfiles schema.
 """
 
 from datetime import datetime, timedelta

@@ -359,13 +359,13 @@ class StorageManager:
     
     @classmethod
     async def _drop_and_recreate_profiles_table(cls, storage) -> None:
-        """Drop and recreate UserProfilesV2 table."""
+        """Drop and recreate UserProfiles table."""
         def _drop_and_recreate_sync():
             pool = storage._get_pool()
             conn = pool.get_connection()
             try:
                 cursor = conn.cursor()
-                cursor.execute("DROP TABLE IF EXISTS UserProfilesV2")
+                cursor.execute("DROP TABLE IF EXISTS UserProfiles")
                 conn.commit()
             finally:
                 cursor.close()

@@ -26,7 +26,7 @@ async def demo_buffer_project_isolation():
     config = Config.from_yaml_file("config.yaml")
     memobase = LindormMemobase(config)
     
-    await memobase.reset_all_storage()
+    # await memobase.reset_all_storage()
 
     user_id = f"demo_user_{int(datetime.now().timestamp())}"
     print(f"✓ User ID: {user_id}")

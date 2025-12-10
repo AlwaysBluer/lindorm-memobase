@@ -297,8 +297,8 @@ class TestConfigSpecialSettings:
         assert config.profile_strict_mode is True
         assert config.profile_validate_mode is False
     
-    def test_userprofilesv2_configuration(self):
-        """Test UserProfilesV2-specific configuration."""
+    def test_userprofiles_configuration(self):
+        """Test UserProfiles-specific configuration."""
         config = Config(
             default_project_id="my_project",
             enable_profile_splitting=False,

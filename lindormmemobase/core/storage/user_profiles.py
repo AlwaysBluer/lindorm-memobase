@@ -41,7 +41,7 @@ class LindormTableStorage(LindormStorageBase):
         }
     
     def initialize_tables(self):
-        """Create UserProfilesV2 table and indexes. Called during StorageManager initialization."""
+        """Create UserProfiles table and indexes. Called during StorageManager initialization."""
         # Configure Lindorm system settings first (from base class)
         # self._configure_lindorm_settings()
         
@@ -49,9 +49,9 @@ class LindormTableStorage(LindormStorageBase):
         conn = pool.get_connection()
         try:
             cursor = conn.cursor()
-            # Create UserProfilesV2 table
+            # Create UserProfiles table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS UserProfilesV2 (
+                CREATE TABLE IF NOT EXISTS UserProfiles (
                     user_id VARCHAR(255) NOT NULL,
                     project_id VARCHAR(255) NOT NULL,
                     profile_id VARCHAR(255) NOT NULL,
@@ -69,7 +69,7 @@ class LindormTableStorage(LindormStorageBase):
             # Note: Lindorm/MySQL may require specific syntax for index creation
             try:
                 cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_created_at ON UserProfilesV2 (created_at)
+                    CREATE INDEX IF NOT EXISTS idx_created_at ON UserProfiles (created_at)
                 """)
             except Exception:
                 # Index might already exist or syntax not supported
@@ -77,7 +77,7 @@ class LindormTableStorage(LindormStorageBase):
             
             try:
                 cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_updated_at ON UserProfilesV2 (updated_at)
+                    CREATE INDEX IF NOT EXISTS idx_updated_at ON UserProfiles (updated_at)
                 """)
             except Exception:
                 # Index might already exist or syntax not supported  
@@ -115,7 +115,7 @@ class LindormTableStorage(LindormStorageBase):
                     
                     cursor.execute(
                         """
-                        INSERT INTO UserProfilesV2 
+                        INSERT INTO UserProfiles 
                         (user_id, project_id, profile_id, content, topic, subtopic, update_hits, created_at, updated_at)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
@@ -170,7 +170,7 @@ class LindormTableStorage(LindormStorageBase):
                         
                         cursor.execute(
                             """
-                            UPDATE UserProfilesV2 
+                            UPDATE UserProfiles 
                             SET content = %s, topic = %s, subtopic = %s, update_hits = %s, updated_at = %s
                             WHERE user_id = %s AND project_id = %s AND profile_id = %s
                             """,
@@ -179,7 +179,7 @@ class LindormTableStorage(LindormStorageBase):
                     else:
                         cursor.execute(
                             """
-                            UPDATE UserProfilesV2 
+                            UPDATE UserProfiles 
                             SET content = %s, update_hits = %s, updated_at = %s
                             WHERE user_id = %s AND project_id = %s AND profile_id = %s
                             """,
@@ -221,7 +221,7 @@ class LindormTableStorage(LindormStorageBase):
                     for profile_id in profile_ids:
                         cursor.execute(
                             """
-                            DELETE FROM UserProfilesV2 
+                            DELETE FROM UserProfiles 
                             WHERE user_id = %s AND project_id = %s AND profile_id = %s
                             """,
                             (str(user_id), str(project_id), str(profile_id))
@@ -234,7 +234,7 @@ class LindormTableStorage(LindormStorageBase):
                         # First, get the project_id for this profile
                         cursor.execute(
                             """
-                            SELECT project_id FROM UserProfilesV2
+                            SELECT project_id FROM UserProfiles
                             WHERE user_id = %s AND profile_id = %s
                             LIMIT 1
                             """,
@@ -246,7 +246,7 @@ class LindormTableStorage(LindormStorageBase):
                             # Now delete with all PK columns
                             cursor.execute(
                                 """
-                                DELETE FROM UserProfilesV2 
+                                DELETE FROM UserProfiles 
                                 WHERE user_id = %s AND project_id = %s AND profile_id = %s
                                 """,
                                 (str(user_id), str(actual_project_id), str(profile_id))
@@ -284,7 +284,7 @@ class LindormTableStorage(LindormStorageBase):
                 # Build query with filters
                 query = """
                     SELECT profile_id, content, topic, subtopic, update_hits, created_at, updated_at, project_id
-                    FROM UserProfilesV2 
+                    FROM UserProfiles 
                     WHERE user_id = %s
                 """
                 params = [str(user_id)]
@@ -363,19 +363,19 @@ class LindormTableStorage(LindormStorageBase):
                 
                 if user_id and project_id:
                     cursor.execute(
-                        "DELETE FROM UserProfilesV2 WHERE user_id = %s AND project_id = %s",
+                        "DELETE FROM UserProfiles WHERE user_id = %s AND project_id = %s",
                         (user_id, project_id)
                     )
                 elif user_id:
                     cursor.execute(
-                        "DELETE FROM UserProfilesV2 WHERE user_id = %s",
+                        "DELETE FROM UserProfiles WHERE user_id = %s",
                         (user_id,)
                     )
                 elif project_id:
                     raise ValueError("Project ID cannot be specified without user ID") 
                 else:
                     # Delete all data (use TRUNCATE for better performance)
-                    cursor.execute("TRUNCATE TABLE UserProfilesV2")
+                    cursor.execute("TRUNCATE TABLE UserProfiles")
                     # TRUNCATE doesn't return rowcount, return -1 to indicate full reset
                     conn.commit()
                     return -1
