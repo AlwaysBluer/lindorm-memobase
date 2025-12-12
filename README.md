@@ -299,42 +299,6 @@ graph LR
     H --> I[增强响应]
 ```
 
-## 实战示例
-
-查看 `cookbooks/` 目录获取完整的实用示例：
-
-### 快速上手
-
-- **[`quick_start.py`](cookbooks/quick_start.py)**: 核心API使用演示
-- **[`simple_chatbot/`](cookbooks/simple_chatbot/)**: 简单聊天机器人实现
-
-### 记忆增强聊天机器人
-
-- **[`chat_memory/`](cookbooks/chat_memory/)**: 完整的记忆增强聊天机器人
-  - **Web界面**: 现代化的实时流式聊天界面
-  - **智能缓存**: 90%性能提升的缓存系统
-  - **记忆可视化**: 实时查看用户画像和上下文
-  - **多模式支持**: 命令行和Web双界面
-
-### 快速体验记忆聊天机器人
-
-```bash
-# 进入聊天机器人目录
-cd cookbooks/chat_memory/
-
-# 启动Web界面（推荐）
-./start_web.sh
-
-# 或启动命令行版本
-python memory_chatbot.py --user_id your_name
-```
-
-**Web界面特性**:
-- 实时流式响应
-- 上下文可视化
-- 响应式设计
-- 性能统计面板
-
 ## 开发构建
 
 ### 开发环境搭建
