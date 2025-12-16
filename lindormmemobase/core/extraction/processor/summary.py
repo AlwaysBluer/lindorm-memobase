@@ -37,7 +37,7 @@ async def summary_memo(
             content_pack["content"],
             system_prompt=summary_profile.get_prompt(max_tokens=target_tokens),
             temperature=0.1, 
-            model=config.summary_llm_model,
+            model=config.merge_llm_model or config.summary_llm_model or config.best_llm_model,
             config=config,
             **summary_profile.get_kwargs(),
         )

@@ -38,7 +38,7 @@ async def entry_chat_summary(
             additional_requirements=event_summary_theme,
         ),
         temperature=0.2,  # precise
-        model=config.summary_llm_model,
+        model=config.entry_llm_model or config.summary_llm_model or config.best_llm_model,
         config=config,
         **prompt.get_kwargs(),
     )

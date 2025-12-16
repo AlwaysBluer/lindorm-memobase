@@ -23,6 +23,18 @@ profile_strict_mode: true
 profile_validate_mode: true
 event_theme_requirement: "Focus on the user's infos, not its instructions. Do not mix up with the bot/assistant's infos"
 
+# === Advanced: Fine-grained LLM Model Selection ===
+# Recommended strategy: Use weaker/cheaper model for entry summary, stronger model for extraction/merging
+# All fields are optional and fall back to best_llm_model if not set
+
+# entry_llm_model: qwen-plus          # Entry summary (extracting events from conversations) - can use weaker/cheaper model
+# extract_llm_model: qwen-max          # Profile extraction (extracting structured facts) - should use stronger model  
+# event_llm_model: qwen-max            # Event tagging (tagging events with attributes) - should use stronger model
+# merge_llm_model: qwen-max            # Profile merging and validation - should use stronger model
+
+# Deprecated: Use entry_llm_model instead
+# summary_llm_model: qwen-max-latest
+
 # === User Profile Schema ===
 # Define custom profile topics and subtopics
 overwrite_user_profiles:

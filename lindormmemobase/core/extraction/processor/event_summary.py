@@ -25,7 +25,7 @@ async def tag_event(
             event_summary,
             system_prompt=event_tagging_prompt.get_prompt(event_tags_str),
             temperature=0.2,
-            model=main_config.best_llm_model if main_config else "qwen-max-latest",
+            model=main_config.event_llm_model or main_config.best_llm_model if main_config else "qwen-max-latest",
             config=main_config,
             **event_tagging_prompt.get_kwargs(),
         )

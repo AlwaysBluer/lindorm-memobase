@@ -44,7 +44,11 @@ class Config:
     llm_openai_default_query: dict[str, str] = None
     llm_openai_default_header: dict[str, str] = None
     best_llm_model: str = "gpt-4o-mini"
-    summary_llm_model: str = None
+    summary_llm_model: str = None  # Deprecated: use entry_llm_model instead
+    entry_llm_model: str = None  # Model for entry summary (extracting events from conversations) - can use weaker/cheaper model
+    extract_llm_model: str = None  # Model for profile extraction - should use stronger model
+    event_llm_model: str = None  # Model for event tagging - should use stronger model
+    merge_llm_model: str = None  # Model for profile merging and validation - should use stronger model
 
     enable_event_embedding: bool = True
     embedding_provider: Literal["openai", "jina", "lindormai"] = "openai"

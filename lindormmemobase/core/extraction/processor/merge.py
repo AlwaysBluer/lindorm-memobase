@@ -120,6 +120,7 @@ async def handle_profile_merge_or_valid(
             ),
             system_prompt=PROMPTS[USE_LANGUAGE]["merge"].get_prompt(),
             temperature=0.2,
+            model=config.merge_llm_model or config.best_llm_model,
             config=config,
             **PROMPTS[USE_LANGUAGE]["merge"].get_kwargs(),
         )

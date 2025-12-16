@@ -105,6 +105,7 @@ async def extract_topics(
             PROMPTS[USE_LANGUAGE]["profile"].get_prompt(project_profiles_slots), config
         ),
         temperature=0.1,  # precise
+        model=config.extract_llm_model or config.event_llm_model or config.best_llm_model,
         config=config,
         **PROMPTS[USE_LANGUAGE]["extract"].get_kwargs(),
     )
