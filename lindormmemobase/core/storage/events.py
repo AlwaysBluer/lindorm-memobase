@@ -118,12 +118,14 @@ class LindormEventsStorage(LindormStorageBase):
                                 "type": "text"
                             }},
                             "event_tags": {{
+                                "type": "nested",
                                 "properties": {{
                                     "tag":   {{ "type": "keyword" }}, 
                                     "value": {{ "type": "keyword" }}  
                                 }}
                             }},
                             "profile_delta": {{
+                                "type": "nested",
                                 "properties": {{
                                     "attributes": {{
                                         "properties": {{
