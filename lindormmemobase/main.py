@@ -14,7 +14,7 @@ from pathlib import Path
 from lindormmemobase.config import Config, LOG
 from lindormmemobase.models.profile_topic import ProfileConfig
 from lindormmemobase.models.blob import Blob, BlobType, OpenAICompatibleMessage
-from lindormmemobase.models.response import UserEventGistData, UserEventData
+from lindormmemobase.models.response import UserEventGistData, UserEventData, EventSearchFilters
 from lindormmemobase.models.types import  Profile
 from lindormmemobase.core.extraction.processor.process_blobs import process_blobs
 from lindormmemobase.core.search.context import get_user_context
@@ -392,6 +392,81 @@ class LindormMemobase:
                 similarity_threshold=similarity_threshold,
                 time_range_in_days=time_range_in_days,
                 project_id=project_id
+            )
+            return result
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to search events: {str(e)}") from e
+    
+    async def search_events_advanced(
+        self,
+        user_id: str,
+        query: str,
+        limit: int = 10,
+        similarity_threshold: float = 0.2,
+        filters: Optional[EventSearchFilters] = None
+    ) -> List[UserEventData]:
+        """Search events with advanced filtering capabilities.
+        
+        This method extends search_events with support for topic, subtopic,
+        and tag-based filtering.
+        
+        Args:
+            user_id: Unique identifier for the user
+            query: Text query for semantic search
+            limit: Maximum number of results (default: 10)
+            similarity_threshold: Minimum similarity score 0.0-1.0 (default: 0.2)
+            filters: Optional EventSearchFilters for fine-grained filtering
+            
+        Returns:
+            List of UserEventData objects with similarity scores
+            
+        Raises:
+            LindormMemobaseError: If search fails or embeddings are not enabled
+            
+        Example:
+            # Search for travel-related events in life_plan topic
+            filters = EventSearchFilters(
+                topics=["life_plan"],
+                subtopics=["travel"],
+                time_range_in_days=30
+            )
+            events = await memobase.search_events_advanced(
+                user_id="user123",
+                query="European travel plans",
+                limit=20,
+                similarity_threshold=0.3,
+                filters=filters
+            )
+            
+            # Search for events with specific tags
+            filters = EventSearchFilters(
+                tags=["interest", "hobby"],
+                project_id="my_project"
+            )
+            events = await memobase.search_events_advanced(
+                user_id="user123",
+                query="cooking recipes",
+                filters=filters
+            )
+        """
+        if filters is None:
+            filters = EventSearchFilters()
+        
+        try:
+            result = await search_user_events(
+                user_id=user_id,
+                query=query,
+                config=self.config,
+                topk=limit,
+                similarity_threshold=similarity_threshold,
+                time_range_in_days=filters.time_range_in_days,
+                project_id=filters.project_id,
+                topics=filters.topics,
+                subtopics=filters.subtopics,
+                tags=filters.tags,
+                tag_values=filters.tag_values
             )
             return result
         except Exception as e:

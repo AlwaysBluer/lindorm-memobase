@@ -422,19 +422,36 @@ class LindormEventsStorage(LindormStorageBase):
             size: int = 10,
             min_score: float = 0.6,
             time_range_in_days: int = 21,
-            project_id: Optional[str] = None
+            project_id: Optional[str] = None,
+            topics: Optional[List[str]] = None,
+            subtopics: Optional[List[str]] = None,
+            tags: Optional[List[str]] = None,
+            tag_values: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
-        """Hybrid vector + keyword search on UserEvents table.
+        """Hybrid vector + keyword search on UserEvents table with advanced filtering.
         
         Args:
+            user_id: User identifier
+            query: Text query for keyword matching
+            query_vector: Query embedding vector
+            size: Maximum number of results
+            min_score: Minimum similarity score
+            time_range_in_days: Number of days to look back
             project_id: Optional project filter. If None, searches across all projects.
+            topics: Filter by event_data.profile_delta.attributes.topic (OR logic)
+            subtopics: Filter by event_data.profile_delta.attributes.sub_topic (OR logic)
+            tags: Filter by event_data.event_tags.tag (OR logic)
+            tag_values: Filter by event_data.event_tags.value (OR logic)
+        
+        Returns:
+            List of matching events with metadata
         """
         try:
             time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
             # Convert to milliseconds timestamp for TIMESTAMP field
             time_cutoff_ms = int(time_cutoff.timestamp() * 1000)
             
-            # Build filter conditions
+            # Build base filter conditions
             filter_conditions = [
                 {"term": {"user_id": user_id}},
                 {"range": {"created_at": {"gte": time_cutoff_ms}}},
@@ -444,6 +461,30 @@ class LindormEventsStorage(LindormStorageBase):
             # Add project_id filter if specified
             if project_id:
                 filter_conditions.append({"term": {"project_id": project_id}})
+            
+            # Add topic filter (OR logic for multiple topics)
+            if topics:
+                filter_conditions.append({
+                    "terms": {"event_data.profile_delta.attributes.topic": topics}
+                })
+            
+            # Add subtopic filter (OR logic for multiple subtopics)
+            if subtopics:
+                filter_conditions.append({
+                    "terms": {"event_data.profile_delta.attributes.sub_topic": subtopics}
+                })
+            
+            # Add tag name filter (OR logic for multiple tags)
+            if tags:
+                filter_conditions.append({
+                    "terms": {"event_data.event_tags.tag": tags}
+                })
+            
+            # Add tag value filter (OR logic for multiple values)
+            if tag_values:
+                filter_conditions.append({
+                    "terms": {"event_data.event_tags.value": tag_values}
+                })
             
             search_query = {
                 "size": size,
@@ -469,7 +510,8 @@ class LindormEventsStorage(LindormStorageBase):
                         "hybrid_search_type": "filter_rrf",
                         "filter_type": "pre_filter",
                         "rrf_knn_weight_factor": "0.4",
-                        "client_refactor":"true"
+                        "client_refactor":"true",
+                        "rrf_rank_constant": "2"
                     }
                 }
             }
@@ -503,11 +545,40 @@ async def search_user_events_with_embedding(
         topk: int = 10,
         similarity_threshold: float = 0.2,
         time_range_in_days: int = 21,
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        subtopics: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        tag_values: Optional[List[str]] = None
 )-> List[Dict[str, Any]]:
+    """Search user events with embedding vector and advanced filters.
+    
+    Args:
+        user_id: User identifier
+        query: Text query for keyword matching
+        query_vector: Query embedding vector
+        config: Configuration object
+        topk: Maximum number of results
+        similarity_threshold: Minimum similarity score
+        time_range_in_days: Number of days to look back
+        project_id: Optional project filter
+        topics: Filter by profile delta topics (OR logic)
+        subtopics: Filter by profile delta subtopics (OR logic)
+        tags: Filter by event tag names (OR logic)
+        tag_values: Filter by event tag values (OR logic)
+    
+    Returns:
+        List of matching events with metadata
+    """
     storage = get_lindorm_search_storage(config)
-    return await storage.hybrid_search_events(user_id, query, query_vector, topk,
-                                              similarity_threshold, time_range_in_days, project_id)
+    return await storage.hybrid_search_events(
+        user_id, query, query_vector, topk,
+        similarity_threshold, time_range_in_days, project_id,
+        topics=topics,
+        subtopics=subtopics,
+        tags=tags,
+        tag_values=tag_values
+    )
 
 
 async def store_event_with_embedding(

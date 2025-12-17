@@ -88,8 +88,12 @@ async def search_user_events(
         similarity_threshold: float = 0.2,
         time_range_in_days: int = 21,
         project_id: str = None,
+        topics: Optional[List[str]] = None,
+        subtopics: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        tag_values: Optional[List[str]] = None
 ) -> List[UserEventData]:
-    """Search user events using vector similarity.
+    """Search user events using vector similarity with advanced filters.
     
     Args:
         user_id: User identifier
@@ -99,6 +103,10 @@ async def search_user_events(
         similarity_threshold: Minimum similarity score (0.0-1.0)
         time_range_in_days: Number of days to look back
         project_id: Optional project filter. If None, searches across all projects.
+        topics: Filter by event_data.profile_delta.attributes.topic (OR logic)
+        subtopics: Filter by event_data.profile_delta.attributes.sub_topic (OR logic)
+        tags: Filter by event_data.event_tags.tag (OR logic)
+        tag_values: Filter by event_data.event_tags.value (OR logic)
     
     Returns:
         List of UserEventData objects with similarity scores
@@ -118,8 +126,14 @@ async def search_user_events(
         if hasattr(query_embedding, 'tolist'):
             query_embedding = query_embedding.tolist()
 
-        data = await search_user_events_with_embedding(user_id, query, query_embedding,
-                                                 config, topk, similarity_threshold, time_range_in_days, project_id)
+        data = await search_user_events_with_embedding(
+            user_id, query, query_embedding,
+            config, topk, similarity_threshold, time_range_in_days, project_id,
+            topics=topics,
+            subtopics=subtopics,
+            tags=tags,
+            tag_values=tag_values
+        )
 
         responses = data
         results = []
@@ -132,9 +146,23 @@ async def search_user_events(
                 similarity=resp['similarity']
             )
             results.append(user_event_data)
+        # Build filter summary for logging
+        filter_parts = []
+        if topics:
+            filter_parts.append(f"topics={topics}")
+        if subtopics:
+            filter_parts.append(f"subtopics={subtopics}")
+        if tags:
+            filter_parts.append(f"tags={tags}")
+        if tag_values:
+            filter_parts.append(f"tag_values={tag_values}")
+        
+        filter_summary = f" ({', '.join(filter_parts)})" if filter_parts else ""
+        
         TRACE_LOG.info(
             user_id,
-            f"Event Query: {query[:50]}" + ("..." if len(query) > 50 else "") + f" Found {len(responses)} results",
+            f"Event Query: {query[:50]}" + ("..." if len(query) > 50 else "") + 
+            f" Found {len(responses)} results" + filter_summary,
         )
 
         return results

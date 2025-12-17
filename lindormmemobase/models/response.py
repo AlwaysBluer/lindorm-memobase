@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import IntEnum
-from typing import Optional, Any
+from typing import Optional, Any, List
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -147,3 +147,45 @@ class UserEventGistData(BaseModel):
 
 class UserEventGistsData(BaseModel):
     gists: list[UserEventGistData] = Field(..., description="List of user event gists")
+
+
+class EventSearchFilters(BaseModel):
+    """Event search filter conditions.
+    
+    This class encapsulates filtering options for advanced event search.
+    Filters within the same dimension use OR logic, while different dimensions
+    use AND logic.
+    
+    Attributes:
+        project_id: Optional project filter
+        time_range_in_days: Number of days to look back (default: 21)
+        topics: Filter by profile delta topics (OR logic if multiple)
+        subtopics: Filter by profile delta subtopics (OR logic if multiple)
+        tags: Filter by event tag names (OR logic if multiple)
+        tag_values: Filter by event tag values (OR logic if multiple)
+    
+    Examples:
+        # Filter by single topic
+        filters = EventSearchFilters(topics=["life_plan"])
+        
+        # Filter by topic and subtopic
+        filters = EventSearchFilters(
+            topics=["life_plan"],
+            subtopics=["travel", "career"],
+            time_range_in_days=30
+        )
+        
+        # Complex multi-dimensional filtering
+        filters = EventSearchFilters(
+            project_id="my_project",
+            topics=["life_plan", "interests"],
+            tags=["preference"],
+            time_range_in_days=60
+        )
+    """
+    project_id: Optional[str] = Field(default=None, description="Project identifier filter")
+    time_range_in_days: int = Field(default=21, description="Number of days to look back from now")
+    topics: Optional[List[str]] = Field(default=None, description="Filter by profile delta topics (OR logic)")
+    subtopics: Optional[List[str]] = Field(default=None, description="Filter by profile delta subtopics (OR logic)")
+    tags: Optional[List[str]] = Field(default=None, description="Filter by event tag names (OR logic)")
+    tag_values: Optional[List[str]] = Field(default=None, description="Filter by event tag values (OR logic)")
