@@ -6,6 +6,7 @@ and access to all storage backends (table, search, buffer) with consistent patte
 """
 
 import threading
+import time
 import asyncio
 from typing import Optional, Dict, Tuple
 from lindormmemobase.config import Config, LOG
@@ -316,10 +317,10 @@ class StorageManager:
             finally:
                 cursor.close()
                 conn.close()
+            storage.initialize_tables()
         
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _drop_and_recreate_sync)
-        storage.initialize_tables()
     
     @classmethod
     async def _drop_and_recreate_events_table(cls, storage) -> None:
@@ -329,15 +330,16 @@ class StorageManager:
             conn = pool.get_connection()
             try:
                 cursor = conn.cursor()
+                cursor.execute("DROP INDEX IF EXISTS srh_idx on UserEvents")
                 cursor.execute("DROP TABLE IF EXISTS UserEvents")
                 conn.commit()
             finally:
                 cursor.close()
                 conn.close()
+            storage.initialize_tables_and_indices()
         
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _drop_and_recreate_sync)
-        storage.initialize_tables_and_indices()
     
     @classmethod
     async def _drop_and_recreate_event_gists_table(cls, storage) -> None:
@@ -347,15 +349,16 @@ class StorageManager:
             conn = pool.get_connection()
             try:
                 cursor = conn.cursor()
+                cursor.execute("DROP INDEX IF EXISTS srh_idx on UserEventsGists")
                 cursor.execute("DROP TABLE IF EXISTS UserEventsGists")
                 conn.commit()
             finally:
                 cursor.close()
                 conn.close()
+            storage.initialize_tables_and_indices()
         
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _drop_and_recreate_sync)
-        storage.initialize_tables_and_indices()
     
     @classmethod
     async def _drop_and_recreate_profiles_table(cls, storage) -> None:
@@ -370,10 +373,10 @@ class StorageManager:
             finally:
                 cursor.close()
                 conn.close()
+            storage.initialize_tables()
         
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _drop_and_recreate_sync)
-        storage.initialize_tables()
 
 
 # Backward compatibility functions

@@ -20,13 +20,13 @@ async def main():
     config = Config.from_yaml_file("config.yaml")
     memobase = LindormMemobase(config)
     
-    user_id = "demo_user_advanced_search"
+    user_id = f"demo_user_advanced_search_{uuid.uuid4().hex}"
     project_id = "demo_project"
     
     if adding:
     # Clean up any existing data
     # print("\n1. Resetting storage for clean demo...")
-        await memobase.reset_all_storage()
+        # await memobase.reset_all_storage()
     # Create sample conversations with different topics
         print("\n2. Creating sample conversations...")
     
@@ -37,33 +37,6 @@ async def main():
                     OpenAICompatibleMessage(role="user", content="I want to travel to Europe next summer for 2 weeks"),
                     OpenAICompatibleMessage(role="assistant", content="That sounds exciting! Which countries interest you?"),
                     OpenAICompatibleMessage(role="user", content="I'm thinking France, Italy, and Spain"),
-                ],
-                type=BlobType.chat
-            ),
-            # Life planning - career
-            ChatBlob(
-                messages=[
-                    OpenAICompatibleMessage(role="user", content="I'm considering a career change to data science"),
-                    OpenAICompatibleMessage(role="assistant", content="What attracts you to data science?"),
-                    OpenAICompatibleMessage(role="user", content="I love working with data and machine learning"),
-                ],
-                type=BlobType.chat
-            ),
-            # Interests - cooking
-            ChatBlob(
-                messages=[
-                    OpenAICompatibleMessage(role="user", content="I've been learning to cook Italian cuisine"),
-                    OpenAICompatibleMessage(role="assistant", content="What dishes have you tried making?"),
-                    OpenAICompatibleMessage(role="user", content="Pasta carbonara and risotto so far"),
-                ],
-                type=BlobType.chat
-            ),
-            # Hobbies - fitness
-            ChatBlob(
-                messages=[
-                    OpenAICompatibleMessage(role="user", content="I started going to the gym three times a week"),
-                    OpenAICompatibleMessage(role="assistant", content="That's great! What's your workout routine?"),
-                    OpenAICompatibleMessage(role="user", content="Mainly cardio and strength training"),
                 ],
                 type=BlobType.chat
             ),
