@@ -4,71 +4,79 @@ ADD_KWARGS = {
     "prompt_id": "merge_profile",
 }
 
-MERGE_FACTS_PROMPT = """You are responsible for maintaining user memos.
-Your job is to determine how new supplementary information should be merged with the current memo.
-You should decide whether the new supplementary information should be directly added, updated, or merged should be abandoned.
-The user will provide the topic/subtopic of the memo, and may also provide topic descriptions and specific update requirements.
+MERGE_FACTS_PROMPT = """You maintain user memos by merging new information with existing content.
 
-Here are your output actions:
-1. Direct addition: If the supplementary information brings new information, you should directly add it. If the current memo is empty, you should directly add the supplementary information.
-2. Update memo: If the supplementary information conflicts with the current memo or you need to modify the current memo to better reflect the current information, you should update the memo.
-3. Abandon merge: If the supplementary information itself has no value, or the information is already completely covered by the current memo, or does not meet the content requirements of the current memo, you should abandon the merge.
+## Decision Rules
+Choose ONE action based on the supplementary information:
 
-## Thinking
-Before you output an action, you need to think about the following:
-1. Whether the supplementary information meets the topic description of the memo
-    1.1. If it doesn't meet the requirements, determine whether you can modify the supplementary information to get content that meets the memo requirements, then process your modified supplementary information
-    1.2. If you can't modify the supplementary information, you should abandon the merge
-3. For supplementary information that meets the current memo requirements, you need to refer to the above description to determine the output action
-4. If you choose to update the memo, also think about whether there are other parts of the current memo that can be simplified or removed.
+1. **APPEND** - Use when:
+   - New info adds facts not in current memo
+   - Current memo is empty and new info matches topic
 
-Additional situations:
-1. The current memo may be empty. In this case, after thinking step 1, if you can get supplementary information that meets the requirements, just add it directly
-2. If the update requirements are not empty, you need to refer to the user's update requirements for thinking
+2. **UPDATE** - Use when:
+   - New info conflicts with current memo (replace outdated content)
+   - Need to combine old + new info into unified memo
+   - Current memo has removable/simplifiable parts
 
-## Output Actions
-### Direct Addition
+3. **ABORT** - Use when:
+   - New info doesn't match topic/subtopic description
+   - Info already fully covered in current memo
+   - New info has no value
+
+## Considerations
+- Check if new info matches topic description; if not, try to extract relevant parts or ABORT
+- If update instruction exists, follow it
+- When updating, remove outdated/redundant content
+- Preserve time annotations from both old and new memos
+
+## Output Format
+Output **exactly one line** starting with `- ` in one of these formats:
+
 ```
 - APPEND{tab}APPEND
 ```
-When choosing direct addition, output the `APPEND` word directly, without repeating the content
-### Update Memo
 ```
-- UPDATE{tab}[UPDATED_MEMO]
+- UPDATE{tab}[COMPLETE_UPDATED_MEMO]
 ```
-When choosing to update the memo, you need to rewrite the updated memo in the `[UPDATED_MEMO]` section
-### Abort Merge
 ```
 - ABORT{tab}ABORT
 ```
-When choosing to abandon the merge, output the `ABORT` word directly, without repeating the content
 
-## Output Template
-Based on the above instructions, your output should be in the following format:
+## Examples
 
-THOUGHT
----
-ACTION
-
-Where:
-- `THOUGHT` is your thinking process
-- `ACTION` is your output action
-For example:
-```example
-The supplementary information mentions that the user's current learning goal is to prepare for final exams, and the current topic description records the user's learning goals, which meets the requirements. At the same time, the current memo also has a record of preparing for midterm exams, which suggests that the midterm exams should already be over. So the supplementary information cannot simply be added, but needs to update the current memo.
-I need to update the corresponding area while retaining the rest of the memo
----
-- UPDATE{tab}...Currently self-studying Japanese using Duolingo, hoping to pass the Japanese Level 2 exam [mentioned on 2025/05/05]; Preparing for final exams [mentioned on 2025/06/01];
+**Example 1: APPEND**
+Current: "User likes hiking [mentioned 2025/01/05]"
+New: "User enjoys photography"
+Output:
+```
+- APPEND{tab}APPEND
 ```
 
-Follow these instructions:
-- Strictly adhere to the correct output format.
-- Ensure the final memo does not exceed 5 sentences. Always keep it concise and output the key points of the memo.
-- Never make up content not mentioned in the input.
-- Preserve time annotations from both old and new memos (e.g.: XXX[mentioned on 2025/05/05, occurred in 2022]).
-- If you decide to update, ensure the final memo is concise and has no redundant information. (e.g.: "User is sad; User's mood is sad" == "User is sad")
+**Example 2: UPDATE**
+Current: "Preparing for midterm exams [mentioned 2025/03/10]; Learning Python"
+New: "Preparing for final exams"
+Output:
+```
+- UPDATE{tab}Learning Python; Preparing for final exams [mentioned 2025/06/01]
+```
 
-That's all the content, now execute your work.
+**Example 3: ABORT**
+Topic: "Career Goals"
+Current: "Wants to become a software engineer"
+New: "User likes pizza" (irrelevant to topic)
+Output:
+```
+- ABORT{tab}ABORT
+```
+
+## Critical Rules
+- Output ONLY the action line (no explanations, no numbered lists, no additional text)
+- Keep final memo ≤5 sentences, concise and factual
+- Never fabricate content not in input
+- Preserve time annotations: [mentioned on YYYY/MM/DD] or [occurred in YYYY]
+- Remove redundancy when updating
+
+Now process the input below.
 """
 
 

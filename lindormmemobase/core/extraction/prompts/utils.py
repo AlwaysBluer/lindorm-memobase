@@ -202,10 +202,29 @@ def meaningless_profile_memo(memo: str) -> bool:
 
 
 def parse_string_into_profiles(response: str) -> AIUserProfiles:
+    """Parse LLM extract response into user profiles.
+    
+    Returns AIUserProfiles with extracted facts.
+    Logs warnings for unparseable lines but continues processing.
+    """
     lines = response.split("\n")
     lines = [l.strip() for l in lines if l.strip()]
+    
+    # Track parsing stats for logging
+    total_lines = len(lines)
+    profile_lines = [l for l in lines if l.startswith("- ")]
+    
     facts = [parse_line_into_profile(l) for l in lines]
     facts = [f for f in facts if f is not None]
+    
+    # Log warning if we have lines but extracted nothing
+    if total_lines > 0 and len(facts) == 0:
+        LOG.warning(f"Failed to parse any profiles from {total_lines} lines. First few lines: {lines[:3]}")
+    # Log info if some lines were skipped
+    elif len(profile_lines) > len(facts):
+        skipped = len(profile_lines) - len(facts)
+        LOG.info(f"Parsed {len(facts)} profiles, skipped {skipped} invalid/meaningless lines")
+    
     return AIUserProfiles(facts=facts)
 
 
