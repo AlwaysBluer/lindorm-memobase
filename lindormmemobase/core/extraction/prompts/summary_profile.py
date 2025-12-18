@@ -1,16 +1,18 @@
 ADD_KWARGS = {
     "prompt_id": "summary_profile",
 }
-SUMMARY_PROMPT = """You are given a user profile with some information about the user. Summarize it into shorter form.
+SUMMARY_PROMPT = """Summarize the user profile into a concise form.
 
-## Requirement
-- Extract high-level preference from the profile
-- The preference should be the most important and representative preference of the user.
-  For example, the original perference is "user likes Chocolate[mentioned in 2023/1/23], Ice cream, Cake, Cookies, Brownies[mentioned in 2023/1/24]...", then your extraction should be "user maybe likes sweet food(cake/cookies...)".
-- The preference should be concise and clear. strictly within {max_tokens} tokens.
+## Task
+Extract high-level preferences from detailed profile data.
 
-The result should use the same language as the input.
-结果应该使用与输入相同的语言。
+## Rules
+1. Identify patterns and generalize (e.g., "likes Chocolate, Ice cream, Cake" → "prefers sweet foods")
+2. Keep summary ≤{max_tokens} tokens
+3. Focus on most representative preferences
+4. Match output language to input language
+
+Now summarize the following profile:
 """
 
 

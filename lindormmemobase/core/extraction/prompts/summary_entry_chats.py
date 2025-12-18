@@ -1,62 +1,61 @@
 ADD_KWARGS = {
     "prompt_id": "summary_entry_chats",
 }
-SUMMARY_PROMPT = """You are a expert of logging personal info, schedule, events from chats.
-You will be given a chats between a user and an assistant.
+SUMMARY_PROMPT = """You are a personal information extraction specialist. Your task is to extract user-related information, schedules, and events from conversations.
 
-## Requirement
-- You need to list all possible user info, schedule and events
-- {additional_requirements}
-- If the user event/schedule has specific mention time or event happen time. Convert the event date info in the message based on [TIME] after your log. for example
-    Input: `[2024/04/30] user: I bought a new car yesterday!`
-    Output: `user bought a new car. [mention 2024/04/30, buy car in 2024/04/29]`
-    Input: `[2024/04/30] user: I bought a car 4 years ago!`
-    Output: `user bought a car. [mention 2024/04/30, buy car in 2020]`
-    Explain: because you don't know the exact date, only year, so 2024-4=2020. or you can log at [4 years before 2024/04/30]
-    Input: `[2024/04/30] user: I bought a new car last week!`
-    Output: `user bought a new car. [mention 2024/04/30, buy car in 2024/04/30 a week before]`
-    Explain: because you don't know the exact date.
-    Input: `[...] user: I bought a new car last week!`
-    Output: `user bought a new car.`
-    Explain: because you don't know the exact date, so don't attach any date.
+## Input Format
+Conversations are formatted as:
+```
+[TIME] NAME: MESSAGE
+```
+- TIME: When this message occurred
+- NAME: ALIAS(ROLE) or just ROLE
+- MESSAGE: The conversation content
 
-### Important Info
-Below is the topics/subtopics you should log from the chats.
-<topics>
+## Extraction Guidelines
+
+### Focus Areas
 {topics}
-</topics>
-Below is the important attributes you should log from the chats.
-<attributes>
-{attributes}
-</attributes>
 
-#### Input Chats
-You will receive a conversation between the user and the assistant. The format of the conversation is:
-- [TIME] NAME: MESSAGE
-where NAME is ALIAS(ROLE) or just ROLE, when ALIAS is available, use ALIAS to refer user/assistant.
-MESSAGE is the content of the conversation.
-TIME is the time of this message happened, so you need to convert the date info in the message based on TIME if necessary.
+### Key Attributes
+{attributes}
+
+### Time Handling Rules
+Convert relative time references to absolute dates based on the message timestamp:
+
+| Input | Output | Reason |
+|-------|--------|--------|
+| `[2024/04/30] user: I bought a car yesterday!` | `User bought a car [mention 2024/04/30, happened 2024/04/29]` | Yesterday = -1 day |
+| `[2024/04/30] user: I bought a car 4 years ago!` | `User bought a car [mention 2024/04/30, happened 2020]` | Only year known |
+| `[2024/04/30] user: I bought a car last week!` | `User bought a car [mention 2024/04/30, happened ~2024/04/23]` | Approximate date |
+| `[...] user: I bought a car last week!` | `User bought a car` | No timestamp available |
 
 ## Output Format
-- LOGGING[TIME INFO] // TYPE
-Output your logging result in Markdown unorder list format.
-For example:
 ```
-- Jack paint a picture about his kids.[mention 2023/1/23] // event
-- User's alias is Jack, assistant is Melinda. // info
-- Jack mentioned his work is software engineer in Memobase. [mention 2023/1/23] // info
-- Jack plans to go the gym. [mention 2023/1/23, plan in 2023/1/24] // schedule
-...
+- CONTENT [TIME_INFO] // TYPE
 ```
-Always add specific mention time of your log, and the event happen time if possible.
-Remember, make sure your logging is pure and concise, any time info should move to [TIME INFO] block.
 
-## Content Requirement
-- You need to list all possible user info, schedule and events
-- {additional_requirements}
+Where:
+- CONTENT: The extracted fact (concise, user-centric)
+- TIME_INFO: `[mention DATE, happened DATE]` when available
+- TYPE: `info` | `event` | `schedule`
 
-Finally, The logging result should use the same language as the chats. English in, English out. Chinese in, Chinese out.
-Now perform your task.
+### Example Output
+```
+- User's name is Jack // info
+- Jack is a software engineer at Memobase [mention 2023/1/23] // info
+- Jack painted a picture of his kids [mention 2023/1/23] // event
+- Jack plans to go to the gym [mention 2023/1/23, plan 2023/1/24] // schedule
+```
+
+## Rules
+1. Extract only USER-related information, not assistant's
+2. Use the same language as the input conversation
+3. Keep each entry concise and factual
+4. Always include mention time when timestamp is available
+5. {additional_requirements}
+
+Now extract from the following conversation:
 """
 
 

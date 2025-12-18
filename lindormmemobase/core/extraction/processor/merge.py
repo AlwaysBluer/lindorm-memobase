@@ -117,8 +117,9 @@ async def handle_profile_merge_or_valid(
                 profile_content,
                 update_instruction=define_sub_topic.update_description,  # maybe none
                 topic_description=define_sub_topic.description,  # maybe none
+                config=config,
             ),
-            system_prompt=PROMPTS[USE_LANGUAGE]["merge"].get_prompt(),
+            system_prompt=PROMPTS[USE_LANGUAGE]["merge"].get_prompt(config),
             temperature=0.2,
             model=config.merge_llm_model or config.best_llm_model,
             config=config,

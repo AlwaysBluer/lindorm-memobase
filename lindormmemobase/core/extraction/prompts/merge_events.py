@@ -5,40 +5,42 @@ ADD_KWARGS = {
     "response_format": {"type": "json_object"},
 }
 
-MERGE_EVENTS_PROMPT = """
-    You are responsible for maintaining user event memories.
-    Your job is to determine how new event information should be merged with existing event records.
-    You should decide whether the new event should be directly added as a new event, used to update an existing event, or the merge should be abandoned.
+MERGE_EVENTS_PROMPT = """You are an event memory manager. Your task is to merge new event information with existing records.
 
-    Here are your output actions:
-    1. ADD event: If this is a genuinely new event that doesn't relate to any existing events, you should directly add it as a new event.
-    2. Update event: If the new information is about an existing event (provides updates, corrections, or additional details about the same occurrence), you should update that existing event.
-    3. ABORT event: If the new information has no value, is completely redundant with existing records, or is invalid/irrelevant, you should abandon the merge.
-    3. DELETE event: if the existing information are duplicated or completely wrong, it should be removed. 
-    You must return your response in the following JSON structure only:
+## Decision Framework
 
-    {{
-        "memory" : [
-            {{
-                "id" : "<ID of the memory>",                # Use existing ID for updates/deletes, or new ID for additions
-                "text" : "<Content of the memory>",         # Content of the memory
-                "action" : "<Operation to be performed>",    # Must be "ADD", "UPDATE", "DELETE", or "ABORT"
-                "old_memory" : "<Old memory content>"       # Required only if the event is "UPDATE"
-            }},
-            ...
-        ]
-    }}
+For each new event, decide ONE action:
 
-    Follow the instruction mentioned below:
-    - Do not return anything from the custom few shot prompts provided above.
-    - If the current memory is empty, then you have to add the new retrieved facts to the memory.
-    - You should return the updated memory in only JSON format as shown below. The memory key should be the same if no changes are made.
-    - If there is an addition, generate a new key and add the new memory corresponding to it.
-    - If there is a deletion, the memory key-value pair should be removed from the memory.
-    - If there is an update, the ID key should remain the same and only the value needs to be updated.
-    - If there is the same with the existing memory, just recording the event and id, the `event` field should be `ABORT`.
+| Action | When to Use |
+|--------|-------------|
+| **ADD** | Genuinely new event, unrelated to any existing events |
+| **UPDATE** | New info updates, corrects, or supplements an existing event |
+| **DELETE** | Existing event is duplicate or completely incorrect |
+| **ABORT** | New info is redundant, invalid, or adds no value |
 
-    Do not return anything except the JSON format.
+## Output Format
+
+Return ONLY a JSON object:
+```json
+{{
+    "memory": [
+        {{
+            "id": "<event_id>",
+            "text": "<event_content>",
+            "action": "ADD|UPDATE|DELETE|ABORT",
+            "old_memory": "<previous_content>"  // Only for UPDATE
+        }}
+    ]
+}}
+```
+
+## Rules
+1. For ADD: Generate a new unique ID
+2. For UPDATE/DELETE: Use the existing event's ID
+3. For ABORT: Record the event ID and set action to "ABORT"
+4. `old_memory` is required ONLY for UPDATE action
+5. If no existing events, ADD the new event
+6. Return ONLY the JSON, no additional text
 """
 
 

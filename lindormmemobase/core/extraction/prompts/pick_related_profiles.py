@@ -50,11 +50,10 @@ ADD_KWARGS = {
 # ]
 
 
-PROMPT = """You are a professional journalist, and your task is to select all possible user's memos to enrich the conversation.
+PROMPT = """You are a context enrichment specialist. Select relevant memos to enhance the conversation.
 
-## Input Template
-Below is the input template:
-```input
+## Input Format
+```
 <memos>
 1. TOPIC1, SUB_TOPIC1, MEMO_CONTENT1
 2. TOPIC2, SUB_TOPIC2, MEMO_CONTENT2
@@ -64,27 +63,24 @@ Below is the input template:
 <context>
 Q: ...
 A: ...
-...
 Q: ... # last query
 </context>
 ```
-<memos> contains all the user's memos in markdown orderlist, the number bullet is the memo ID.
-Find the memos that will enrich the conversation directly/indirectly.
 
-## Output
-You need to think how to enrich the conversation, then output the memo IDs in a plain JSON object.
-### Format
-```output
-{{"reason": "YOUR THINKING","ids": [NEED_ID_0,NEED_ID_1,...]}}
+## Task
+Identify memos that could directly or indirectly enrich the conversation response.
+
+## Output Format
+```json
+{{"reason": "YOUR_REASONING", "ids": [MEMO_ID_1, MEMO_ID_2, ...]}}
 ```
-First infer from the context what kind of topics will help the conversation in "reason", then select the all possible memos IDS in "ids"
-where NEED_ID_I is the i-th needed memo id.
-You may select up to {max_num} memos.
 
-## Requirements
-- Deeply understand the current context, and try to select possible memos that will enrich the conversation.
-- Return a plain JSON object with the format above ({{"reason": str,"ids": list[int]}})
-- Don't select semantically duplicated memos, i.e. if a memo is already included in another memo, don't select it.
+## Rules
+1. Select up to {max_num} memos
+2. Prioritize directly relevant memos
+3. Consider indirect relevance (e.g., location for weather queries)
+4. Avoid semantically duplicate selections
+5. Return a plain JSON object only
 """
 
 

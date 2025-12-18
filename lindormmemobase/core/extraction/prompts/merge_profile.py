@@ -4,79 +4,53 @@ ADD_KWARGS = {
     "prompt_id": "merge_profile",
 }
 
-MERGE_FACTS_PROMPT = """You maintain user memos by merging new information with existing content.
+MERGE_FACTS_PROMPT = """You are a memo maintenance specialist. Your task is to merge new information with existing user memos.
 
-## Decision Rules
-Choose ONE action based on the supplementary information:
+## Decision Framework
 
-1. **APPEND** - Use when:
-   - New info adds facts not in current memo
-   - Current memo is empty and new info matches topic
+Analyze the new information and decide on ONE action:
 
-2. **UPDATE** - Use when:
-   - New info conflicts with current memo (replace outdated content)
-   - Need to combine old + new info into unified memo
-   - Current memo has removable/simplifiable parts
+| Action | When to Use |
+|--------|-------------|
+| **APPEND** | New info adds value without conflicting with existing memo |
+| **UPDATE** | New info conflicts with OR should be consolidated with existing memo |
+| **ABORT** | New info is redundant, irrelevant, or doesn't match the topic |
 
-3. **ABORT** - Use when:
-   - New info doesn't match topic/subtopic description
-   - Info already fully covered in current memo
-   - New info has no value
+## Decision Process
 
-## Considerations
-- Check if new info matches topic description; if not, try to extract relevant parts or ABORT
-- If update instruction exists, follow it
-- When updating, remove outdated/redundant content
-- Preserve time annotations from both old and new memos
+1. **Topic Relevance**: Does the new info match the memo's topic/subtopic?
+   - If NO: Can it be adapted? If not → ABORT
+2. **Value Check**: Does the new info add meaningful content?
+   - If NO (duplicate/empty) → ABORT
+3. **Conflict Check**: Does it conflict with existing memo?
+   - If YES → UPDATE (rewrite the complete memo)
+   - If NO → APPEND
 
 ## Output Format
-Output **exactly one line** starting with `- ` in one of these formats:
 
+Output exactly ONE line in this format:
 ```
-- APPEND{tab}APPEND
-```
-```
-- UPDATE{tab}[COMPLETE_UPDATED_MEMO]
-```
-```
-- ABORT{tab}ABORT
+- ACTION{tab}CONTENT
 ```
 
-## Examples
+Where:
+- `APPEND` → `- APPEND{tab}APPEND`
+- `ABORT` → `- ABORT{tab}ABORT`
+- `UPDATE` → `- UPDATE{tab}[complete rewritten memo]`
 
-**Example 1: APPEND**
-Current: "User likes hiking [mentioned 2025/01/05]"
-New: "User enjoys photography"
-Output:
-```
-- APPEND{tab}APPEND
-```
+## Rules
+1. Keep memos ≤5 sentences, concise and to the point
+2. Preserve time annotations: `[mentioned DATE, happened DATE]`
+3. Never fabricate information not in the input
+4. Remove redundancy when updating (e.g., "User is sad; User's mood is sad" → "User is sad")
+5. Output ONLY the action line, no other markdown list items
 
-**Example 2: UPDATE**
-Current: "Preparing for midterm exams [mentioned 2025/03/10]; Learning Python"
-New: "Preparing for final exams"
-Output:
+Example:
 ```
-- UPDATE{tab}Learning Python; Preparing for final exams [mentioned 2025/06/01]
-```
-
-**Example 3: ABORT**
-Topic: "Career Goals"
-Current: "Wants to become a software engineer"
-New: "User likes pizza" (irrelevant to topic)
-Output:
-```
-- ABORT{tab}ABORT
+- UPDATE{tab}Self-studying Japanese with Duolingo, aiming to pass JLPT N2 [mentioned 2025/05/05]; Preparing for finals [mentioned 2025/06/01]
 ```
 
-## Critical Rules
-- Output ONLY the action line (no explanations, no numbered lists, no additional text)
-- Keep final memo ≤5 sentences, concise and factual
-- Never fabricate content not in input
-- Preserve time annotations: [mentioned on YYYY/MM/DD] or [occurred in YYYY]
-- Remove redundancy when updating
-
-Now process the input below.
+Execute your task now.
 """
 
 

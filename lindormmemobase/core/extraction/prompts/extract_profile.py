@@ -100,57 +100,59 @@ EXAMPLES = [
     ),
 ]
 
-DEFAULT_JOB = """You extract user profiles from memos in structured format.
-Extract facts and preferences explicitly stated or reasonably inferred from the conversation.
-Use the same language as the user's input.
+DEFAULT_JOB = """You are a user profile extraction specialist.
+Your task is to extract structured profile information from user memos.
+Extract both explicitly stated facts and reasonably inferred information.
+Record facts in the same language as the user's input.
 """
 
 FACT_RETRIEVAL_PROMPT = """{system_prompt}
 
-## Task
-Extract user-related facts and preferences from the memo below. Focus on information about the user themselves, not other people mentioned.
+## Task Overview
+Extract user-related facts and preferences from memos into structured profiles.
 
-## Input Context
+## Input Structure
 
-**Topics Guidelines:** Use the provided topic/subtopic list as guidance. You may create new topics if necessary unless strict mode is enabled.
+### Available Topics
+Below are the recommended topics/subtopics for extraction:
+{topic_examples}
 
-**User's Existing Topics:** Reuse existing topic/subtopic names when the same information appears again.
+### Existing User Topics
+Topics already recorded for this user (use consistent naming):
+{{already_input}}
 
-**Memo Format:** You'll receive a user memo (Markdown format) summarized from user-assistant conversations, containing user info, events, and preferences.
+### User Memo
+The memo to extract from (summarized from user-assistant conversations).
 
 ## Output Format
-Output lines in this exact format:
+
+### Step 1: Analysis
+Briefly identify what topics/subtopics are mentioned or can be inferred.
+
+### Step 2: Extraction
+Output each fact as a markdown list item:
 ```
 - TOPIC{tab}SUB_TOPIC{tab}MEMO
 ```
 
-Each line contains:
-- **TOPIC**: Category of the information (e.g., basic_info, work, interest)
-- **SUB_TOPIC**: Specific subcategory (e.g., name, title, hobby)
-- **MEMO**: Extracted fact/preference about the user
+Example:
+```
+- basic_info{tab}name{tab}John
+- work{tab}title{tab}Software engineer at Memobase [mention 2025/01/01]
+```
 
-Elements separated by `{tab}`, each line starts with `- `, separated by newlines.
+## Extraction Rules
+1. **User-centric**: Only extract information about the USER, not others mentioned
+2. **Time handling**: Preserve time annotations `[mention DATE, happen DATE]`
+3. **Deduplication**: Consolidate related facts under the same topic/subtopic
+4. **Inference**: Extract implied information (e.g., multiple Nolan movies → likes Nolan)
+5. **Completeness**: Include all relevant facts, but no fabrication
+6. **Language**: Match the user's input language
 
 ## Examples
 {examples}
 
-## Critical Rules
-- **Output ONLY profile lines** (no thinking, no explanations, no additional text)
-- Extract facts with actual values only; skip if no value provided
-- **Infer implied information**, not just explicit statements
-- Group all content for same topic/sub_topic in ONE line (no duplicates)
-- **Time handling:**
-  - Use specific dates (YYYY/MM/DD), never relative terms ("today", "yesterday")
-  - Distinguish mention time vs. event time: `[mention YYYY/MM/DD, happen at YYYY/MM/DD]`
-  - If user mentions time-sensitive info, infer the specific date
-- Return empty list if nothing relevant found
-- **Language matching:** Record facts in the same language as user input
-- **User-focused only:** Don't extract info about other people (e.g., if memo says "John is a manager", don't create work{tab}title unless it's about the user)
-
-## Available Topics
-{topic_examples}
-
-Now extract profiles from the memo below.
+Now extract profiles from the following memo:
 """
 
 

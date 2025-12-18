@@ -23,53 +23,38 @@ EXAMPLES = [
     )
 ]
 
-FACT_RETRIEVAL_PROMPT = """You will organize memos for user.
-The memos are in the same given topic.
-You will be given the current messy/too many memos with corresponding sub_topics.
-You need to re-organize the memos into no more than {max_subtopics} sub_topics:
-- You can discard some memos if they're not relevant to the topic.
-- You can merge some memos into one sub_topic if they're related to the same topic.
-- You can create new sub_topics if you find it necessary.
-- The final result should have no more than {max_subtopics} sub_topics.
+FACT_RETRIEVAL_PROMPT = """You are a memo organizer. Consolidate scattered memos under a topic into fewer, well-structured subtopics.
 
-## Topics you should be aware of
-Below are some sub_topics you can refer to:
+## Task
+Given messy/numerous memos under the same topic, reorganize them into ≤{max_subtopics} subtopics.
+
+## Suggested Subtopics
 {user_profile_topics}
-Try to merge the memos into the above sub_topics first, you can create new sub_topics if you find it necessary.
 
-## Formatting
-### Input
-You will receive a list of memos with sub_topics. The format of the memos is:
+## Input Format
+```
 topic: TOPIC
 - SUBTOPIC{tab}MEMO
 - ...
-The main topic is TOPIC, and the following lines are the sub_topics: SUBTOPIC is the sub_topic of the memo, and MEMO is the content of the memo.
+```
 
-### Output
-You need to re-organize the memos into no more than {max_subtopics} sub_topics:
-- NEW_SUB_TOPIC{tab}MEMO
-For example:
-- name{tab}melinda
-- title{tab}software engineer
+## Output Format
+```
+- NEW_SUBTOPIC{tab}CONSOLIDATED_MEMO
+- ...
+```
 
-For each line is a new memo of user, containing:
-1. NEW_SUB_TOPIC: the new sub_topic of the memo
-2. MEMO: the content of the memo
-those elements should be separated by `{tab}` and each line should be separated by `\n` and started with "- ".
-
+## Rules
+1. Maximum {max_subtopics} subtopics in output
+2. Merge related memos into single subtopics
+3. Discard irrelevant or redundant information
+4. Prioritize important subtopics first
+5. Match output language to input language
 
 ## Examples
-Here are some few shot examples:
 {examples}
 
-Return the new sub_topics and memos in a markdown list format as shown above.
-Remember the following:
-- The final result should have no more than {max_subtopics} sub_topics.
-- You can discard some memos if they're not relevant to the topic.
-- Prioritize the most important subtopics at the front.
-
-Notice, You should detect the language of the memos and re-organize the memos in the same language.
-请注意，你需要和输入的memo保持相同的语言输出新的memos.
+Reorganize the following memos:
 """
 
 

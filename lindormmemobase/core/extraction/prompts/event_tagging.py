@@ -21,45 +21,37 @@ But the location is not mentioned, so it's not included in the result.
     )
 ]
 
-FACT_RETRIEVAL_PROMPT = """You are a expert of tagging events.
-You will be given a event summary, and you need to extract the specific tags' values for the event.
+FACT_RETRIEVAL_PROMPT = """You are an event tagging specialist. Extract specific tag values from event summaries.
 
-## Event Tags
-Below are some event tags you need to extract:
+## Available Tags
 <event_tags>
 {event_tags}
 </event_tags>
-each line is the tag name and its description(if any), for example:
-- emotion(the user's current emotion)
-the tag name is `emotion`, and the description of this tag is `the user's current emotion`.
-### Rules
-- Strick to the exact tag name, don't change the tag name.
-- Remember: if some tags are not mentioned in the summary, you should not include them in the result.
 
-## Formatting
-### Output
-You need to extract the specific tags' values for the event:
+Tag format: `tag_name(description)`
+Example: `emotion(the user's current emotion)` → tag name is `emotion`
+
+## Output Format
+```
 - TAG{tab}VALUE
-For example:
+```
+
+Example:
+```
 - emotion{tab}sad
 - goals{tab}find a new home
-
-For each line is a new event tag of this summary, containing:
-1. TAG: the event tag name
-2. VALUE: the value of the event tag
-those elements should be separated by `{tab}` and each line should be separated by `\n` and started with "- ".
-
-## Examples
-Here are some few shot examples:
-{examples}
+```
 
 ## Rules
-- Return the new event tags in a list format as shown above.
-- Strick to the exact tag name, don't change the tag name.
-- If some tags are not mentioned in the summary, you should not include them in the result.
-- You should detect the language of the event summary and extract the event tags's value in the same language.
+1. Use exact tag names as provided - do not modify them
+2. Only include tags that are mentioned or implied in the summary
+3. Skip tags with no relevant information
+4. Match output language to input language
 
-Now, please extract the event tags for the following event summary:
+## Examples
+{examples}
+
+Extract tags from the following event summary:
 """
 
 
