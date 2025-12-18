@@ -1,6 +1,7 @@
 import asyncio
 from lindormmemobase.config import TRACE_LOG
 
+from lindormmemobase.config.config import Config
 from lindormmemobase.utils.tools import get_encoded_tokens, truncate_string
 from lindormmemobase.utils.errors import ExtractionError
 
@@ -24,7 +25,7 @@ async def re_summary(
 
 
 async def summary_memo(
-    user_id: str, content_pack: dict, config
+    user_id: str, content_pack: dict, config: Config
 ) -> None:
     content = content_pack["content"]
     if len(get_encoded_tokens(content)) <= config.max_pre_profile_token_size:
@@ -42,19 +43,16 @@ async def summary_memo(
             **summary_profile.get_kwargs(),
         )
         
+        content_pack["content"] = r
         # Verify the LLM output length
         result_tokens = len(get_encoded_tokens(r))
-        
         if result_tokens <= target_tokens:
             # LLM successfully controlled the length
-            content_pack["content"] = r
-        else:
             # Fallback: LLM exceeded limit, apply soft truncation
             TRACE_LOG.warning(
                 user_id,
-                f"LLM summary exceeded target ({result_tokens} > {target_tokens}), applying truncation"
+                f"LLM summary exceeded target ({result_tokens} > {target_tokens}), still left"
             )
-            content_pack["content"] = truncate_string(r, target_tokens)
             
     except Exception as e:
         TRACE_LOG.error(

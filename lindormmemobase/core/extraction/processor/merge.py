@@ -126,13 +126,9 @@ async def handle_profile_merge_or_valid(
         )
         # print(KEY, profile_content)
         # print(r)
-        update_response: UpdateResponse | None = parse_string_into_merge_action(r)
-        if update_response is None:
-            TRACE_LOG.warning(
-                user_id,
-                f"Failed to parse merge action: {r}",
-            )
-            raise ExtractionError("Failed to parse merge action of Memobase")
+        update_response: UpdateResponse = parse_string_into_merge_action(r)
+        # parse_string_into_merge_action now always returns a dict (never None)
+        # If parsing fails, it returns {"action": "ABORT", "memo": "ABORT"} with a warning log
         if update_response["action"] == "UPDATE":
             if runtime_profile is None:
                 session_merge_validate_results["add"].append(

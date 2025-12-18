@@ -144,20 +144,40 @@ def pack_merge_action_into_string(action: dict) -> str:
     return f"- {action['action']}{separator}{action['memo']}"
 
 
-def parse_string_into_merge_action(results: str) -> dict | None:
+def parse_string_into_merge_action(results: str) -> dict:
+    """Parse LLM merge response into action dict.
+    
+    Returns a dict with 'action' and 'memo' keys.
+    If parsing fails, returns ABORT action with warning log.
+    """
     lines = [l for l in results.split("\n") if l.strip()]
-    lines = [l for l in lines if l.startswith("- ")]
-    if not len(lines):
-        return None
-    line = lines[0][2:]
     separator = CONFIG.llm_tab_separator if CONFIG else "::"
-    parts = line.split(separator)
-    if not len(parts) == 2:
-        return None
-    return {
-        "action": parts[0].upper().strip(),
-        "memo": parts[1].strip(),
-    }
+    
+    # Find all lines starting with "- " (allow leading whitespace)
+    candidate_lines = []
+    for l in lines:
+        stripped = l.lstrip()
+        if stripped.startswith("- "):
+            candidate_lines.append(stripped)
+    
+    if not candidate_lines:
+        LOG.warning(f"Failed to parse merge action: No lines starting with '- ' found in LLM response")
+        return {"action": "ABORT", "memo": "ABORT"}
+    
+    # Try to find a valid action line (UPDATE/APPEND/ABORT)
+    for l in candidate_lines:
+        line = l[2:]  # Remove "- " prefix
+        parts = line.split(separator)
+        if len(parts) != 2:
+            continue
+        action = parts[0].upper().strip()
+        memo = parts[1].strip()
+        if action in {"UPDATE", "APPEND", "ABORT"}:
+            return {"action": action, "memo": memo}
+    
+    # No valid action found, log warning and return ABORT
+    LOG.warning(f"Failed to parse merge action: No valid UPDATE/APPEND/ABORT line found. First candidate: {candidate_lines[0][:100]}")
+    return {"action": "ABORT", "memo": "ABORT"}
 
 
 def pack_profiles_into_string(profiles: AIUserProfiles) -> str:
