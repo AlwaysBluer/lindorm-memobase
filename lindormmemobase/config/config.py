@@ -61,6 +61,13 @@ class Config:
     lindorm_password: str = None
     embedding_max_token_size: int = 8192
 
+    enable_profile_embedding: bool = True
+
+    rerank_provider: Literal["openai", "lindormai", "dashscope"] = "lindormai"
+    rerank_api_key: str = None
+    rerank_base_url: str = None
+    rerank_model: str = "rerank-v3"
+
     additional_user_profiles: list[dict] = field(default_factory=list)
     overwrite_user_profiles: Optional[list[dict]] = None
     event_theme_requirement: Optional[str] = (

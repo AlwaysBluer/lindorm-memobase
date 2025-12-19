@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Optional
+from typing import Optional, List
 from lindormmemobase.config import Config, TRACE_LOG
 from lindormmemobase.core.extraction.prompts import pick_related_profiles as pick_prompt
 from lindormmemobase.llm.complete import llm_complete
@@ -202,3 +202,192 @@ async def filter_profiles_with_chats(
             f"Failed to pick related profiles: {str(e)}",
         )
         raise SearchError(f"Failed to pick related profiles: {str(e)}") from e
+
+
+async def search_profiles_by_embedding(
+    user_id: str,
+    query: str,
+    global_config: Config,
+    topk: int = 10,
+    min_score: float = 0.5,
+    project_id: Optional[str] = None,
+    topics: Optional[list[str]] = None,
+    subtopics: Optional[list[str]] = None
+) -> UserProfilesData:
+    """Search profiles using vector similarity.
+    
+    Args:
+        user_id: User identifier
+        query: Search query text
+        global_config: Configuration object
+        topk: Maximum number of results to return
+        min_score: Minimum similarity score threshold
+        project_id: Optional project filter
+        topics: Optional topic filter (OR logic)
+        subtopics: Optional subtopic filter (OR logic)
+    
+    Returns:
+        UserProfilesData with matching profiles
+    """
+    from lindormmemobase.embedding import get_embedding
+    from lindormmemobase.core.storage.user_profiles import get_lindorm_table_storage
+    
+    query_embeddings = await get_embedding([query], phase="query", config=global_config)
+    query_vector = query_embeddings[0].tolist()
+    
+    storage = get_lindorm_table_storage(global_config)
+    results = await storage.vector_search_profiles(
+        user_id=user_id,
+        query=query,
+        query_vector=query_vector,
+        size=topk,
+        min_score=min_score,
+        project_id=project_id,
+        topics=topics,
+        subtopics=subtopics
+    )
+    
+    return UserProfilesData(profiles=results)
+
+
+async def search_profiles_with_rerank(
+    user_id: str,
+    query: str,
+    global_config: Config,
+    topk: int = 10,
+    project_id: Optional[str] = None,
+    topics: Optional[list[str]] = None,
+    combine_by_topic: bool = True
+) -> UserProfilesData:
+    """Search profiles using rerank model.
+    
+    Args:
+        user_id: User identifier
+        query: Search query text
+        global_config: Configuration object
+        topk: Maximum number of results to return
+        project_id: Optional project filter
+        topics: Optional topic filter
+        combine_by_topic: If True, combine profiles by topic::subtopic before reranking
+    
+    Returns:
+        UserProfilesData with reranked profiles
+    """
+    from lindormmemobase.rerank import get_rerank
+    
+    all_profiles = await get_user_profiles(user_id, global_config, project_id=project_id, topics=topics)
+    
+    if not all_profiles.profiles:
+        return UserProfilesData(profiles=[])
+    
+    if combine_by_topic:
+        grouped = {}
+        for p in all_profiles.profiles:
+            key = f"{p.attributes.get('topic', '')}::{p.attributes.get('sub_topic', '')}"
+            if key not in grouped:
+                grouped[key] = {
+                    'profiles': [],
+                    'contents': [],
+                    'latest_updated': None
+                }
+            grouped[key]['profiles'].append(p)
+            grouped[key]['contents'].append(p.content)
+            updated = p.updated_at
+            if grouped[key]['latest_updated'] is None or (updated and updated > grouped[key]['latest_updated']):
+                grouped[key]['latest_updated'] = updated
+        
+        documents = []
+        doc_keys = []
+        for key, data in grouped.items():
+            combined_content = "\n".join(data['contents'])
+            documents.append(f"{key}: {combined_content}")
+            doc_keys.append(key)
+        
+        rerank_results = await get_rerank(
+            query=query,
+            documents=documents,
+            top_n=topk,
+            config=global_config
+        )
+        
+        result_profiles = []
+        for r in rerank_results:
+            key = doc_keys[r.index]
+            result_profiles.extend(grouped[key]['profiles'])
+        
+        return UserProfilesData(profiles=result_profiles[:topk * 3])
+    else:
+        documents = [
+            f"{p.attributes.get('topic', '')}::{p.attributes.get('sub_topic', '')}: {p.content}"
+            for p in all_profiles.profiles
+        ]
+        
+        rerank_results = await get_rerank(
+            query=query,
+            documents=documents,
+            top_n=topk,
+            config=global_config
+        )
+        
+        result_profiles = [all_profiles.profiles[r.index] for r in rerank_results]
+        return UserProfilesData(profiles=result_profiles)
+
+
+async def hybrid_search_profiles(
+    user_id: str,
+    query: str,
+    global_config: Config,
+    embedding_topk: int = 30,
+    final_topk: int = 10,
+    min_score: float = 0.3,
+    project_id: Optional[str] = None,
+    topics: Optional[list[str]] = None
+) -> UserProfilesData:
+    """Search profiles using embedding + rerank hybrid approach.
+    
+    First retrieves candidates using vector search, then reranks them.
+    
+    Args:
+        user_id: User identifier
+        query: Search query text
+        global_config: Configuration object
+        embedding_topk: Number of candidates to retrieve from vector search
+        final_topk: Final number of results after reranking
+        min_score: Minimum similarity score for embedding search
+        project_id: Optional project filter
+        topics: Optional topic filter
+    
+    Returns:
+        UserProfilesData with reranked profiles
+    """
+    from lindormmemobase.rerank import get_rerank
+    
+    embedding_results = await search_profiles_by_embedding(
+        user_id=user_id,
+        query=query,
+        global_config=global_config,
+        topk=embedding_topk,
+        min_score=min_score,
+        project_id=project_id,
+        topics=topics
+    )
+    
+    if not embedding_results.profiles:
+        return UserProfilesData(profiles=[])
+    
+    documents = [
+        f"{p.get('attributes', {}).get('topic', '')}::{p.get('attributes', {}).get('sub_topic', '')}: {p.get('content', '')}"
+        if isinstance(p, dict) else
+        f"{p.attributes.get('topic', '')}::{p.attributes.get('sub_topic', '')}: {p.content}"
+        for p in embedding_results.profiles
+    ]
+    
+    rerank_results = await get_rerank(
+        query=query,
+        documents=documents,
+        top_n=final_topk,
+        config=global_config
+    )
+    
+    result_profiles = [embedding_results.profiles[r.index] for r in rerank_results]
+    return UserProfilesData(profiles=result_profiles)

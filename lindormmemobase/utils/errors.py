@@ -104,6 +104,13 @@ class EmbeddingError(LindormMemobaseError):
         super().__init__(message, CODE.SERVER_PROCESS_ERROR)
 
 
+class RerankError(LindormMemobaseError):
+    """Raised when rerank operations fail."""
+    
+    def __init__(self, message: str):
+        super().__init__(message, CODE.SERVER_PROCESS_ERROR)
+
+
 class ExternalAPIError(Exception):
     """Legacy exception for external API errors."""
     pass
@@ -132,7 +139,7 @@ def exception_to_code(exc: Exception) -> CODE:
         return CODE.UNPROCESSABLE_ENTITY
     elif isinstance(exc, LLMError):
         return CODE.LLM_ERROR
-    elif isinstance(exc, (StorageError, ExtractionError, SearchError, EmbeddingError)):
+    elif isinstance(exc, (StorageError, ExtractionError, SearchError, EmbeddingError, RerankError)):
         return CODE.SERVER_PROCESS_ERROR
     else:
         return CODE.INTERNAL_SERVER_ERROR

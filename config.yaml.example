@@ -7,6 +7,7 @@
 
 # === Feature Toggles ===
 enable_event_embedding: true
+enable_profile_embedding: true  # Enable embedding generation for user profiles (for vector search)
 
 # === Memobase Configuration ===
 language: en  # Options: en, zh
@@ -34,6 +35,13 @@ event_theme_requirement: "Focus on the user's infos, not its instructions. Do no
 
 # Deprecated: Use entry_llm_model instead
 # summary_llm_model: qwen-max-latest
+
+# === Rerank Model Configuration (NEW) ===
+# Used for profile search reranking to improve relevance ordering
+# Requires Cohere-style rerank API endpoint
+# rerank_provider: openai              # Options: openai, lindormai
+# rerank_model: rerank-v3              # Rerank model name
+# NOTE: rerank_base_url and rerank_api_key should be set in .env for security
 
 # === User Profile Schema ===
 # Define custom profile topics and subtopics

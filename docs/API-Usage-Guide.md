@@ -461,6 +461,161 @@ profiles = await memobase.search_profiles(
 )
 ```
 
+#### 向量相似度搜索档案（NEW）
+
+基于 Embedding 向量进行语义相似度搜索，速度快，适合实时应用：
+
+```python
+async def search_profiles_by_embedding(
+    user_id: str,
+    query: str,
+    topics: Optional[List[str]] = None,
+    max_results: int = 10,
+    min_score: float = 0.5,
+    project_id: Optional[str] = None
+) -> List[Profile]
+```
+
+**参数说明：**
+- `user_id`: 用户标识符
+- `query`: 搜索查询文本
+- `topics`: 主题过滤（可选，OR 逻辑）
+- `max_results`: 返回的最大结果数（默认：10）
+- `min_score`: 最小相似度阈值（默认：0.5）
+- `project_id`: 项目过滤（可选）
+
+**示例：**
+
+```python
+profiles = await memobase.search_profiles_by_embedding(
+    user_id="user123",
+    query="旅行目的地和计划",
+    topics=["travel", "plans"],
+    max_results=5,
+    min_score=0.3
+)
+
+for profile in profiles:
+    print(f"主题: {profile.topic}")
+    for subtopic, entry in profile.subtopics.items():
+        print(f"  {subtopic}: {entry.content}")
+```
+
+**特点：**
+- 使用向量嵌入进行语义相似度搜索
+- 延迟最低（约 50ms）
+- 绕过 LLM 过滤，适合高吞吐量场景
+- 使用 Lindorm Search 的 HNSW 向量索引 + RRF 混合检索
+
+#### Rerank 模型搜索档案（NEW）
+
+使用 Rerank 模型对档案进行相关性排序，准确度最高：
+
+```python
+async def search_profiles_with_rerank(
+    user_id: str,
+    query: str,
+    topics: Optional[List[str]] = None,
+    max_results: int = 10,
+    combine_by_topic: bool = True,
+    project_id: Optional[str] = None
+) -> List[Profile]
+```
+
+**参数说明：**
+- `user_id`: 用户标识符
+- `query`: 搜索查询文本
+- `topics`: 主题过滤（可选）
+- `max_results`: 返回的最大结果数（默认：10）
+- `combine_by_topic`: 是否按 topic::subtopic 组合后再重排（默认：True）
+- `project_id`: 项目过滤（可选）
+
+**示例：**
+
+```python
+# 按主题组合后重排（推荐）
+profiles = await memobase.search_profiles_with_rerank(
+    user_id="user123",
+    query="用户的旅行偏好是什么？",
+    max_results=5,
+    combine_by_topic=True
+)
+
+# 不组合，直接对每个 profile 重排
+profiles = await memobase.search_profiles_with_rerank(
+    user_id="user123",
+    query="用户喜欢什么食物？",
+    max_results=5,
+    combine_by_topic=False
+)
+```
+
+**特点：**
+- 获取所有档案后使用 Rerank 模型评分排序
+- 准确度最高，适合复杂语义查询
+- 延迟较高（约 500ms）
+- 需要配置 Rerank API（见配置指南）
+
+#### 混合搜索档案（NEW）
+
+结合 Embedding 和 Rerank 的优势，先向量召回再重排序：
+
+```python
+async def search_profiles_hybrid(
+    user_id: str,
+    query: str,
+    topics: Optional[List[str]] = None,
+    max_results: int = 10,
+    embedding_candidates: int = 30,
+    min_embedding_score: float = 0.3,
+    project_id: Optional[str] = None
+) -> List[Profile]
+```
+
+**参数说明：**
+- `user_id`: 用户标识符
+- `query`: 搜索查询文本
+- `topics`: 主题过滤（可选）
+- `max_results`: 最终返回的结果数（默认：10）
+- `embedding_candidates`: 从向量搜索获取的候选数量（默认：30）
+- `min_embedding_score`: 向量搜索的最小相似度（默认：0.3）
+- `project_id`: 项目过滤（可选）
+
+**示例：**
+
+```python
+profiles = await memobase.search_profiles_hybrid(
+    user_id="user123",
+    query="用户提到过的度假地点",
+    max_results=5,
+    embedding_candidates=20,
+    min_embedding_score=0.2
+)
+```
+
+**工作流程：**
+1. **向量召回**：从 Embedding 索引中检索 `embedding_candidates` 个候选（快速、近似）
+2. **Rerank 重排**：使用 Rerank 模型对候选重新排序，返回 `max_results` 个结果（准确、语义）
+
+**特点：**
+- 平衡速度和准确度（约 200ms）
+- 推荐用于生产环境
+- 需要同时启用 Embedding 和 Rerank
+
+#### 档案搜索方法对比
+
+| 方法 | 速度 | 准确度 | 适用场景 |
+|------|------|--------|----------|
+| `search_profiles` | 最慢 (~2000ms) | 最高 | 复杂推理，需要 LLM 理解 |
+| `search_profiles_by_embedding` | 最快 (~50ms) | 良好 | 实时应用，高吞吐量 |
+| `search_profiles_with_rerank` | 较慢 (~500ms) | 很高 | 复杂查询，小规模档案 |
+| `search_profiles_hybrid` | 中等 (~200ms) | 很高 | **生产推荐**，平衡方案 |
+
+**配置要求：**
+- `search_profiles_by_embedding`: 需要 `enable_profile_embedding=True`
+- `search_profiles_with_rerank`: 需要配置 `rerank_provider`、`rerank_base_url`、`rerank_api_key`
+- `search_profiles_hybrid`: 需要同时满足上述两项配置
+
 ### 事件管理
 
 #### 获取最近事件

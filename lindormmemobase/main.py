@@ -726,6 +726,165 @@ class LindormMemobase:
             max_profiles=max_results
         )
 
+    async def search_profiles_by_embedding(
+        self,
+        user_id: str,
+        query: str,
+        topics: Optional[List[str]] = None,
+        max_results: int = 10,
+        min_score: float = 0.5,
+        project_id: Optional[str] = None
+    ) -> List[Profile]:
+        """
+        Search profiles using vector similarity (embedding-based search).
+        
+        This method uses embedding vectors to find profiles semantically similar
+        to the query, bypassing LLM-based filtering for lower latency.
+        
+        Args:
+            user_id: Unique identifier for the user
+            query: Search query text
+            topics: Optional topic filter (OR logic)
+            max_results: Maximum number of results to return (default: 10)
+            min_score: Minimum similarity score threshold (default: 0.5)
+            project_id: Optional project filter
+            
+        Returns:
+            List of Profile objects matching the query, ranked by similarity
+            
+        Raises:
+            LindormMemobaseError: If search fails
+        """
+        from lindormmemobase.core.search.user_profiles import search_profiles_by_embedding as _search
+        
+        try:
+            result = await _search(
+                user_id=user_id,
+                query=query,
+                global_config=self.config,
+                topk=max_results,
+                min_score=min_score,
+                project_id=project_id,
+                topics=topics
+            )
+            return convert_profile_data_to_profiles(
+                result.profiles,
+                self.config.profile_split_delimiter,
+                topics,
+                max_results
+            )
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to search profiles by embedding: {str(e)}") from e
+
+    async def search_profiles_with_rerank(
+        self,
+        user_id: str,
+        query: str,
+        topics: Optional[List[str]] = None,
+        max_results: int = 10,
+        combine_by_topic: bool = True,
+        project_id: Optional[str] = None
+    ) -> List[Profile]:
+        """
+        Search profiles using rerank model.
+        
+        This method retrieves all profiles and uses a rerank model to score
+        and order them by relevance to the query.
+        
+        Args:
+            user_id: Unique identifier for the user
+            query: Search query text
+            topics: Optional topic filter
+            max_results: Maximum number of results to return (default: 10)
+            combine_by_topic: If True, combine profiles by topic::subtopic before reranking
+            project_id: Optional project filter
+            
+        Returns:
+            List of Profile objects matching the query, ranked by rerank score
+            
+        Raises:
+            LindormMemobaseError: If search fails
+        """
+        from lindormmemobase.core.search.user_profiles import search_profiles_with_rerank as _search
+        
+        try:
+            result = await _search(
+                user_id=user_id,
+                query=query,
+                global_config=self.config,
+                topk=max_results,
+                project_id=project_id,
+                topics=topics,
+                combine_by_topic=combine_by_topic
+            )
+            return convert_profile_data_to_profiles(
+                result.profiles,
+                self.config.profile_split_delimiter,
+                topics,
+                max_results
+            )
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to search profiles with rerank: {str(e)}") from e
+
+    async def search_profiles_hybrid(
+        self,
+        user_id: str,
+        query: str,
+        topics: Optional[List[str]] = None,
+        max_results: int = 10,
+        embedding_candidates: int = 30,
+        min_embedding_score: float = 0.3,
+        project_id: Optional[str] = None
+    ) -> List[Profile]:
+        """
+        Search profiles using embedding + rerank hybrid approach.
+        
+        This method first retrieves candidates using vector search, then
+        reranks them using a rerank model for best results.
+        
+        Args:
+            user_id: Unique identifier for the user
+            query: Search query text
+            topics: Optional topic filter
+            max_results: Maximum number of final results (default: 10)
+            embedding_candidates: Number of candidates to retrieve from embedding search (default: 30)
+            min_embedding_score: Minimum similarity score for embedding search (default: 0.3)
+            project_id: Optional project filter
+            
+        Returns:
+            List of Profile objects matching the query, ranked by hybrid score
+            
+        Raises:
+            LindormMemobaseError: If search fails
+        """
+        from lindormmemobase.core.search.user_profiles import hybrid_search_profiles as _search
+        
+        try:
+            result = await _search(
+                user_id=user_id,
+                query=query,
+                global_config=self.config,
+                embedding_topk=embedding_candidates,
+                final_topk=max_results,
+                min_score=min_embedding_score,
+                project_id=project_id,
+                topics=topics
+            )
+            return convert_profile_data_to_profiles(
+                result.profiles,
+                self.config.profile_split_delimiter,
+                topics,
+                max_results
+            )
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to hybrid search profiles: {str(e)}") from e
+
     # ===== Buffer Management Methods =====
 
     async def add_blob_to_buffer(
