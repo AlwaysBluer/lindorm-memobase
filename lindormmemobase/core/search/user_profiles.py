@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Optional
 from lindormmemobase.config import Config, TRACE_LOG
 from lindormmemobase.core.extraction.prompts import pick_related_profiles as pick_prompt
 from lindormmemobase.llm.complete import llm_complete
@@ -95,9 +96,10 @@ async def get_user_profiles_data(
         chats: list[OpenAICompatibleMessage],
         full_profile_and_only_search_event: bool,
         global_config: Config,
+        project_id: Optional[str] = None,
 ) -> tuple[str, list]:
     """Retrieve and process user profiles."""
-    total_profiles = await get_user_profiles(user_id, global_config)
+    total_profiles = await get_user_profiles(user_id, global_config, project_id=project_id)
 
     if max_profile_token_size > 0:
         if chats and (not full_profile_and_only_search_event):

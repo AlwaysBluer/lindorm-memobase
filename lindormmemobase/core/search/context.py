@@ -1,5 +1,6 @@
 from functools import partial
 from re import T
+from typing import Optional
 
 from lindormmemobase.config import Config, TRACE_LOG
 from lindormmemobase.models.blob import OpenAICompatibleMessage
@@ -39,6 +40,7 @@ async def get_user_context(
     full_profile_and_only_search_event: bool = False,
     fill_window_with_events: bool = False,
     topK: int = 30,
+    project_id: Optional[str] = None,
 ) -> ContextData:
     import asyncio
 
@@ -64,6 +66,7 @@ async def get_user_context(
             chats,
             full_profile_and_only_search_event,
             global_config,
+            project_id,
         ),
         get_user_event_gists_data(
             user_id,
@@ -71,7 +74,8 @@ async def get_user_context(
             event_similarity_threshold,
             time_range_in_days,
             global_config,
-            topK
+            topK,
+            project_id,
         ),
         return_exceptions=True,
     )

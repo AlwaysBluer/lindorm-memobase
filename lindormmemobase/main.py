@@ -610,7 +610,8 @@ class LindormMemobase:
         require_event_summary: bool = False,
         customize_context_prompt: Optional[str] = None,
         full_profile_and_only_search_event: bool = False,
-        fill_window_with_events: bool = False
+        fill_window_with_events: bool = False,
+        project_id: Optional[str] = None
     ) -> str:
         """
         Generate comprehensive context for conversation including relevant profiles and events.
@@ -631,6 +632,7 @@ class LindormMemobase:
             customize_context_prompt: Custom prompt for context generation
             full_profile_and_only_search_event: Use full profiles, search events only
             fill_window_with_events: Fill remaining token budget with events
+            project_id: Optional project filter. If None, searches across all projects.
             
         Returns:
             Formatted context string ready for use in conversation
@@ -669,7 +671,8 @@ class LindormMemobase:
                 require_event_summary=require_event_summary,
                 customize_context_prompt=customize_context_prompt,
                 full_profile_and_only_search_event=full_profile_and_only_search_event,
-                fill_window_with_events=fill_window_with_events
+                fill_window_with_events=fill_window_with_events,
+                project_id=project_id
             )
             
             return context_data.context
