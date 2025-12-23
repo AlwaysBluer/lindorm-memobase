@@ -46,7 +46,7 @@ async def summary_memo(
         content_pack["content"] = r
         # Verify the LLM output length
         result_tokens = len(get_encoded_tokens(r))
-        if result_tokens <= target_tokens:
+        if result_tokens >= target_tokens:
             # LLM successfully controlled the length
             # Fallback: LLM exceeded limit, apply soft truncation
             TRACE_LOG.warning(

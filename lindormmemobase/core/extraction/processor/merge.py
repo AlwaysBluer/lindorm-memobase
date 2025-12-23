@@ -19,6 +19,7 @@ async def merge_or_valid_new_profile(
         profile_config: ProfileConfig,
         total_profiles: list[UserProfileTopic],
         config,
+        project_id: str | None = None,
 ) -> MergeAddResult:
     assert len(fact_contents) == len(
         fact_attributes
@@ -27,10 +28,12 @@ async def merge_or_valid_new_profile(
         (p.topic, sp.name): sp for p in total_profiles for sp in p.sub_topics
     }
 
-    RUNTIME_MAPS = {
-        (p.attributes[ConstantsTable.topic], p.attributes[ConstantsTable.sub_topic]): p
-        for p in profiles
-    }
+    RUNTIME_MAPS: dict[tuple[str, str], list[ProfileData]] = {}
+    for p in profiles:
+        key = (p.attributes[ConstantsTable.topic], p.attributes[ConstantsTable.sub_topic])
+        if key not in RUNTIME_MAPS:
+            RUNTIME_MAPS[key] = []
+        RUNTIME_MAPS[key].append(p)
 
     profile_session_results: MergeAddResult = {
         "add": [],
@@ -50,6 +53,7 @@ async def merge_or_valid_new_profile(
             DEFINE_MAPS,
             profile_session_results,
             config,
+            project_id,
         )
         tasks.append(task)
     await asyncio.gather(*tasks)
@@ -61,10 +65,11 @@ async def handle_profile_merge_or_valid(
         profile_attributes: dict,
         profile_content: str,
         profile_config: ProfileConfig,
-        profile_runtime_maps: dict[tuple[str, str], ProfileData],
+        profile_runtime_maps: dict[tuple[str, str], list[ProfileData]],
         profile_define_maps: dict[tuple[str, str], SubTopic],
         session_merge_validate_results: MergeAddResult,
         config,  # System config
+        project_id: str | None = None,
 ) -> None:
     KEY = (
         profile_attributes[ConstantsTable.topic],
@@ -81,25 +86,37 @@ async def handle_profile_merge_or_valid(
         if profile_config.profile_strict_mode is not None
         else config.profile_strict_mode
     )
-    runtime_profile = profile_runtime_maps.get(KEY, None)
+    runtime_profiles = profile_runtime_maps.get(KEY, [])
+    has_existing_profiles = len(runtime_profiles) > 0
+    
+    if has_existing_profiles:
+        aggregated_content = "; ".join([p.content for p in runtime_profiles])
+        primary_profile = runtime_profiles[0]
+        additional_profile_ids = [p.id for p in runtime_profiles[1:]]
+    else:
+        aggregated_content = None
+        primary_profile = None
+        additional_profile_ids = []
+    
     define_sub_topic = profile_define_maps.get(KEY, SubTopic(name=""))
     
-    # In strict mode, reject profiles with undefined topic/subtopic combinations
     if STRICT_MODE and KEY not in profile_define_maps:
         TRACE_LOG.warning(
             user_id,
-            f"Rejecting undefined topic/subtopic in strict mode: {KEY}"
+            f"Rejecting undefined topic/subtopic in strict mode: {KEY}",
+            project_id=project_id
         )
         return
 
     if (
             not PROFILE_VALIDATE_MODE
             and not define_sub_topic.validate_value
-            and runtime_profile is None
+            and not has_existing_profiles
     ):
         TRACE_LOG.info(
             user_id,
             f"Skip validation: {KEY}",
+            project_id=project_id
         )
         session_merge_validate_results["add"].append(
             {
@@ -113,10 +130,10 @@ async def handle_profile_merge_or_valid(
             PROMPTS[USE_LANGUAGE]["merge"].get_input(
                 KEY[0],
                 KEY[1],
-                runtime_profile.content if runtime_profile else None,
+                aggregated_content,
                 profile_content,
-                update_instruction=define_sub_topic.update_description,  # maybe none
-                topic_description=define_sub_topic.description,  # maybe none
+                update_instruction=define_sub_topic.update_description,
+                topic_description=define_sub_topic.description,
                 config=config,
             ),
             system_prompt=PROMPTS[USE_LANGUAGE]["merge"].get_prompt(config),
@@ -125,13 +142,9 @@ async def handle_profile_merge_or_valid(
             config=config,
             **PROMPTS[USE_LANGUAGE]["merge"].get_kwargs(),
         )
-        # print(KEY, profile_content)
-        # print(r)
         update_response: UpdateResponse = parse_string_into_merge_action(r)
-        # parse_string_into_merge_action now always returns a dict (never None)
-        # If parsing fails, it returns {"action": "ABORT", "memo": "ABORT"} with a warning log
         if update_response["action"] == "UPDATE":
-            if runtime_profile is None:
+            if not has_existing_profiles:
                 session_merge_validate_results["add"].append(
                     {
                         "content": update_response["memo"],
@@ -139,15 +152,15 @@ async def handle_profile_merge_or_valid(
                     }
                 )
             else:
-                if ConstantsTable.update_hits not in runtime_profile.attributes:
-                    runtime_profile.attributes[ConstantsTable.update_hits] = 1
+                if ConstantsTable.update_hits not in primary_profile.attributes:
+                    primary_profile.attributes[ConstantsTable.update_hits] = 1
                 else:
-                    runtime_profile.attributes[ConstantsTable.update_hits] += 1
+                    primary_profile.attributes[ConstantsTable.update_hits] += 1
                 session_merge_validate_results["update"].append(
                     {
-                        "profile_id": runtime_profile.id,
+                        "profile_id": primary_profile.id,
                         "content": update_response["memo"],
-                        "attributes": runtime_profile.attributes,
+                        "attributes": primary_profile.attributes,
                     }
                 )
                 session_merge_validate_results["update_delta"].append(
@@ -156,54 +169,45 @@ async def handle_profile_merge_or_valid(
                         "attributes": profile_attributes,
                     }
                 )
+                for pid in additional_profile_ids:
+                    session_merge_validate_results["delete"].append(pid)
         elif update_response["action"] == "APPEND":
-            if runtime_profile is None:
-                session_merge_validate_results["add"].append(
-                    {
-                        "content": profile_content,
-                        "attributes": profile_attributes,
-                    }
-                )
-            else:
-                if ConstantsTable.update_hits not in runtime_profile.attributes:
-                    runtime_profile.attributes[ConstantsTable.update_hits] = 1
-                else:
-                    runtime_profile.attributes[ConstantsTable.update_hits] += 1
-                # Use ;; separator to mark for later splitting
-                session_merge_validate_results["update"].append(
-                    {
-                        "profile_id": runtime_profile.id,
-                        "content": f"{runtime_profile.content};{profile_content}",
-                        "attributes": runtime_profile.attributes,
-                    }
-                )
-                session_merge_validate_results["update_delta"].append(
-                    {
-                        "content": profile_content,
-                        "attributes": profile_attributes,
-                    }
-                )
+            session_merge_validate_results["add"].append(
+                {
+                    "content": profile_content,
+                    "attributes": profile_attributes,
+                }
+            )
+            session_merge_validate_results["update_delta"].append(
+                {
+                    "content": profile_content,
+                    "attributes": profile_attributes,
+                }
+            )
         elif update_response["action"] == "ABORT":
-            if runtime_profile is None:
+            if not has_existing_profiles:
                 TRACE_LOG.debug(
                     user_id,
                     f"Invalid profile: {KEY}::{profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
+                    project_id=project_id
                 )
             else:
                 TRACE_LOG.debug(
                     user_id,
-                    f"Invalid merge: {runtime_profile.attributes}, {profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
+                    f"Invalid merge: {primary_profile.attributes}, {profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
+                    project_id=project_id
                 )
-                # session_merge_validate_results["delete"].append(runtime_profile.id)
         else:
             TRACE_LOG.warning(
                 user_id,
                 f"Invalid action: {update_response['action']}",
+                project_id=project_id
             )
             raise ExtractionError("Failed to parse merge action of Memobase")
     except Exception as e:
         TRACE_LOG.warning(
             user_id,
             f"Failed to merge profiles: {str(e)}",
+            project_id=project_id
         )
         raise ExtractionError(f"Failed to merge profiles: {str(e)}") from e

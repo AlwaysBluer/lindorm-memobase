@@ -30,9 +30,9 @@ def merge_by_topic_sub_topics(new_facts: list[FactResponse]):
 
 
 async def extract_topics(
-    user_id: str, user_memo: str, project_profiles: ProfileConfig, config
+    user_id: str, user_memo: str, project_profiles: ProfileConfig, config, project_id: str | None = None
 ) -> dict:
-    profiles_data = await get_user_profiles(user_id, config)
+    profiles_data = await get_user_profiles(user_id, config, project_id)
     profiles = profiles_data.profiles
     USE_LANGUAGE = project_profiles.language or config.language
     STRICT_MODE = (
@@ -133,10 +133,12 @@ async def extract_topics(
 
     for nf in new_facts:
         if STRICT_MODE:
-            if (
-                nf[ConstantsTable.topic],
-                nf[ConstantsTable.sub_topic],
-            ) not in allowed_topic_subtopics:
+            key = (nf[ConstantsTable.topic], nf[ConstantsTable.sub_topic])
+            if key not in allowed_topic_subtopics:
+                TRACE_LOG.info(
+                    user_id,
+                    f"Strict mode: filtering out undefined topic/subtopic: {key}"
+                )
                 continue
         fact_contents.append(nf["memo"])
         fact_attributes.append(
@@ -145,6 +147,12 @@ async def extract_topics(
                 ConstantsTable.sub_topic: nf[ConstantsTable.sub_topic],
             }
         )
+    if STRICT_MODE:
+        TRACE_LOG.info(
+            user_id,
+            f"Strict mode: allowed {len(fact_contents)} profiles from {len(new_facts)} extracted"
+        )
+
     return {
         "fact_contents": fact_contents,
         "fact_attributes": fact_attributes,

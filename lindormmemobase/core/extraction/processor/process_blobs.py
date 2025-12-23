@@ -45,8 +45,8 @@ async def process_blobs(
     user_memo_str = await entry_chat_summary(blobs, profile_config, config)
 
     processing_results = await asyncio.gather(
-        process_profile_res(user_id, user_memo_str, profile_config, config),
-        process_event_res(user_id, user_memo_str, profile_config, config),
+        process_profile_res(user_id, user_memo_str, profile_config, config, project_id),
+        process_event_res(user_id, user_memo_str, profile_config, config, project_id),
         return_exceptions=True
     )
 
@@ -86,7 +86,7 @@ async def process_blobs(
         operation_name = ["session_event", "event_gists", "user_profile"][idx]
         if isinstance(result, Exception):
             error_msg = f"{operation_name} failed: {str(result)}"
-            TRACE_LOG.error(user_id, error_msg)
+            TRACE_LOG.error(user_id, error_msg, project_id=project_id)
             errors.append(error_msg)
 
     if errors:
@@ -103,10 +103,11 @@ async def process_blobs(
 async def process_profile_res(
         user_id: str,
         user_memo_str: str,
-        project_profiles: ProfileConfig,
+        profile_config: ProfileConfig,
         config: Config,
+        project_id: str | None = None,
 ) -> tuple[MergeAddResult, list[dict]]:
-    extracted_data = await extract_topics(user_id, user_memo_str, project_profiles, config)
+    extracted_data = await extract_topics(user_id, user_memo_str, profile_config, config, project_id)
 
     # 2. Merge it to thw whole profile
     intermediate_profile = await merge_or_valid_new_profile(
@@ -114,9 +115,10 @@ async def process_profile_res(
         fact_contents=extracted_data["fact_contents"],
         fact_attributes=extracted_data["fact_attributes"],
         profiles=extracted_data["profiles"],
-        profile_config=project_profiles,
+        profile_config=profile_config,
         total_profiles=extracted_data["total_profiles"],
         config=config,
+        project_id=project_id,
     )
 
     delta_profile_data = [
@@ -127,7 +129,7 @@ async def process_profile_res(
     await organize_profiles(
         user_id=user_id,
         profile_options=intermediate_profile,
-        config=project_profiles,
+        config=profile_config,
         main_config=config
     )
 
@@ -160,6 +162,7 @@ async def process_event_res(
         memo_str: str,
         profile_config: ProfileConfig,
         config: Config,
+        project_id: str | None = None,
 ) -> list:
     # event index
     event_tags = await tag_event(profile_config, memo_str, config)

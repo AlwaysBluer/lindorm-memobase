@@ -5,7 +5,7 @@ from lindormmemobase.config import TRACE_LOG
 from lindormmemobase.core.extraction.prompts.router import PROMPTS
 from lindormmemobase.core.extraction.prompts.profile_init_utils import get_specific_subtopics
 from lindormmemobase.models.types import MergeAddResult, ProfileData, AddProfile
-from lindormmemobase.models.profile_topic import ProfileConfig
+from lindormmemobase.models.profile_topic import ProfileConfig, read_out_profile_config
 from lindormmemobase.core.constants import ConstantsTable
 from lindormmemobase.core.extraction.prompts.utils import (
     parse_string_into_subtopics,
@@ -24,6 +24,26 @@ async def organize_profiles(
 ) -> None:
     profiles = profile_options["before_profiles"]
     USE_LANGUAGE = config.language or main_config.language
+    
+    STRICT_MODE = (
+        config.profile_strict_mode
+        if config.profile_strict_mode is not None
+        else main_config.profile_strict_mode
+    )
+    
+    project_profiles_slots = read_out_profile_config(
+        config, PROMPTS[USE_LANGUAGE]["profile"].CANDIDATE_PROFILE_TOPICS, main_config
+    )
+    
+    allowed_topic_subtopics = None
+    if STRICT_MODE:
+        allowed_topic_subtopics = set()
+        for p in project_profiles_slots:
+            for st in p.sub_topics:
+                allowed_topic_subtopics.add(
+                    (attribute_unify(p.topic), attribute_unify(st["name"]))
+                )
+    
     topic_groups = defaultdict(list)
     for p in profiles:
         topic_groups[p.attributes[ConstantsTable.topic]].append(p)
@@ -37,7 +57,11 @@ async def organize_profiles(
         return
     results = await asyncio.gather(
         *[
-            organize_profiles_by_topic(user_id, group, USE_LANGUAGE, main_config)
+            organize_profiles_by_topic(
+                user_id, group, USE_LANGUAGE, main_config, 
+                project_profiles_slots,
+                STRICT_MODE, allowed_topic_subtopics
+            )
             for group in need_to_organize_topics.values()
         ],
         return_exceptions=True
@@ -63,8 +87,11 @@ async def organize_profiles(
 async def organize_profiles_by_topic(
     user_id: str,
     profiles: list[ProfileData],
-    USE_LANGUAGE: str,  # profiles in the same topics
+    USE_LANGUAGE: str,
     main_config,
+    project_profiles_slots: list,
+    strict_mode: bool = False,
+    allowed_topic_subtopics: set | None = None,
 ) -> list[AddProfile]:
     assert (
         len(profiles) > main_config.max_profile_subtopics
@@ -78,9 +105,7 @@ async def organize_profiles_by_topic(
         f"Organizing profiles for topic: {profiles[0].attributes['topic']} with sub_topics {len(profiles)}",
     )
     topic = attribute_unify(profiles[0].attributes[ConstantsTable.topic])
-    suggest_subtopics = get_specific_subtopics(
-        topic, PROMPTS[USE_LANGUAGE]["profile"].CANDIDATE_PROFILE_TOPICS
-    )
+    suggest_subtopics = get_specific_subtopics(topic, project_profiles_slots)
 
     llm_inputs = "\n".join(
         [
@@ -89,15 +114,17 @@ async def organize_profiles_by_topic(
         ]
     )
     llm_prompt = f"""topic: {topic}
-{llm_inputs}
-"""
+        {llm_inputs}
+        """
     try:
         results = await llm_complete(
             llm_prompt,
             PROMPTS[USE_LANGUAGE]["organize"].get_prompt(
-                main_config.max_profile_subtopics // 2 + 1, suggest_subtopics
+                main_config.max_profile_subtopics // 2 + 1, 
+                suggest_subtopics,
+                strict_mode=strict_mode
             ),
-            temperature=0.2,  # precise
+            temperature=0.2,
             config=main_config,
             **PROMPTS[USE_LANGUAGE]["organize"].get_kwargs(),
         )
@@ -107,16 +134,30 @@ async def organize_profiles_by_topic(
                 "content": sp["memo"],
                 "attributes": {
                     ConstantsTable.topic: topic,
-                    ConstantsTable.sub_topic: sp[ConstantsTable.sub_topic],
+                    ConstantsTable.sub_topic: attribute_unify(sp[ConstantsTable.sub_topic]),
                 },
             }
             for sp in subtopics
         ]
+        
+        if strict_mode and allowed_topic_subtopics:
+            before_count = len(reorganized_profiles)
+            reorganized_profiles = [
+                p for p in reorganized_profiles
+                if (p["attributes"][ConstantsTable.topic], 
+                    p["attributes"][ConstantsTable.sub_topic]) in allowed_topic_subtopics
+            ]
+            filtered_count = before_count - len(reorganized_profiles)
+            if filtered_count > 0:
+                TRACE_LOG.info(
+                    user_id,
+                    f"Strict mode: filtered out {filtered_count} undefined subtopics in organize stage"
+                )
+        
         if len(reorganized_profiles) == 0:
             raise ExtractionError(
                 "Failed to organize profiles, left profiles is 0 so maybe it's the LLM error"
             )
-        # forcing the number of subtopics to be less than max_profile_subtopics // 2 + 1
         reorganized_profiles = reorganized_profiles[: main_config.max_profile_subtopics // 2 + 1]
         return reorganized_profiles
     except Exception as e:

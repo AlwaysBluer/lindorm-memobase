@@ -57,15 +57,56 @@ topic: TOPIC
 Reorganize the following memos:
 """
 
+FACT_RETRIEVAL_PROMPT_STRICT = """You are a memo organizer. Consolidate scattered memos under a topic into fewer, well-structured subtopics.
 
-def get_prompt(max_subtopics: int, suggest_subtopics: str, config=None) -> str:
-    examples = "\n\n".join([f"Input:\n{p[0]}Output:\n{p[1]}" for p in EXAMPLES])
-    return FACT_RETRIEVAL_PROMPT.format(
-        max_subtopics=max_subtopics,
-        examples=examples.format(tab=config.llm_tab_separator if config else "::"),
-        tab=config.llm_tab_separator if config else "::",
-        user_profile_topics=suggest_subtopics,
-    )
+## Task
+Given messy/numerous memos under the same topic, reorganize them into ≤{max_subtopics} subtopics.
+
+## ALLOWED Subtopics (STRICT MODE)
+You MUST ONLY use subtopics from this list. Do NOT create new subtopics.
+{user_profile_topics}
+
+## Input Format
+```
+topic: TOPIC
+- SUBTOPIC{tab}MEMO
+- ...
+```
+
+## Output Format
+```
+- SUBTOPIC_FROM_ALLOWED_LIST{tab}CONSOLIDATED_MEMO
+- ...
+```
+
+## Rules
+1. Maximum {max_subtopics} subtopics in output
+2. ONLY use subtopics from the ALLOWED list above - DO NOT invent new subtopic names
+3. Merge related memos into the most appropriate allowed subtopic
+4. If a memo doesn't fit any allowed subtopic, discard it
+5. Discard irrelevant or redundant information
+6. Prioritize important subtopics first
+7. Match output language to input language
+
+Reorganize the following memos:
+"""
+
+
+def get_prompt(max_subtopics: int, suggest_subtopics: str, config=None, strict_mode: bool = False) -> str:
+    if strict_mode:
+        return FACT_RETRIEVAL_PROMPT_STRICT.format(
+            max_subtopics=max_subtopics,
+            tab=config.llm_tab_separator if config else "::",
+            user_profile_topics=suggest_subtopics,
+        )
+    else:
+        examples = "\n\n".join([f"Input:\n{p[0]}Output:\n{p[1]}" for p in EXAMPLES])
+        return FACT_RETRIEVAL_PROMPT.format(
+            max_subtopics=max_subtopics,
+            examples=examples.format(tab=config.llm_tab_separator if config else "::"),
+            tab=config.llm_tab_separator if config else "::",
+            user_profile_topics=suggest_subtopics,
+        )
 
 
 def get_kwargs() -> dict:
