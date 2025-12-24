@@ -23,9 +23,14 @@ Conversations are formatted as:
 ### Time Handling Rules
 Convert relative time references to absolute dates based on the message timestamp:
 
+**Important: Time Precision Requirement**
+- When timestamps include time-of-day, output only to **hour precision** (e.g., `2024-10-12 19:00`), excluding minutes, seconds, and milliseconds
+- When only date is available, output only the date (e.g., `2024/04/30`)
+
 | Input | Output | Reason |
 |-------|--------|--------|
 | `[2024/04/30] user: I bought a car yesterday!` | `User bought a car [mention 2024/04/30, happened 2024/04/29]` | Yesterday = -1 day |
+| `[2024-10-12 19:00] user: I bought a car this afternoon!` | `User bought a car [mention 2024-10-12 19:00]` | Keep to hour precision |
 | `[2024/04/30] user: I bought a car 4 years ago!` | `User bought a car [mention 2024/04/30, happened 2020]` | Only year known |
 | `[2024/04/30] user: I bought a car last week!` | `User bought a car [mention 2024/04/30, happened ~2024/04/23]` | Approximate date |
 | `[...] user: I bought a car last week!` | `User bought a car` | No timestamp available |

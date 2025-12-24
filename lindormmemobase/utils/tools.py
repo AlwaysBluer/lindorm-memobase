@@ -93,13 +93,44 @@ def truncate_string(content: str, max_tokens: int) -> str:
 def get_message_timestamp(
     message: OpenAICompatibleMessage, fallback_blob_timestamp: datetime
 ):
+    """Get message timestamp formatted to hour precision (YYYY-MM-DD HH:00).
+    
+    Args:
+        message: The message with optional created_at timestamp
+        fallback_blob_timestamp: Fallback timestamp from blob if message has none
+        
+    Returns:
+        Formatted timestamp string up to hour precision
+    """
     fallback_blob_timestamp = fallback_blob_timestamp or datetime.now()
     fallback_blob_timestamp = fallback_blob_timestamp.astimezone()
-    return (
-        message.created_at
-        if message.created_at
-        else fallback_blob_timestamp.strftime("%Y/%m/%d")
-    )
+    
+    if message.created_at:
+        timestamp_str = message.created_at
+        if isinstance(timestamp_str, str):
+            try:
+                cleaned = timestamp_str.replace('+08:00', '+0800').replace('T', ' ')
+                try:
+                    dt = datetime.fromisoformat(timestamp_str.replace('+08:00', '+08:00'))
+                except:
+                    for fmt in ["%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%d %H:%M:%S.%f%z", "%Y-%m-%d %H:%M:%S"]:
+                        try:
+                            dt = datetime.strptime(timestamp_str.replace('+08:00', '+0800'), fmt)
+                            break
+                        except:
+                            continue
+                    else:
+                        return fallback_blob_timestamp.strftime("%Y/%m/%d")
+            except Exception:
+                return fallback_blob_timestamp.strftime("%Y/%m/%d")
+        else:
+            dt = timestamp_str
+        
+        # Format to hour precision: YYYY-MM-DD HH:00
+        return dt.strftime("%Y-%m-%d %H:00")
+    else:
+        # No message timestamp, use fallback (date only)
+        return fallback_blob_timestamp.strftime("%Y/%m/%d")
 
 
 def get_message_name(message: OpenAICompatibleMessage):
