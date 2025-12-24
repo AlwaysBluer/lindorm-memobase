@@ -91,12 +91,13 @@ async def get_user_event_gists_by_sql(
         
         TRACE_LOG.info(
             user_id,
-            f"Retrieved {len(user_event_gists_data.gists)} event gists for user (time_range={time_range_in_days} days)"
+            f"Retrieved {len(user_event_gists_data.gists)} event gists for user (time_range={time_range_in_days} days)",
+            project_id=project_id
         )
         
         return user_event_gists_data
     except Exception as e:
-        TRACE_LOG.error(user_id, f"Failed to get user event gists by SQL: {str(e)}")
+        TRACE_LOG.error(user_id, f"Failed to get user event gists by SQL: {str(e)}", project_id=project_id)
         raise SearchError(f"Failed to get user event gists: {str(e)}") from e
 
 
@@ -127,6 +128,7 @@ async def search_user_event_gists(
         TRACE_LOG.warning(
             user_id,
             "Event embedding is not enabled, skip search",
+            project_id=project_id
         )
         raise SearchError("Event embedding is not enabled")
 
@@ -147,6 +149,7 @@ async def search_user_event_gists(
         TRACE_LOG.info(
             user_id,
             f"Event Query: {query[:50]}" + ("..." if len(query) > 50 else "") + f" Found {len(gists)} results",
+            project_id=project_id
         )
 
         return user_event_gists_data

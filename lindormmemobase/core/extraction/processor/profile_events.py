@@ -99,6 +99,7 @@ async def handle_user_profile_db(
     TRACE_LOG.info(
         user_id,
         f"After splitting: Adding {len(expanded_add)}, updating {len(cleaned_update)}, deleting {len(expanded_delete)} profiles",
+        project_id=project_id
     )
 
     p = await add_update_delete_user_profiles(
@@ -160,6 +161,7 @@ async def add_update_delete_user_profiles(
         TRACE_LOG.error(
             user_id,
             f"Error merging user profiles: {e}",
+            project_id=project_id
         )
         raise StorageError(f"Error merging user profiles: {e}") from e
 
@@ -211,6 +213,7 @@ async def append_user_event(
         TRACE_LOG.error(
             user_id,
             f"Invalid event data: {str(e)}",
+            project_id=project_id
         )
         raise StorageError(f"Invalid event data: {str(e)}") from e
 
@@ -228,12 +231,14 @@ async def append_user_event(
                 TRACE_LOG.error(
                     user_id,
                     f"Embedding dimension mismatch! Expected {config.embedding_dim}, got {embedding_dim_current}.",
+                    project_id=project_id
                 )
                 embedding = [None]
         except Exception as e:
             TRACE_LOG.error(
                 user_id,
                 f"Failed to get embeddings: {str(e)}",
+                project_id=project_id
             )
             embedding = [None]
     else:
@@ -264,7 +269,7 @@ async def append_user_event_gist(
     event_gists = [l.strip() for l in event_gists if l.strip().startswith("-")]
     
     TRACE_LOG.debug(
-        user_id, f"Processing {len(event_gists)} event gists"
+        user_id, f"Processing {len(event_gists)} event gists", project_id=project_id
     )
     
     if len(event_gists) == 0:
@@ -280,7 +285,7 @@ async def append_user_event_gist(
                 config=config,
             )
         except Exception as e:
-            TRACE_LOG.error(user_id, f"Failed to get gist embeddings: {str(e)}")
+            TRACE_LOG.error(user_id, f"Failed to get gist embeddings: {str(e)}", project_id=project_id)
             event_gist_embeddings = [None] * len(event_gists)
     else:
         event_gist_embeddings = [None] * len(event_gists)

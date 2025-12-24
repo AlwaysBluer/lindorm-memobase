@@ -471,18 +471,18 @@ class LindormEventGistsStorage(LindormStorageBase):
             )
             
             if not response or 'hits' not in response or 'hits' not in response['hits']:
-                TRACE_LOG.error(user_id, f"Invalid search response structure: {response}")
+                TRACE_LOG.error(user_id, f"Invalid search response structure: {response}", project_id=project_id)
                 return []
 
             gists = []
             for hit in response['hits']['hits']:
                 if '_source' not in hit:
-                    TRACE_LOG.error(user_id, f"Missing _source in search hit: {hit.keys()}")
+                    TRACE_LOG.error(user_id, f"Missing _source in search hit: {hit.keys()}", project_id=project_id)
                     continue
                 source = hit['_source']
                 # Check if required fields exist in source
                 if 'event_gist_data' not in source or 'created_at' not in source:
-                    TRACE_LOG.error(user_id, f"Missing required fields in _source: {source.keys()}")
+                    TRACE_LOG.error(user_id, f"Missing required fields in _source: {source.keys()}", project_id=project_id)
                     continue
                 similarity = hit.get('_score', 0.0)
                 # Wrap plain text gist in dict for backward compatibility
@@ -555,7 +555,8 @@ class LindormEventGistsStorage(LindormStorageBase):
             TRACE_LOG.info(
                 user_id or "system",
                 f"Event gists reset: deleted {gists_count} gists "
-                f"(user_id={user_id}, project_id={project_id})"
+                f"(user_id={user_id}, project_id={project_id})",
+                project_id=project_id
             )
             return gists_count
         except Exception as e:

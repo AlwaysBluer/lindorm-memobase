@@ -159,7 +159,7 @@ def find_list_int_or_none(content: str) -> list[int] | None:
     return [int(i.strip()) for i in ids.split(",")]
 
 
-def validate_and_format_embedding(embedding: Optional[List[float]], expected_dim: int, user_id: str = "system") -> Optional[str]:
+def validate_and_format_embedding(embedding: Optional[List[float]], expected_dim: int, user_id: str = "system", project_id: str = None) -> Optional[str]:
     """Validate embedding format and dimensions, return JSON string or None.
     
     Args:
@@ -182,27 +182,27 @@ def validate_and_format_embedding(embedding: Optional[List[float]], expected_dim
         
         # Validate it's a list
         if not isinstance(embedding_list, list):
-            TRACE_LOG.warning(user_id, f"Invalid embedding type: {type(embedding_list)}, expected list. Using empty string.")
+            TRACE_LOG.warning(user_id, f"Invalid embedding type: {type(embedding_list)}, expected list. Using empty string.", project_id=project_id)
             return ""
         
         # Validate dimension
         if len(embedding_list) != expected_dim:
-            TRACE_LOG.warning(user_id, f"Invalid embedding dimension: {len(embedding_list)}, expected {expected_dim}. Using empty string.")
+            TRACE_LOG.warning(user_id, f"Invalid embedding dimension: {len(embedding_list)}, expected {expected_dim}. Using empty string.", project_id=project_id)
             return ""
         
         # Validate all elements are numbers
         for i, val in enumerate(embedding_list):
             if not isinstance(val, (int, float)):
-                TRACE_LOG.warning(user_id, f"Invalid embedding value at index {i}: {type(val)}, expected number. Using empty string.")
+                TRACE_LOG.warning(user_id, f"Invalid embedding value at index {i}: {type(val)}, expected number. Using empty string.", project_id=project_id)
                 return ""
             # Check for NaN or Inf
             if isinstance(val, float) and (val != val or abs(val) == float('inf')):
-                TRACE_LOG.warning(user_id, f"Invalid embedding value at index {i}: {val} (NaN or Inf). Using empty string.")
+                TRACE_LOG.warning(user_id, f"Invalid embedding value at index {i}: {val} (NaN or Inf). Using empty string.", project_id=project_id)
                 return ""
         
         # Return JSON string representation
         return json.dumps(embedding_list)
     
     except Exception as e:
-        TRACE_LOG.warning(user_id, f"Failed to validate embedding: {str(e)}. Using empty string.")
+        TRACE_LOG.warning(user_id, f"Failed to validate embedding: {str(e)}. Using empty string.", project_id=project_id)
         return ""

@@ -112,6 +112,7 @@ async def get_user_context(
     TRACE_LOG.info(
         user_id,
         f"Retrieved {len(use_profiles)} profiles({profile_section_tokens} tokens), {len(user_event_gists.gists)} event gists({event_section_tokens} tokens)",
+        project_id=project_id,
     )
 
     return ContextData(context=context_prompt_func(profile_section, event_section))

@@ -114,7 +114,7 @@ async def get_user_profiles_data(
                 total_profiles.profiles = filter_result["profiles"]
             except Exception as e:
                 # If filtering fails, continue with all profiles
-                TRACE_LOG.warning(user_id, f"Profile filtering failed: {str(e)}")
+                TRACE_LOG.warning(user_id, f"Profile filtering failed: {str(e)}", project_id=project_id)
 
         user_profiles = total_profiles
         use_profiles = await truncate_profiles(
@@ -187,6 +187,7 @@ async def filter_profiles_with_chats(
             TRACE_LOG.error(
                 user_id,
                 f"Failed to pick related profiles: {r}",
+                project_id=project_id
             )
             raise SearchError("Failed to pick related profiles")
         ids = [i for i in found_ids if i < len(topics_index)]
@@ -194,12 +195,14 @@ async def filter_profiles_with_chats(
         TRACE_LOG.info(
             user_id,
             f"Filter profiles with chats: {reason}, {found_ids}",
+            project_id=project_id
         )
         return {"reason": reason, "profiles": profiles}
     except Exception as e:
         TRACE_LOG.error(
             user_id,
             f"Failed to pick related profiles: {str(e)}",
+            project_id=project_id
         )
         raise SearchError(f"Failed to pick related profiles: {str(e)}") from e
 

@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import datetime
+from re import A
 from typing import Callable, Awaitable, List, Optional, Tuple
 
 from lindormmemobase.config import TRACE_LOG, Config, LOG
@@ -159,7 +160,7 @@ class LindormBufferStorage(LindormStorageBase):
 
                 total_tokens = sum(row[1] for row in results)
                 if total_tokens > max_tokens:
-                    TRACE_LOG.info(user_id, f"Buffer overflow: {total_tokens} > {max_tokens}")
+                    TRACE_LOG.info(user_id, f"Buffer overflow: {total_tokens} > {max_tokens}", project_id=actual_project_id)
                     return [row[0] for row in results]
 
                 return []
@@ -220,7 +221,8 @@ class LindormBufferStorage(LindormStorageBase):
             )
             TRACE_LOG.info(
                 user_id or "system",
-                f"Buffer reset: deleted {count} rows (user_id={user_id}, project_id={project_id})"
+                f"Buffer reset: deleted {count} rows (user_id={user_id}, project_id={project_id})",
+                project_id=project_id
             )
             return count
         except Exception as e:
@@ -315,7 +317,7 @@ class LindormBufferStorage(LindormStorageBase):
             if status != BufferStatus.processing:
                 await self._update_status(user_id, actual_blob_ids, BufferStatus.processing, actual_project_id)
 
-            TRACE_LOG.info(user_id, f"Processing {len(blobs)} {blob_type} blobs")
+            TRACE_LOG.info(user_id, f"Processing {len(blobs)} {blob_type} blobs", project_id=actual_project_id)
 
             # Process
             result = await BLOBS_PROCESS[blob_type](user_id, profile_config, blobs, self.config, actual_project_id)
@@ -326,7 +328,7 @@ class LindormBufferStorage(LindormStorageBase):
             return result
 
         except Exception as e:
-            TRACE_LOG.error(user_id, f"Flush error: {e}")
+            TRACE_LOG.error(user_id, f"Flush error: {e}", project_id=actual_project_id)
             # Mark as failed if possible
             if 'actual_blob_ids' in locals():
                 try:

@@ -71,12 +71,13 @@ async def get_user_events(
         
         TRACE_LOG.info(
             user_id,
-            f"Retrieved {len(results)} events for user (time_range={time_range_in_days} days)"
+            f"Retrieved {len(results)} events for user (time_range={time_range_in_days} days)",
+            project_id=project_id
         )
         
         return results
     except Exception as e:
-        TRACE_LOG.error(user_id, f"Failed to get user events: {str(e)}")
+        TRACE_LOG.error(user_id, f"Failed to get user events: {str(e)}", project_id=project_id)
         raise SearchError(f"Failed to get user events: {str(e)}") from e
 
 
@@ -115,6 +116,7 @@ async def search_user_events(
         TRACE_LOG.warning(
             user_id,
             "Event embedding is not enabled, skip search",
+            project_id=project_id
         )
         raise SearchError("Event embedding is not enabled")
     try:
@@ -163,12 +165,13 @@ async def search_user_events(
             user_id,
             f"Event Query: {query[:50]}" + ("..." if len(query) > 50 else "") + 
             f" Found {len(responses)} results" + filter_summary,
+            project_id=project_id
         )
 
         return results
 
     except Exception as e:
-        TRACE_LOG.error(user_id, f"Failed to search user events: {str(e)}")
+        TRACE_LOG.error(user_id, f"Failed to search user events: {str(e)}", project_id=project_id)
         raise SearchError(f"Failed to search user events: {str(e)}") from e
 
 

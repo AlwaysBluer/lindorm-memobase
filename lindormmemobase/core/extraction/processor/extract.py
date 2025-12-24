@@ -91,6 +91,7 @@ async def extract_topics(
         TRACE_LOG.info(
             user_id,
             f"Already have {len(profiles)} profiles, {len(already_topics_subtopics)} topics",
+            project_id=project_id
         )
     else:
         already_topics_prompt = ""
@@ -115,6 +116,7 @@ async def extract_topics(
         TRACE_LOG.info(
             user_id,
             f"No new facts extracted",
+            project_id=project_id
         )
         return {
             "fact_contents": [],
@@ -137,7 +139,8 @@ async def extract_topics(
             if key not in allowed_topic_subtopics:
                 TRACE_LOG.info(
                     user_id,
-                    f"Strict mode: filtering out undefined topic/subtopic: {key}"
+                    f"Strict mode: filtering out undefined topic/subtopic: {key}",
+                    project_id=project_id
                 )
                 continue
         fact_contents.append(nf["memo"])
@@ -150,7 +153,8 @@ async def extract_topics(
     if STRICT_MODE:
         TRACE_LOG.info(
             user_id,
-            f"Strict mode: allowed {len(fact_contents)} profiles from {len(new_facts)} extracted"
+            f"Strict mode: allowed {len(fact_contents)} profiles from {len(new_facts)} extracted",
+            project_id=project_id
         )
 
     return {

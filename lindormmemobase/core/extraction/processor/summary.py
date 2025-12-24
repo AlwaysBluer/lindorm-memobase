@@ -14,10 +14,11 @@ async def re_summary(
     add_profile: list[AddProfile],
     update_profile: list[UpdateProfile],
     config,
+    project_id: str,
 ) -> None:
-    add_tasks = [summary_memo(user_id, ap, config) for ap in add_profile]
+    add_tasks = [summary_memo(user_id, ap, config, project_id=project_id) for ap in add_profile]
     await asyncio.gather(*add_tasks, return_exceptions=True)
-    update_tasks = [summary_memo(user_id, up, config) for up in update_profile]
+    update_tasks = [summary_memo(user_id, up, config, project_id=project_id) for up in update_profile]
     results = await asyncio.gather(*update_tasks, return_exceptions=True)
     errors = [r for r in results if isinstance(r, Exception)]
     if errors:
@@ -25,7 +26,7 @@ async def re_summary(
 
 
 async def summary_memo(
-    user_id: str, content_pack: dict, config: Config
+    user_id: str, content_pack: dict, config: Config, project_id: str
 ) -> None:
     content = content_pack["content"]
     if len(get_encoded_tokens(content)) <= config.max_pre_profile_token_size:
@@ -51,12 +52,14 @@ async def summary_memo(
             # Fallback: LLM exceeded limit, apply soft truncation
             TRACE_LOG.warning(
                 user_id,
-                f"LLM summary exceeded target ({result_tokens} > {target_tokens}), still left"
+                f"LLM summary exceeded target ({result_tokens} > {target_tokens}), still left",
+                project_id=project_id
             )
             
     except Exception as e:
         TRACE_LOG.error(
             user_id, 
             f"Failed to summary memo: {str(e)}",
+            project_id=project_id
         )
         raise ExtractionError(f"Failed to summary memo: {str(e)}") from e

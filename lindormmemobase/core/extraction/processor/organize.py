@@ -103,6 +103,7 @@ async def organize_profiles_by_topic(
     TRACE_LOG.debug(
         user_id,
         f"Organizing profiles for topic: {profiles[0].attributes['topic']} with sub_topics {len(profiles)}",
+        project_id=project_id
     )
     topic = attribute_unify(profiles[0].attributes[ConstantsTable.topic])
     suggest_subtopics = get_specific_subtopics(topic, project_profiles_slots)
@@ -151,7 +152,8 @@ async def organize_profiles_by_topic(
             if filtered_count > 0:
                 TRACE_LOG.info(
                     user_id,
-                    f"Strict mode: filtered out {filtered_count} undefined subtopics in organize stage"
+                    f"Strict mode: filtered out {filtered_count} undefined subtopics in organize stage",
+                    project_id=project_id
                 )
         
         if len(reorganized_profiles) == 0:

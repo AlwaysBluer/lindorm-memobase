@@ -139,6 +139,7 @@ async def process_profile_res(
         add_profile=intermediate_profile["add"],
         update_profile=intermediate_profile["update"],
         config=config,
+        project_id=project_id,
     )
 
     return (intermediate_profile, delta_profile_data)
