@@ -84,7 +84,7 @@ async def extract_topics(
         already_topics_subtopics = sorted(already_topics_subtopics)
         already_topics_prompt = "\n".join(
             [
-                f"- {topic}{config.llm_tab_separator}{sub_topic}{config.llm_tab_separator}{truncate_string(already_topic_subtopics_values[(topic, sub_topic)], 30)}"
+                f"- {topic}{config.llm_tab_separator}{sub_topic}{config.llm_tab_separator}{truncate_string(already_topic_subtopics_values[(topic, sub_topic)], 60)}"
                 for topic, sub_topic in already_topics_subtopics
             ]
         )

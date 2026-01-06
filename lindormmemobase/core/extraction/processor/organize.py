@@ -21,6 +21,7 @@ async def organize_profiles(
     profile_options: MergeAddResult,
     config: ProfileConfig,
     main_config,
+    project_id: str | None = None,
 ) -> None:
     profiles = profile_options["before_profiles"]
     USE_LANGUAGE = config.language or main_config.language
@@ -58,9 +59,9 @@ async def organize_profiles(
     results = await asyncio.gather(
         *[
             organize_profiles_by_topic(
-                user_id, group, USE_LANGUAGE, main_config, 
+                user_id, group, USE_LANGUAGE, main_config,
                 project_profiles_slots,
-                STRICT_MODE, allowed_topic_subtopics
+                STRICT_MODE, allowed_topic_subtopics, project_id
             )
             for group in need_to_organize_topics.values()
         ],
@@ -92,6 +93,7 @@ async def organize_profiles_by_topic(
     project_profiles_slots: list,
     strict_mode: bool = False,
     allowed_topic_subtopics: set | None = None,
+    project_id: str | None = None,
 ) -> list[AddProfile]:
     assert (
         len(profiles) > main_config.max_profile_subtopics

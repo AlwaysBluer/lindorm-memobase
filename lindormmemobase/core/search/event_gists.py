@@ -154,7 +154,7 @@ async def search_user_event_gists(
 
         return user_event_gists_data
     except Exception as e:
-        TRACE_LOG.error(user_id, f"Failed to search user event gists: {str(e)}")
+        TRACE_LOG.error(user_id, f"Failed to search user event gists: {str(e)}", project_id=project_id)
         raise SearchError(f"Failed to search user event gists: {str(e)}") from e
 
 

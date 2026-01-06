@@ -130,7 +130,8 @@ async def process_profile_res(
         user_id=user_id,
         profile_options=intermediate_profile,
         config=profile_config,
-        main_config=config
+        main_config=config,
+        project_id=project_id
     )
 
     # 4. Re-summary profiles if any slot is too big
