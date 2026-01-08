@@ -58,8 +58,7 @@ def minimal_config():
         lindorm_table_password="test_pass",
         lindorm_table_database="memobase_test",
         lindorm_search_host="localhost",
-        lindorm_search_port=30070,
-        test_skip_persist=True  # Skip actual persistence in unit tests
+        lindorm_search_port=30070
     )
 
 
@@ -95,7 +94,6 @@ def mock_config():
         lindorm_search_username="mock_search_user",
         lindorm_search_password="mock_search_pass",
         enable_event_embedding=True,
-        test_skip_persist=True,
         max_chat_blob_buffer_token_size=8192,
         max_chat_blob_buffer_process_token_size=16384
     )

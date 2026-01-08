@@ -70,8 +70,7 @@ class TestConnectionDiagnostic:
                 print("\n✓ Successfully loaded configuration from config.yaml")
             else:
                 config = Config(
-                    llm_api_key=os.getenv("MEMOBASE_LLM_API_KEY", "test-key"),
-                    test_skip_persist=True
+                    llm_api_key=os.getenv("MEMOBASE_LLM_API_KEY", "test-key")
                 )
                 print("\n⚠ Using default configuration (no config.yaml found)")
             
@@ -192,7 +191,6 @@ class TestConnectionDiagnostic:
         print(f"  Best LLM Model: {config.best_llm_model}")
         print(f"  Embedding Provider: {config.embedding_provider}")
         print(f"  Embedding Dimension: {config.embedding_dim}")
-        print(f"  Test Skip Persist: {config.test_skip_persist}")
     
     def _print_table_connection_info(self, config):
         """Print Lindorm Table connection information."""

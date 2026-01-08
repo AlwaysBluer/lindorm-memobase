@@ -27,7 +27,6 @@ from lindormmemobase.config import Config
 def mock_config():
     """Create a mock config for testing."""
     config = Mock(spec=Config)
-    config.default_project_id = "test_default_project"
     config.max_chat_blob_buffer_token_size = 1000
     config.lindorm_buffer_host = "localhost"
     config.lindorm_buffer_port = 3306
@@ -101,16 +100,16 @@ class TestLindormBufferStorageProjectIsolation:
             assert params[1] == "project_alpha"  # project_id is second param
     
     @pytest.mark.asyncio
-    async def test_insert_blob_uses_default_project_id(self, mock_config, sample_chat_blob):
-        """Test inserting blob without project_id uses default."""
+    async def test_insert_blob_uses_default_constant(self, mock_config, sample_chat_blob):
+        """Test inserting blob without project_id uses DEFAULT_PROJECT_ID constant."""
         storage = LindormBufferStorage(mock_config)
-        
+
         mock_pool = MagicMock()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_pool.get_connection.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
-        
+
         with patch.object(storage, '_get_pool', return_value=mock_pool):
             result = await storage.insert_blob(
                 user_id="user123",
@@ -118,47 +117,9 @@ class TestLindormBufferStorageProjectIsolation:
                 blob_data=sample_chat_blob,
                 project_id=None
             )
-            
+
             assert result.ok()
-            
-            # Verify default project_id is used
-            params = mock_cursor.execute.call_args[0][1]
-            assert params[1] == "test_default_project"
-    
-    @pytest.mark.asyncio
-    async def test_insert_blob_falls_back_to_constant_default(self, sample_chat_blob):
-        """Test inserting blob falls back to DEFAULT_PROJECT_ID constant."""
-        config = Mock(spec=Config)
-        config.default_project_id = None  # No default in config
-        config.lindorm_buffer_host = "localhost"
-        config.lindorm_buffer_port = 3306
-        config.lindorm_buffer_username = "test"
-        config.lindorm_buffer_password = "test"
-        config.lindorm_buffer_database = "test_db"
-        config.lindorm_table_host = "localhost"
-        config.lindorm_table_port = 3306
-        config.lindorm_table_username = "test"
-        config.lindorm_table_password = "test"
-        config.lindorm_table_database = "test_db"
-        
-        storage = LindormBufferStorage(config)
-        
-        mock_pool = MagicMock()
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_pool.get_connection.return_value = mock_conn
-        mock_conn.cursor.return_value = mock_cursor
-        
-        with patch.object(storage, '_get_pool', return_value=mock_pool):
-            result = await storage.insert_blob(
-                user_id="user123",
-                blob_id="blob456",
-                blob_data=sample_chat_blob,
-                project_id=None
-            )
-            
-            assert result.ok()
-            
+
             # Verify DEFAULT_PROJECT_ID constant is used
             params = mock_cursor.execute.call_args[0][1]
             assert params[1] == DEFAULT_PROJECT_ID

@@ -77,7 +77,6 @@ class Config:
     profile_validate_mode: bool = True
 
     # UserProfiles configuration
-    default_project_id: str = "default"
     enable_profile_splitting: bool = True
     profile_split_delimiter: str = "; "
 
@@ -109,9 +108,6 @@ class Config:
     lindorm_buffer_password: str = None
     lindorm_buffer_database: str = None
     lindorm_buffer_pool_size: int = 32  # Connection pool size for buffer storage (max=32, MySQL connector limit)
-
-    # Test option
-    test_skip_persist: bool = False  # Fixed: Changed to False to enable event persistence
 
     @classmethod
     def _process_env_vars(cls, config_dict):

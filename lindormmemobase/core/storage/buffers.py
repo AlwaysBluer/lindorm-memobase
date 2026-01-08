@@ -83,7 +83,7 @@ class LindormBufferStorage(LindormStorageBase):
 
     async def insert_blob(self, user_id: str, blob_id: str, blob_data: Blob, project_id: Optional[str] = None) -> None:
         def _insert_sync():
-            actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
+            actual_project_id = project_id or DEFAULT_PROJECT_ID
             now = int(datetime.now().timestamp())
             pool = self._get_pool()
             conn = pool.get_connection()
@@ -103,7 +103,7 @@ class LindormBufferStorage(LindormStorageBase):
 
     async def get_capacity(self, user_id: str, blob_type: BlobType, project_id: Optional[str] = None) -> int:
         def _get_capacity_sync():
-            actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
+            actual_project_id = project_id or DEFAULT_PROJECT_ID
             pool = self._get_pool()
             conn = pool.get_connection()
             try:
@@ -123,7 +123,7 @@ class LindormBufferStorage(LindormStorageBase):
 
     async def get_ids_by_status(self, user_id: str, blob_type: BlobType, status: str = BufferStatus.idle, project_id: Optional[str] = None) -> List[str]:
         def _get_ids_sync():
-            actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
+            actual_project_id = project_id or DEFAULT_PROJECT_ID
             pool = self._get_pool()
             conn = pool.get_connection()
             try:
@@ -143,7 +143,7 @@ class LindormBufferStorage(LindormStorageBase):
 
     async def check_overflow(self, user_id: str, blob_type: BlobType, max_tokens: int, project_id: Optional[str] = None) -> List[str]:
         def _check_overflow_sync():
-            actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
+            actual_project_id = project_id or DEFAULT_PROJECT_ID
             pool = self._get_pool()
             conn = pool.get_connection()
             try:
@@ -303,7 +303,7 @@ class LindormBufferStorage(LindormStorageBase):
             return None
 
         try:
-            actual_project_id = project_id or self.config.default_project_id or DEFAULT_PROJECT_ID
+            actual_project_id = project_id or DEFAULT_PROJECT_ID
             
             # Load blobs
             blobs_with_ids = await self._load_blobs(user_id, blob_ids, actual_project_id)

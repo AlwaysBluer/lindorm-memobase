@@ -300,21 +300,13 @@ class TestConfigSpecialSettings:
     def test_userprofiles_configuration(self):
         """Test UserProfiles-specific configuration."""
         config = Config(
-            default_project_id="my_project",
             enable_profile_splitting=False,
             profile_split_delimiter="; ",
             enable_event_embedding=False
         )
-        
-        assert config.default_project_id == "my_project"
+
         assert config.enable_profile_splitting is False
         assert config.profile_split_delimiter == "; "
-    
-    def test_test_skip_persist(self):
-        """Test test_skip_persist flag."""
-        config = Config(test_skip_persist=True, enable_event_embedding=False)
-        
-        assert config.test_skip_persist is True
 
 
 @pytest.mark.unit
@@ -325,13 +317,11 @@ class TestConfigFixtures:
         """Test minimal_config fixture."""
         assert minimal_config.llm_api_key is not None
         assert minimal_config.language == "en"
-        assert minimal_config.test_skip_persist is True
-    
+
     def test_mock_config_fixture(self, mock_config):
         """Test mock_config fixture."""
         assert "mock" in mock_config.llm_api_key
         assert mock_config.embedding_dim == 1536
-        assert mock_config.test_skip_persist is True
     
     def test_zh_config_fixture(self, zh_config):
         """Test Chinese language config fixture."""

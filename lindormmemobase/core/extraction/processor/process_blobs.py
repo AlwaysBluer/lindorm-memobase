@@ -58,7 +58,7 @@ async def process_blobs(
     intermediate_profile, delta_profile_data = processing_results[0]
     event_tags = processing_results[1]
 
-    # Handle session events and user profiles (only skip if test_skip_persist is True)
+    # Handle session events and user profiles
     event_id = str(uuid.uuid4())
     persistence_results = await asyncio.gather(
         handle_session_event(

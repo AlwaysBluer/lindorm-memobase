@@ -41,8 +41,7 @@ class TestLindormMemobaseIntegration:
         memobase = LindormMemobase.from_config(
             language="en",
             llm_api_key="test-key",
-            best_llm_model="gpt-4o-mini",
-            test_skip_persist=True
+            best_llm_model="gpt-4o-mini"
         )
         
         assert memobase.config.language == "en"
@@ -311,15 +310,13 @@ class TestConfigurationIntegration:
         """Test that different initialization methods work."""
         # Default initialization
         memobase1 = LindormMemobase.from_config(
-            llm_api_key="key1",
-            test_skip_persist=True
+            llm_api_key="key1"
         )
-        
+
         # From parameters
         memobase2 = LindormMemobase.from_config(
             language="zh",
-            llm_api_key="key2",
-            test_skip_persist=True
+            llm_api_key="key2"
         )
         
         assert memobase1.config.language == "en"  # default
