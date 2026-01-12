@@ -17,7 +17,6 @@ minimum_chats_token_size_for_event_summary: 256  # Minimum token size to trigger
 # === Buffer Management Configuration ===
 max_chat_blob_buffer_token_size: 1536  # Auto-trigger processing when buffer reaches this size
 max_chat_blob_buffer_process_token_size: 16384  # Maximum token size for single processing batch
-lindorm_buffer_pool_size: 32  # Database connection pool size (increase for high concurrency)
 
 # === Profile Management Settings ===
 profile_strict_mode: true

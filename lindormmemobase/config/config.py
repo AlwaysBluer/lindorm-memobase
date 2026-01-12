@@ -88,6 +88,7 @@ class Config:
     lindorm_search_use_ssl: bool = False
     lindorm_search_username: str = None
     lindorm_search_password: str = None
+    lindorm_search_pool_size: int = 100  # Connection pool size for OpenSearch client
     
     #Now deprecated
     lindorm_search_events_index: str = "memobase_events"
@@ -99,15 +100,8 @@ class Config:
     lindorm_table_username: str = "root"
     lindorm_table_password: str = None
     lindorm_table_database: str = "memobase"
-    lindorm_table_pool_size: int = 10  # Connection pool size for table storage (events, profiles)
-
-    # Lindorm Buffer专用 MySQL协议配置 (可选，未设置时使用lindorm_table_配置)
-    lindorm_buffer_host: str = None
-    lindorm_buffer_port: int = None
-    lindorm_buffer_username: str = None
-    lindorm_buffer_password: str = None
-    lindorm_buffer_database: str = None
-    lindorm_buffer_pool_size: int = 32  # Connection pool size for buffer storage (max=32, MySQL connector limit)
+    lindorm_table_pool_size: int = 10  # Connection pool size for table storage and buffer (events, profiles)
+    lindorm_executor_workers: int = 20  # Thread pool executor size for async database operations (can be > pool_size)
 
     @classmethod
     def _process_env_vars(cls, config_dict):
@@ -191,13 +185,6 @@ class Config:
         return cls(**filtered_config)
 
     def __post_init__(self):
-        # Validate buffer pool size (MySQL connector limitation)
-        if self.lindorm_buffer_pool_size < 1 or self.lindorm_buffer_pool_size > 32:
-            raise ValueError(
-                f"lindorm_buffer_pool_size must be between 1 and 32 (got {self.lindorm_buffer_pool_size}). "
-                "This is a MySQL Connector library limitation."
-            )
-        
         if self.enable_event_embedding:
             if self.embedding_api_key is None and (
                 self.llm_style == self.embedding_provider == "openai"

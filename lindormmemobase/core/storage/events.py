@@ -40,6 +40,7 @@ class LindormEventsStorage(LindormStorageBase):
             verify_certs=False,
             ssl_assert_hostname=False,
             ssl_show_warn=False,
+            maxsize=config.lindorm_search_pool_size
         )
         # Don't call _ensure methods in __init__ anymore
         # Tables and indices are created explicitly via initialize_tables_and_indices()
@@ -73,10 +74,16 @@ class LindormEventsStorage(LindormStorageBase):
         conn = pool.get_connection()
         try:
             cursor = conn.cursor()
-            
+
+            # Check if table exists using Lindorm's SHOW TABLES (much faster than IF NOT EXISTS)
+            cursor.execute("SHOW TABLES LIKE 'UserEvents'")
+            if cursor.fetchone():
+                LOG.info("UserEvents table already exists, skipping creation")
+                return
+
             # Create UserEvents table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS UserEvents (
+                CREATE TABLE UserEvents (
                     user_id VARCHAR(255) NOT NULL,
                     project_id VARCHAR(255) NOT NULL,
                     event_id VARCHAR(255) NOT NULL,
@@ -88,14 +95,14 @@ class LindormEventsStorage(LindormStorageBase):
                 )
             """)
             conn.commit()
-            LOG.info("UserEvents table created/verified")
+            LOG.info("UserEvents table created")
         finally:
             cursor.close()
             conn.close()
     
     def _create_search_index(self):
         """Create search index for UserEvents table via SQL CREATE INDEX.
-        
+
         Lindorm automatically syncs table changes to search indices.
         No need to write directly to search indices via OpenSearch API.
         """
@@ -103,10 +110,22 @@ class LindormEventsStorage(LindormStorageBase):
         conn = pool.get_connection()
         try:
             cursor = conn.cursor()
-            
+
+            # Check if search index exists using Lindorm's SHOW INDEX (much faster)
+            cursor.execute("SHOW INDEX FROM UserEvents")
+            index_exists = False
+            for row in cursor.fetchall():
+                if len(row) >= 3 and row[2] == 'srh_idx':  # INDEX_NAME is at index 2
+                    index_exists = True
+                    break
+
+            if index_exists:
+                LOG.info("UserEvents search index already exists, skipping creation")
+                return
+
             # Create search index on UserEvents table with fine-grained event_data mapping
             cursor.execute(f"""
-                CREATE INDEX IF NOT EXISTS srh_idx USING SEARCH ON UserEvents(
+                CREATE INDEX srh_idx USING SEARCH ON UserEvents(
                     user_id,
                     project_id,
                     event_id,
@@ -120,8 +139,8 @@ class LindormEventsStorage(LindormStorageBase):
                             "event_tags": {{
                                 "type": "nested",
                                 "properties": {{
-                                    "tag":   {{ "type": "keyword" }}, 
-                                    "value": {{ "type": "keyword" }}  
+                                    "tag":   {{ "type": "keyword" }},
+                                    "value": {{ "type": "keyword" }}
                                 }}
                             }},
                             "profile_delta": {{
@@ -171,9 +190,9 @@ class LindormEventsStorage(LindormStorageBase):
                     }}'
                 )
             """)
-            
+
             conn.commit()
-            LOG.info("UserEvents search index created/verified")
+            LOG.info("UserEvents search index created")
         finally:
             cursor.close()
             conn.close()

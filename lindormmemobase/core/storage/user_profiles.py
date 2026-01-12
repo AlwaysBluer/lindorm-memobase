@@ -38,6 +38,7 @@ class LindormTableStorage(LindormStorageBase):
             verify_certs=False,
             ssl_assert_hostname=False,
             ssl_show_warn=False,
+            maxsize=config.lindorm_search_pool_size
         )
     
     def _get_pool_name(self) -> str:
@@ -52,7 +53,7 @@ class LindormTableStorage(LindormStorageBase):
             'user': self.config.lindorm_table_username,
             'password': self.config.lindorm_table_password,
             'database': self.config.lindorm_table_database,
-            'pool_size': 10
+            'pool_size': self.config.lindorm_table_pool_size
         }
     
     def initialize_tables_and_indices(self):
@@ -70,8 +71,16 @@ class LindormTableStorage(LindormStorageBase):
         conn = pool.get_connection()
         try:
             cursor = conn.cursor()
+
+            # Check if table exists using Lindorm's SHOW TABLES (much faster than IF NOT EXISTS)
+            cursor.execute("SHOW TABLES LIKE 'UserProfiles'")
+            if cursor.fetchone():
+                LOG.info("UserProfiles table already exists, skipping creation")
+                return
+
+            # Create table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS UserProfiles (
+                CREATE TABLE UserProfiles (
                     user_id VARCHAR(255) NOT NULL,
                     project_id VARCHAR(255) NOT NULL,
                     profile_id VARCHAR(255) NOT NULL,
@@ -85,23 +94,24 @@ class LindormTableStorage(LindormStorageBase):
                     PRIMARY KEY(user_id, project_id, profile_id)
                 )
             """)
-            
+
+            # Create secondary indexes
             try:
                 cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_created_at ON UserProfiles (created_at)
+                    CREATE INDEX idx_created_at ON UserProfiles (created_at)
                 """)
             except Exception:
                 pass
-            
+
             try:
                 cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_updated_at ON UserProfiles (updated_at)
+                    CREATE INDEX idx_updated_at ON UserProfiles (updated_at)
                 """)
             except Exception:
                 pass
-            
+
             conn.commit()
-            LOG.info("UserProfiles table created/verified")
+            LOG.info("UserProfiles table created")
         finally:
             cursor.close()
             conn.close()
@@ -112,9 +122,22 @@ class LindormTableStorage(LindormStorageBase):
         conn = pool.get_connection()
         try:
             cursor = conn.cursor()
-            
+
+            # Check if search index exists using Lindorm's SHOW INDEX (much faster)
+            cursor.execute("SHOW INDEX FROM UserProfiles")
+            index_exists = False
+            for row in cursor.fetchall():
+                if len(row) >= 3 and row[2] == 'srh_idx':  # INDEX_NAME is at index 2
+                    index_exists = True
+                    break
+
+            if index_exists:
+                LOG.info("UserProfiles search index already exists, skipping creation")
+                return
+
+            # Create search index
             cursor.execute(f"""
-                CREATE INDEX IF NOT EXISTS srh_idx USING SEARCH ON UserProfiles(
+                CREATE INDEX srh_idx USING SEARCH ON UserProfiles(
                     user_id,
                     project_id,
                     profile_id,
@@ -150,9 +173,9 @@ class LindormTableStorage(LindormStorageBase):
                     }}'
                 )
             """)
-            
+
             conn.commit()
-            LOG.info("UserProfiles search index created/verified")
+            LOG.info("UserProfiles search index created")
         finally:
             cursor.close()
             conn.close()

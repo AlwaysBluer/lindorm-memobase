@@ -34,33 +34,34 @@ class LindormBufferStorage(LindormStorageBase):
     
     def _get_pool_config(self) -> dict:
         """Return connection pool configuration for buffer storage."""
-        host = self.config.lindorm_buffer_host or self.config.lindorm_table_host
-        port = self.config.lindorm_buffer_port or self.config.lindorm_table_port
-        username = self.config.lindorm_buffer_username or self.config.lindorm_table_username
-        password = self.config.lindorm_buffer_password or self.config.lindorm_table_password
-        database = self.config.lindorm_buffer_database or self.config.lindorm_table_database
-        
         return {
-            'host': host,
-            'port': port,
-            'user': username,
-            'password': password,
-            'database': database,
-            'pool_size': self.config.lindorm_buffer_pool_size
+            'host': self.config.lindorm_table_host,
+            'port': self.config.lindorm_table_port,
+            'user': self.config.lindorm_table_username,
+            'password': self.config.lindorm_table_password,
+            'database': self.config.lindorm_table_database,
+            'pool_size': self.config.lindorm_table_pool_size
         }
     
     def initialize_tables(self):
         """Create BufferStorage table. Called during StorageManager initialization."""
         # Configure Lindorm system settings first (from base class)
         # self._configure_lindorm_settings()
-        
+
         def _init_sync():
             pool = self._get_pool()
             conn = pool.get_connection()
             try:
                 cursor = conn.cursor()
+
+                # Check if table exists using Lindorm's SHOW TABLES (much faster than IF NOT EXISTS)
+                cursor.execute("SHOW TABLES LIKE 'BufferStorage'")
+                if cursor.fetchone():
+                    LOG.info("BufferStorage table already exists, skipping creation")
+                    return
+
                 cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS BufferStorage (
+                    CREATE TABLE BufferStorage (
                         user_id VARCHAR(255) NOT NULL,
                         project_id VARCHAR(255) NOT NULL,
                         blob_id VARCHAR(255) NOT NULL,
@@ -74,11 +75,11 @@ class LindormBufferStorage(LindormStorageBase):
                     )
                 """)
                 conn.commit()
-                LOG.info("BufferStorage table created/verified")
+                LOG.info("BufferStorage table created")
             finally:
                 cursor.close()
                 conn.close()
-        
+
         _init_sync()
 
     async def insert_blob(self, user_id: str, blob_id: str, blob_data: Blob, project_id: Optional[str] = None) -> None:

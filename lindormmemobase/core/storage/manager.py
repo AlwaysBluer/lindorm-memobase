@@ -39,16 +39,16 @@ class StorageManager:
     _init_lock = threading.Lock()
     
     @classmethod
-    def initialize(cls, config: Config) -> None:
+    async def initialize(cls, config: Config) -> None:
         """
-        Initialize all storage clients and create necessary tables/indexes.
-        
+        Initialize all storage clients and create necessary tables/indexes concurrently.
+
         This method should be called once at application startup to ensure
         all storage backends are properly initialized.
-        
+
         Args:
             config: Configuration object containing connection parameters
-            
+
         Raises:
             Exception: If initialization fails
         """
@@ -56,23 +56,26 @@ class StorageManager:
             if cls._initialized:
                 LOG.warning("StorageManager already initialized, skipping re-initialization")
                 return
-                
+
             try:
-                # Initialize table storage
+                # Get all storage instances first
                 table_storage = cls.get_table_storage(config)
-                table_storage.initialize_tables()
-                # Initialize search storage for events
                 search_storage = cls.get_search_storage(config)
-                search_storage.initialize_tables_and_indices()
-                # Initialize search storage for event gists
                 event_gists_storage = cls.get_event_gists_storage(config)
-                event_gists_storage.initialize_tables_and_indices()
-                # Initialize buffer storage
                 buffer_storage = cls.get_buffer_storage(config)
-                buffer_storage.initialize_tables()
+
+                # Run all initializations concurrently for faster startup
+                loop = asyncio.get_event_loop()
+                await asyncio.gather(
+                    loop.run_in_executor(None, table_storage.initialize_tables),
+                    loop.run_in_executor(None, search_storage.initialize_tables_and_indices),
+                    loop.run_in_executor(None, event_gists_storage.initialize_tables_and_indices),
+                    loop.run_in_executor(None, buffer_storage.initialize_tables),
+                )
+
                 cls._initialized = True
                 LOG.info("StorageManager initialized successfully")
-                
+
             except Exception as e:
                 LOG.error(f"StorageManager initialization failed: {str(e)}")
                 # Clear any partially initialized instances
@@ -157,20 +160,20 @@ class StorageManager:
     def get_buffer_storage(cls, config: Config):
         """
         Get or create a LindormBufferStorage instance.
-        
+
         Args:
             config: Configuration object
-            
+
         Returns:
             LindormBufferStorage instance
         """
-        host = config.lindorm_buffer_host or config.lindorm_table_host
-        port = config.lindorm_buffer_port or config.lindorm_table_port
-        username = config.lindorm_buffer_username or config.lindorm_table_username
-        database = config.lindorm_buffer_database or config.lindorm_table_database
-        
-        cache_key = (host, port, username, database)
-        
+        cache_key = (
+            config.lindorm_table_host,
+            config.lindorm_table_port,
+            config.lindorm_table_username,
+            config.lindorm_table_database
+        )
+
         with cls._buffer_lock:
             if cache_key not in cls._buffer_storage_cache:
                 cls._buffer_storage_cache[cache_key] = LindormBufferStorage(config)
@@ -223,7 +226,11 @@ class StorageManager:
         
         with cls._init_lock:
             cls._initialized = False
-        
+
+        # Shutdown thread pool executor
+        from .base import LindormStorageBase
+        LindormStorageBase.shutdown_executor()
+
         LOG.info("StorageManager cleanup completed")
     
     @classmethod

@@ -8,6 +8,7 @@ the memory extraction system using their own configuration.
 
 import yaml
 import uuid
+import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
@@ -59,21 +60,47 @@ class LindormMemobase:
     def __init__(self, config: Optional[Config] = None):
         """
         Initialize LindormMemobase with user configuration.
-        
+
         Args:
             config: User-provided Config object. If None, loads from default config files.
-            
+
         Raises:
             ConfigurationError: If configuration is invalid or cannot be loaded.
         """
         try:
             self.config = config if config is not None else Config.load_config()
             # Initialize storage layer
-            from .core.storage.manager import StorageManager
-            if not StorageManager.is_initialized():
-                StorageManager.initialize(self.config)
+            self._init_storage_sync()
         except Exception as e:
             raise ConfigurationError(f"Failed to load configuration: {str(e)}") from e
+
+    def _init_storage_sync(self):
+        """Initialize storage synchronously (runs async init in background)."""
+        from .core.storage.manager import StorageManager
+        if not StorageManager.is_initialized():
+            try:
+                # Try to get running event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Already in async context, schedule initialization
+                    asyncio.create_task(StorageManager.initialize(self.config))
+                else:
+                    # No running loop, run synchronously
+                    loop.run_until_complete(StorageManager.initialize(self.config))
+            except RuntimeError:
+                # No event loop exists, create new one
+                asyncio.run(StorageManager.initialize(self.config))
+
+    async def initialize_storage(self):
+        """
+        Initialize storage layer asynchronously.
+
+        This method can be called explicitly to ensure storage is initialized
+        before performing operations.
+        """
+        from .core.storage.manager import StorageManager
+        if not StorageManager.is_initialized():
+            await StorageManager.initialize(self.config)
     
     @classmethod
     def from_yaml_file(cls, config_file_path: Union[str, Path]) -> "LindormMemobase":

@@ -7,32 +7,45 @@ This module provides common functionality for storage classes including:
 - Configuration access
 """
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from mysql.connector import pooling
 from lindormmemobase.config import Config, LOG
 
 
 class LindormStorageBase:
     """Base class for all Lindorm storage implementations.
-    
+
     Provides common functionality:
     - MySQL connection pool management
     - Lindorm system settings configuration
     - Common utility methods
-    
+
     Subclasses should override:
     - _get_pool_config(): Return pool configuration dict
     - _get_pool_name(): Return unique pool name
     - initialize_tables() or initialize_tables_and_indices(): Create tables/indices
     """
-    
+
+    # Class-level thread pool executor for async sync operations
+    _executor: ThreadPoolExecutor = None
+    _executor_lock = threading.Lock()
+    _executor_max_workers: int = 0
+
+    # Class-level flag for CNX_POOL_MAXSIZE (only set once globally)
+    _cnx_pool_maxsize_set = False
+    _cnx_pool_lock = threading.Lock()
+
     def __init__(self, config: Config):
         """Initialize storage base.
-        
+
         Args:
             config: Configuration object containing connection parameters
         """
         self.config = config
         self.pool = None
+        # Cache pool config to avoid repeated _get_pool_config() calls
+        self._cached_pool_config = None
     
     def _get_pool_name(self) -> str:
         """Get pool name for this storage instance.
@@ -56,15 +69,23 @@ class LindormStorageBase:
     
     def _get_pool(self) -> pooling.MySQLConnectionPool:
         """Get or create MySQL connection pool.
-        
+
         Creates a new pool on first access, caches it for subsequent calls.
         Subclasses can override _get_pool_config() to customize pool settings.
-        
+
         Returns:
             MySQLConnectionPool instance
         """
         if self.pool is None:
-            pool_config = self._get_pool_config()
+            pool_config = self._get_cached_pool_config()
+
+            # Set CNX_POOL_MAXSIZE only once globally (thread-safe)
+            with self._cnx_pool_lock:
+                if not self._cnx_pool_maxsize_set:
+                    pooling.CNX_POOL_MAXSIZE = 2999
+                    self.__class__._cnx_pool_maxsize_set = True
+                    LOG.info("Set MySQL connector CNX_POOL_MAXSIZE to 2999")
+
             self.pool = pooling.MySQLConnectionPool(
                 pool_name=self._get_pool_name(),
                 pool_size=pool_config.get('pool_size', 32),
@@ -74,9 +95,20 @@ class LindormStorageBase:
                 user=pool_config['user'],
                 password=pool_config['password'],
                 database=pool_config['database'],
-                autocommit=False
+                autocommit=False,
+                use_pure=True
             )
         return self.pool
+
+    def _get_cached_pool_config(self) -> dict:
+        """Get cached pool config, or fetch and cache it.
+
+        Returns:
+            Cached pool configuration dict
+        """
+        if self._cached_pool_config is None:
+            self._cached_pool_config = self._get_pool_config()
+        return self._cached_pool_config
     
     def _configure_lindorm_settings(self):
         """Configure Lindorm system settings for wide table operations.
@@ -110,13 +142,52 @@ class LindormStorageBase:
         finally:
             cursor.close()
             conn.close()
-    
+
+    @classmethod
+    def _get_executor(cls, max_workers: int) -> ThreadPoolExecutor:
+        """Get or create thread pool executor for async operations.
+
+        Executor size is set to the maximum of all requested pool sizes.
+        If a larger pool is requested later, the executor is recreated.
+        If a smaller pool is requested, the existing (larger) executor is reused.
+
+        Args:
+            max_workers: Maximum number of workers (should match connection pool size)
+
+        Returns:
+            ThreadPoolExecutor instance
+        """
+        # Use LindormStorageBase explicitly to ensure single executor across all subclasses
+        with LindormStorageBase._executor_lock:
+            if LindormStorageBase._executor is None or max_workers > LindormStorageBase._executor_max_workers:
+                # Shutdown existing executor if we need a larger one
+                if LindormStorageBase._executor is not None:
+                    LindormStorageBase._executor.shutdown(wait=True)
+                    LOG.info(f"Recreating thread pool executor: {LindormStorageBase._executor_max_workers} -> {max_workers} workers")
+                LindormStorageBase._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="lindorm_db")
+                LindormStorageBase._executor_max_workers = max_workers
+                LOG.info(f"Thread pool executor created with {max_workers} workers")
+            return LindormStorageBase._executor
+
+    @classmethod
+    def shutdown_executor(cls):
+        """Shutdown the thread pool executor.
+
+        Should be called during application shutdown.
+        """
+        with LindormStorageBase._executor_lock:
+            if LindormStorageBase._executor is not None:
+                LindormStorageBase._executor.shutdown(wait=True)
+                LindormStorageBase._executor = None
+                LindormStorageBase._executor_max_workers = 0
+                LOG.info("Thread pool executor shut down")
+
     async def _execute_sync_operation(self, sync_func, error_message: str = "Operation failed"):
         """Execute a synchronous database operation asynchronously.
-        
+
         Helper method to run sync database operations in executor.
         This is the recommended pattern for all async database operations.
-        
+
         Example usage:
             def _my_sync_operation():
                 pool = self._get_pool()
@@ -130,25 +201,28 @@ class LindormStorageBase:
                 finally:
                     cursor.close()
                     conn.close()
-            
+
             result = await self._execute_sync_operation(
                 _my_sync_operation,
                 "Failed to fetch data"
             )
-        
+
         Args:
             sync_func: Synchronous function to execute
             error_message: Error message prefix for exceptions
-            
+
         Returns:
             Result from sync_func
-            
+
         Raises:
             Exception with error_message prefix
         """
         try:
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, sync_func)
+            # Use executor workers from config (independent of connection pool size)
+            max_workers = self.config.lindorm_executor_workers
+            executor = self._get_executor(max_workers)
+            result = await loop.run_in_executor(executor, sync_func)
             return result
         except Exception as e:
             raise Exception(f"{error_message}: {str(e)}") from e
