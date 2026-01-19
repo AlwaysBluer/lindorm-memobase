@@ -32,6 +32,49 @@ async def demo_buffer_project_isolation():
     print(f"✓ User ID: {user_id}")
     print()
     
+    # ========== Part 0: Test default project_id (no project_id specified) ==========
+    print("=" * 80)
+    print("Part 0: Test Default project_id (Backward Compatibility)")
+    print("=" * 80)
+    print()
+    
+    # Create blob without specifying project_id - should use DEFAULT_PROJECT_ID
+    print("💬 Adding blob WITHOUT project_id (should use 'default')")
+    blob_default = ChatBlob(
+        messages=[
+            OpenAICompatibleMessage(
+                role="user",
+                content="This is a test message without specifying project_id."
+            ),
+            OpenAICompatibleMessage(
+                role="assistant",
+                content="Got it! This will be stored with the default project_id."
+            ),
+        ],
+        type=BlobType.chat,
+        created_at=datetime.now()
+    )
+    
+    blob_id_default = await memobase.add_blob_to_buffer(
+        user_id=user_id,
+        blob=blob_default
+        # Note: No project_id specified - uses DEFAULT_PROJECT_ID
+    )
+    print(f"  ✓ Blob added with default project_id: {blob_id_default}")
+    print()
+    
+    print("🔍 Checking buffer status for default project:")
+    status_default = await memobase.detect_buffer_full_or_not(
+        user_id=user_id,
+        blob_type=BlobType.chat
+        # Note: No project_id specified
+    )
+    print(f"  - Is full: {status_default['is_full']}")
+    print(f"  - Buffer IDs: {status_default['buffer_full_ids']}")
+    print()
+    print("✅ Default project_id works correctly!")
+    print()
+    
     # ========== Part 1: Add blobs to different projects ==========
     print("=" * 80)
     print("Part 1: Add Blobs to Different Projects")
@@ -214,6 +257,7 @@ async def demo_buffer_project_isolation():
     print("✅ 4. Backward Compatibility:")
     print("   - Optional project_id parameter (defaults to 'default')")
     print("   - Existing code continues to work without changes")
+    print("   - Part 0 demonstrated this by omitting project_id entirely")
     print()
     print("Demo completed successfully! 🎉")
     print("=" * 80)

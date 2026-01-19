@@ -113,6 +113,61 @@ def get_kwargs() -> dict:
     return ADD_KWARGS
 
 
+def get_prompt_json_mode(max_subtopics: int, suggest_subtopics: str, config=None, strict_mode: bool = False) -> str:
+    """Get JSON Mode prompt for organize_profile.
+
+    Returns a prompt that instructs the LLM to output only JSON,
+    compatible with response_format={"type": "json_object"}.
+    """
+    strict_instruction = ""
+    if strict_mode:
+        strict_instruction = f"""
+
+## STRICT MODE - ALLOWED Subtopics
+You MUST ONLY use subtopics from this list. Do NOT create new subtopics.
+{suggest_subtopics}
+
+If a memo doesn't fit any allowed subtopic, discard it.
+"""
+
+    return f"""You are a memo organizer. Consolidate scattered memos under a topic into fewer, well-structured subtopics.
+
+## Task
+Given messy/numerous memos under the same topic, reorganize them into ≤{max_subtopics} subtopics.{strict_instruction}
+
+## Output Format
+
+Return ONLY a JSON object (no markdown, no explanation):
+```json
+{{
+  "subtopics": [
+    {{"sub_topic": "Adventure", "memo": "Consolidated adventure memo here"}},
+    {{"sub_topic": "Rest", "memo": "Rest and recovery details"}}
+  ]
+}}
+```
+
+## Important Rules
+1. Return ONLY the JSON object, no other text
+2. Maximum {max_subtopics} subtopics in output
+3. Merge related memos into single subtopics
+4. Discard irrelevant or redundant information
+5. Prioritize important subtopics first
+6. Match output language to input language
+{', 7. ONLY use subtopics from the ALLOWED list - DO NOT invent new subtopic names' if strict_mode else ''}
+
+## Example
+
+Input messy memos about island adventures
+Output: {{"subtopics": [
+  {{"sub_topic": "Island Adventure", "memo": "Discovered and explored a deserted island with YouFei; entered caves, found old notebook, encountered beast"}},
+  {{"sub_topic": "Rest", "memo": "Rested at multiple locations including by the stream, in woods and abandoned cabin"}}
+]}}
+
+Reorganize the following memos:
+"""
+
+
 if __name__ == "__main__":
     print(
         get_prompt(

@@ -160,6 +160,57 @@ def get_kwargs() -> dict:
     return ADD_KWARGS
 
 
+def get_prompt_json_mode(topic_examples: str, config: Config) -> str:
+    """获取 JSON Mode 提示词（用于 extract_profile）。
+
+    返回一个指示 LLM 仅输出 JSON 的提示词，
+    与 response_format={"type": "json_object"} 兼容。
+    """
+    sys_prompt = config.system_prompt or DEFAULT_JOB
+    return f"""{sys_prompt}
+
+## 任务概述
+从备忘录中提取与用户相关的事实和偏好，形成结构化画像。
+
+## 可用主题
+以下是推荐的提取主题/子主题：
+{topic_examples}
+
+## 输出格式
+
+仅返回 JSON 对象（不包含 markdown、不包含解释文字）：
+```json
+{{
+  "facts": [
+    {{"topic": "基本信息", "sub_topic": "姓名", "memo": "张三"}},
+    {{"topic": "工作", "sub_topic": "职位", "memo": "软件工程师 [提及于 2025/01/01]"}}
+  ]
+}}
+```
+
+## 重要规则
+1. 仅返回 JSON 对象，不要包含任何其他文字
+2. 如果没有找到相关信息，facts 数组可以为空
+3. 每个 fact 必须包含 3 个字段：topic, sub_topic, memo
+4. topic 和 sub_topic 使用下划线命名法
+5. 保留时间标注：[提及于 日期, 发生于 日期]
+6. 同时提取明确陈述的事实和合理推断的信息
+7. 仅提取关于用户本人的信息，不提取他人信息
+8. 匹配用户输入的语言
+
+## 示例
+
+输入："用户与思蕾结婚 [提及于2025/01/15，发生于2025/01/01]"
+输出：{{"facts": [
+  {{"topic": "demographics", "sub_topic": "marital_status", "memo": "已婚"}},
+  {{"topic": "life_event", "sub_topic": "Marriage", "memo": "与思蕾结婚 [提及于2025/01/15，婚礼于2025/01/01]"}}
+]}}
+
+输入："用户向助手问好。"
+输出：{{"facts": []}}
+"""
+
+
 if __name__ == "__main__":
     examples = "\n\n".join(
         [

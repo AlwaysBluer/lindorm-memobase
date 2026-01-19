@@ -12,8 +12,9 @@ from lindormmemobase.core.extraction.prompts.utils import (
     attribute_unify,
 )
 
-from lindormmemobase.llm.complete import llm_complete
+from lindormmemobase.llm.complete import llm_complete, llm_complete_with_schema
 from lindormmemobase.utils.errors import ExtractionError
+from lindormmemobase.models.llm_responses import OrganizeProfileResponse
 
 
 async def organize_profiles(
@@ -120,10 +121,12 @@ async def organize_profiles_by_topic(
         {llm_inputs}
         """
     try:
-        results = await llm_complete(
+        # Use JSON Mode with Pydantic validation
+        organize_response: OrganizeProfileResponse = await llm_complete_with_schema(
             llm_prompt,
-            PROMPTS[USE_LANGUAGE]["organize"].get_prompt(
-                main_config.max_profile_subtopics // 2 + 1, 
+            response_model=OrganizeProfileResponse,
+            system_prompt=PROMPTS[USE_LANGUAGE]["organize"].get_prompt_json_mode(
+                main_config.max_profile_subtopics // 2 + 1,
                 suggest_subtopics,
                 strict_mode=strict_mode
             ),
@@ -131,16 +134,17 @@ async def organize_profiles_by_topic(
             config=main_config,
             **PROMPTS[USE_LANGUAGE]["organize"].get_kwargs(),
         )
-        subtopics = parse_string_into_subtopics(results)
+
+        # Convert OrganizeProfileResponse to expected format
         reorganized_profiles: list[AddProfile] = [
             {
-                "content": sp["memo"],
+                "content": sp.memo,
                 "attributes": {
                     ConstantsTable.topic: topic,
-                    ConstantsTable.sub_topic: attribute_unify(sp[ConstantsTable.sub_topic]),
+                    ConstantsTable.sub_topic: attribute_unify(sp.sub_topic),
                 },
             }
-            for sp in subtopics
+            for sp in organize_response.subtopics
         ]
         
         if strict_mode and allowed_topic_subtopics:

@@ -82,5 +82,67 @@ def get_kwargs() -> dict:
     return ADD_KWARGS
 
 
+def get_prompt_json_mode(config=None) -> str:
+    """Get JSON Mode prompt for merge_profile.
+
+    Returns a prompt that instructs the LLM to output only JSON,
+    compatible with response_format={"type": "json_object"}.
+    """
+    return """You are a memo maintenance specialist. Your task is to merge new information with existing user memos.
+
+## Decision Framework
+
+Analyze the new information and decide on ONE action:
+
+| Action | When to Use |
+|--------|-------------|
+| **APPEND** | New info adds value without conflicting with existing memo |
+| **UPDATE** | New info conflicts with OR should be consolidated with existing memo |
+| **ABORT** | New info is redundant, irrelevant, or doesn't match the topic |
+
+## Decision Process
+
+1. **Topic Relevance**: Does the new info match the memo's topic/subtopic?
+   - If NO: Can it be adapted? If not → ABORT
+2. **Value Check**: Does the new info add meaningful content?
+   - If NO (duplicate/empty) → ABORT
+3. **Conflict Check**: Does it conflict with existing memo?
+   - If YES → UPDATE (rewrite the complete memo)
+   - If NO → APPEND
+
+## Output Format
+
+Return ONLY a JSON object (no markdown, no explanation):
+```json
+{{
+  "action": "UPDATE",
+  "memo": "Complete rewritten memo content here"
+}}
+```
+
+Valid action values:
+- "APPEND": New information adds value → set memo to "APPEND"
+- "UPDATE": New information conflicts or needs integration → set memo to complete rewritten content
+- "ABORT": New information is redundant or invalid → set memo to "ABORT"
+
+## Rules
+1. Keep memos ≤5 sentences, concise and to the point
+2. Preserve time annotations: `[mentioned DATE, happened DATE]`
+3. Never fabricate information not in the input
+4. Remove redundancy when updating (e.g., "User is sad; User's mood is sad" → "User is sad")
+5. Return ONLY the JSON object, no other text
+
+Example:
+```json
+{{
+  "action": "UPDATE",
+  "memo": "Self-studying Japanese with Duolingo, aiming to pass JLPT N2 [mentioned 2025/05/05]; Preparing for finals [mentioned 2025/06/01]"
+}}
+```
+
+Execute your task now.
+"""
+
+
 if __name__ == "__main__":
     print(get_prompt())

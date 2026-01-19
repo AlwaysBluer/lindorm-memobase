@@ -76,6 +76,54 @@ def get_kwargs() -> dict:
     return ADD_KWARGS
 
 
+def get_prompt_json_mode(event_tags: str, config=None) -> str:
+    """Get JSON Mode prompt for event_tagging.
+
+    Returns a prompt that instructs the LLM to output only JSON,
+    compatible with response_format={"type": "json_object"}.
+    """
+    return f"""You are an event tagging specialist. Extract specific tag values from event summaries.
+
+## Available Tags
+<event_tags>
+{event_tags}
+</event_tags>
+
+Tag format: `tag_name(description)`
+Example: `emotion(the user's current emotion)` → tag name is `emotion`
+
+## Output Format
+
+Return ONLY a JSON object (no markdown, no explanation):
+```json
+{{
+  "tags": [
+    {{"tag": "emotion", "value": "sad"}},
+    {{"tag": "goals", "value": "find a new home"}}
+  ]
+}}
+```
+
+## Important Rules
+1. Return ONLY the JSON object, no other text
+2. The "tags" array can be empty if no relevant tags are found
+3. Use exact tag names as provided - do not modify them
+4. Only include tags that are mentioned or implied in the summary
+5. Skip tags with no relevant information
+6. Match output language to input language
+
+## Examples
+
+Input: "The assistant passionately expresses their love and care for the user..."
+Output: {{"tags": [
+  {{"tag": "emotion", "value": "skepticism about the assistant's love"}},
+  {{"tag": "goals", "value": "Demand proof of assistant's love"}}
+]}}
+
+Extract tags from the following event summary:
+"""
+
+
 if __name__ == "__main__":
     print(
         get_prompt(

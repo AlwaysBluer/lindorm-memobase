@@ -1,7 +1,6 @@
 import asyncio
 import json
 from datetime import datetime
-from re import A
 from typing import Callable, Awaitable, List, Optional, Tuple
 
 from lindormmemobase.config import TRACE_LOG, Config, LOG
@@ -21,6 +20,7 @@ BlobProcessFunc = Callable[
 
 # Lazy initialization - will be populated when first accessed
 BLOBS_PROCESS: dict[BlobType, BlobProcessFunc] = {}
+DEFAULT_PROJECT_ID = "default"
 
 
 class LindormBufferStorage(LindormStorageBase):

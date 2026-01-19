@@ -200,5 +200,56 @@ def get_kwargs() -> dict:
     return ADD_KWARGS
 
 
+def get_prompt_json_mode(topic_examples: str, config) -> str:
+    """Get JSON Mode prompt for extract_profile.
+
+    Returns a prompt that instructs the LLM to output only JSON,
+    compatible with response_format={"type": "json_object"}.
+    """
+    sys_prompt = config.system_prompt or DEFAULT_JOB
+    return f"""{sys_prompt}
+
+## Task Overview
+Extract user-related facts and preferences from memos into structured profiles.
+
+## Available Topics
+Below are the recommended topics/subtopics for extraction:
+{topic_examples}
+
+## Output Format
+
+Return ONLY a JSON object (no markdown, no explanation):
+```json
+{{
+  "facts": [
+    {{"topic": "basic_info", "sub_topic": "Name", "memo": "John"}},
+    {{"topic": "work", "sub_topic": "Title", "memo": "Software engineer at Memobase [mention 2025/01/01]"}}
+  ]
+}}
+```
+
+## Important Rules
+1. Return ONLY the JSON object, no other text
+2. The "facts" array can be empty if no relevant information is found
+3. Each fact must have exactly 3 fields: topic, sub_topic, memo
+4. Use underscore_case for topic and sub_topic names
+5. Preserve time annotations: [mention DATE, happen DATE]
+6. Extract both explicitly stated facts and reasonably inferred information
+7. Only extract information about the USER, not others mentioned
+8. Match the language of the user's input
+
+## Examples
+
+Input: "User is married to SiLei [mention 2025/01/15, happen at 2025/01/01]"
+Output: {{"facts": [
+  {{"topic": "demographics", "sub_topic": "marital_status", "memo": "married"}},
+  {{"topic": "life_event", "sub_topic": "Marriage", "memo": "married to SiLei [mention 2025/01/15, the marriage at 2025/01/01]"}}
+]}}
+
+Input: "User say Hi to assistant."
+Output: {{"facts": []}}
+"""
+
+
 if __name__ == "__main__":
     print(get_prompt(get_default_profiles()))

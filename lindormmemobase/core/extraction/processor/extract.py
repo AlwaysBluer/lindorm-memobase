@@ -1,6 +1,6 @@
 from lindormmemobase.config import TRACE_LOG
 from lindormmemobase.core.constants import ConstantsTable
-from lindormmemobase.core.storage.user_profiles import get_user_profiles 
+from lindormmemobase.core.storage.user_profiles import get_user_profiles
 from lindormmemobase.core.extraction.prompts.router import PROMPTS
 from lindormmemobase.core.extraction.prompts.utils import (
     parse_string_into_profiles,
@@ -14,7 +14,7 @@ from lindormmemobase.models.profile_topic import ProfileConfig
 from lindormmemobase.models.types import FactResponse
 
 from lindormmemobase.models.profile_topic import read_out_profile_config
-from lindormmemobase.llm.complete import llm_complete
+from lindormmemobase.llm.complete import llm_complete, llm_complete_with_schema
 
 def merge_by_topic_sub_topics(new_facts: list[FactResponse]):
     """Merge facts with same topic-subtopic using ;; separator for later splitting."""
@@ -96,21 +96,22 @@ async def extract_topics(
     else:
         already_topics_prompt = ""
 
-    results = await llm_complete(
+    # Use JSON Mode with Pydantic validation
+    parsed_facts: AIUserProfiles = await llm_complete_with_schema(
         PROMPTS[USE_LANGUAGE]["extract"].pack_input(
             already_topics_prompt,
             user_memo,
             strict_mode=STRICT_MODE,
         ),
-        system_prompt=PROMPTS[USE_LANGUAGE]["extract"].get_prompt(
+        response_model=AIUserProfiles,
+        system_prompt=PROMPTS[USE_LANGUAGE]["extract"].get_prompt_json_mode(
             PROMPTS[USE_LANGUAGE]["profile"].get_prompt(project_profiles_slots), config
         ),
-        temperature=0.1,  # precise
+        temperature=0.1,
         model=config.extract_llm_model or config.event_llm_model or config.best_llm_model,
         config=config,
         **PROMPTS[USE_LANGUAGE]["extract"].get_kwargs(),
     )
-    parsed_facts: AIUserProfiles = parse_string_into_profiles(results)
     new_facts: list[FactResponse] = parsed_facts.model_dump()["facts"]
     if not len(new_facts):
         TRACE_LOG.info(

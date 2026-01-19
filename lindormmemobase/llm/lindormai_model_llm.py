@@ -31,8 +31,6 @@ async def lindormai_complete(
     except Exception as e:
         LOG.error(f"Error in Lindormai completion: {e}")
         raise
-    finally:
-        await lindormai_async_client.close()
 
 
 async def lindormai_stream_complete(
@@ -71,5 +69,3 @@ async def lindormai_stream_complete(
     except Exception as e:
         LOG.error(f"Error in Lindormai streaming completion: {e}")
         raise
-    finally:
-        await lindormai_async_client.close()

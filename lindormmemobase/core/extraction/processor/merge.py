@@ -5,10 +5,11 @@ from lindormmemobase.core.constants import ConstantsTable
 from lindormmemobase.core.extraction.prompts.utils import parse_string_into_merge_action
 from lindormmemobase.core.extraction.prompts.router import PROMPTS
 from lindormmemobase.models.profile_topic import UserProfileTopic, SubTopic, ProfileConfig
-from lindormmemobase.llm.complete import llm_complete
+from lindormmemobase.llm.complete import llm_complete, llm_complete_with_schema
 from lindormmemobase.utils.errors import ExtractionError
 from lindormmemobase.models.response import ProfileData
 from lindormmemobase.models.types import MergeAddResult, UpdateResponse
+from lindormmemobase.models.llm_responses import MergeProfileResponse
 
 
 async def merge_or_valid_new_profile(
@@ -126,7 +127,8 @@ async def handle_profile_merge_or_valid(
         )
         return
     try:
-        r = await llm_complete(
+        # Use JSON Mode with Pydantic validation
+        merge_response: MergeProfileResponse = await llm_complete_with_schema(
             PROMPTS[USE_LANGUAGE]["merge"].get_input(
                 KEY[0],
                 KEY[1],
@@ -136,13 +138,19 @@ async def handle_profile_merge_or_valid(
                 topic_description=define_sub_topic.description,
                 config=config,
             ),
-            system_prompt=PROMPTS[USE_LANGUAGE]["merge"].get_prompt(config),
+            response_model=MergeProfileResponse,
+            system_prompt=PROMPTS[USE_LANGUAGE]["merge"].get_prompt_json_mode(config),
             temperature=0.2,
             model=config.merge_llm_model or config.best_llm_model,
             config=config,
             **PROMPTS[USE_LANGUAGE]["merge"].get_kwargs(),
         )
-        update_response: UpdateResponse = parse_string_into_merge_action(r)
+
+        # Convert MergeProfileResponse to UpdateResponse format
+        update_response: UpdateResponse = {
+            "action": merge_response.action,
+            "memo": merge_response.memo
+        }
         if update_response["action"] == "UPDATE":
             if not has_existing_profiles:
                 session_merge_validate_results["add"].append(
@@ -188,13 +196,13 @@ async def handle_profile_merge_or_valid(
             if not has_existing_profiles:
                 TRACE_LOG.debug(
                     user_id,
-                    f"Invalid profile: {KEY}::{profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
+                    f"Invalid profile: {KEY}::{profile_content}, abort it (action={merge_response.action}, memo={merge_response.memo})",
                     project_id=project_id
                 )
             else:
                 TRACE_LOG.debug(
                     user_id,
-                    f"Invalid merge: {primary_profile.attributes}, {profile_content}, abort it\n<raw_response>\n{r}\n</raw_response>",
+                    f"Invalid merge: {primary_profile.attributes}, {profile_content}, abort it (action={merge_response.action}, memo={merge_response.memo})",
                     project_id=project_id
                 )
         else:
