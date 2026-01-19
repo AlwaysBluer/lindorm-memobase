@@ -8,7 +8,6 @@ This script demonstrates:
 3. NEW: Profile rerank search (rerank model-based)
 4. NEW: Profile hybrid search (embedding + rerank)
 """
-from re import T
 import uuid
 import asyncio
 from lindormmemobase import LindormMemobase, Config

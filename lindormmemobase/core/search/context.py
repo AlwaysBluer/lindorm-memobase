@@ -1,5 +1,4 @@
 from functools import partial
-from re import T
 from typing import Optional
 
 from lindormmemobase.config import Config, TRACE_LOG

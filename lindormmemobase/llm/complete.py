@@ -177,8 +177,14 @@ async def llm_complete_with_schema(
         raise LLMError(f"LLM call failed: {e}") from e
 
     # Validate response with Pydantic
+    # When json_mode=True, llm_complete returns dict; when False, returns str
     try:
-        return response_model.model_validate_json(response_str)
+        if isinstance(response_str, dict):
+            # LLM already parsed JSON, validate dict directly
+            return response_model.model_validate(response_str)
+        else:
+            # LLM returned raw JSON string, parse it
+            return response_model.model_validate_json(response_str)
     except Exception as e:
         LOG.error(f"Response validation failed: {e}\nRaw response: {response_str}")
         raise LLMError(f"Response validation failed: {e}") from e
