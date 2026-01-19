@@ -210,19 +210,19 @@ def sample_profile_config(mock_config):
 
 @pytest.fixture
 def mock_llm_extract_response() -> str:
-    """Mock LLM response for profile extraction."""
+    """Mock LLM response for profile extraction (JSON Mode format)."""
     return """
 {
-    "user_profile_topics": [
+    "facts": [
         {
             "topic": "travel",
             "sub_topic": "destinations",
-            "profile": "User is planning a trip to Japan in spring (March/April). Interested in visiting Tokyo, Kyoto, and Osaka."
+            "memo": "User is planning a trip to Japan in spring (March/April). Interested in visiting Tokyo, Kyoto, and Osaka."
         },
         {
             "topic": "interests",
             "sub_topic": "cultural",
-            "profile": "User is interested in experiencing cherry blossoms in Japan."
+            "memo": "User is interested in experiencing cherry blossoms in Japan."
         }
     ]
 }
@@ -231,10 +231,53 @@ def mock_llm_extract_response() -> str:
 
 @pytest.fixture
 def mock_llm_merge_response() -> str:
-    """Mock LLM response for profile merging."""
+    """Mock LLM response for profile merging (JSON Mode format)."""
     return """
 {
-    "merged_profile": "User is planning a trip to Japan in spring (March/April) to see cherry blossoms. Plans to visit Tokyo, Kyoto, and Osaka."
+    "action": "UPDATE",
+    "memo": "User is planning a trip to Japan in spring (March/April) to see cherry blossoms. Plans to visit Tokyo, Kyoto, and Osaka."
+}
+"""
+
+
+@pytest.fixture
+def mock_llm_event_tagging_response() -> str:
+    """Mock LLM response for event tagging (JSON Mode format)."""
+    return """
+{
+    "tags": [
+        {
+            "tag": "topic",
+            "value": "travel"
+        },
+        {
+            "tag": "destination",
+            "value": "japan"
+        },
+        {
+            "tag": "season",
+            "value": "spring"
+        }
+    ]
+}
+"""
+
+
+@pytest.fixture
+def mock_llm_organize_response() -> str:
+    """Mock LLM response for profile organization (JSON Mode format)."""
+    return """
+{
+    "subtopics": [
+        {
+            "sub_topic": "destinations",
+            "memo": "User plans to visit Japan in spring (March/April), focusing on Tokyo, Kyoto, and Osaka."
+        },
+        {
+            "sub_topic": "preferences",
+            "memo": "User enjoys Japanese cuisine: ramen, sushi, and kaiseki."
+        }
+    ]
 }
 """
 

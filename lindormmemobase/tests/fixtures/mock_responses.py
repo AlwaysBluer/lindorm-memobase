@@ -12,16 +12,16 @@ from typing import Dict, Any, List
 
 MOCK_EXTRACT_PROFILE_RESPONSE = """
 {
-    "user_profile_topics": [
+    "facts": [
         {
             "topic": "travel",
             "sub_topic": "destinations",
-            "profile": "User is planning a trip to Japan in spring (March/April). Interested in visiting Tokyo, Kyoto, and Osaka."
+            "memo": "User is planning a trip to Japan in spring (March/April). Interested in visiting Tokyo, Kyoto, and Osaka."
         },
         {
             "topic": "food",
             "sub_topic": "preferences",
-            "profile": "User loves Japanese cuisine, particularly ramen and sushi. Wants to try authentic kaiseki dining."
+            "memo": "User loves Japanese cuisine, particularly ramen and sushi. Wants to try authentic kaiseki dining."
         }
     ]
 }
@@ -29,16 +29,16 @@ MOCK_EXTRACT_PROFILE_RESPONSE = """
 
 MOCK_EXTRACT_PROFILE_CHINESE_RESPONSE = """
 {
-    "user_profile_topics": [
+    "facts": [
         {
             "topic": "语言",
             "sub_topic": "技能",
-            "profile": "用户能流利地说英语和中文。"
+            "memo": "用户能流利地说英语和中文。"
         },
         {
             "topic": "语言",
             "sub_topic": "学习",
-            "profile": "用户在北京生活了3年学习中文。"
+            "memo": "用户在北京生活了3年学习中文。"
         }
     ]
 }
@@ -46,22 +46,21 @@ MOCK_EXTRACT_PROFILE_CHINESE_RESPONSE = """
 
 MOCK_MERGE_PROFILE_RESPONSE = """
 {
-    "merged_profile": "User is planning a spring trip to Japan (March/April) to visit Tokyo, Kyoto, and Osaka, with particular interest in experiencing Japanese cuisine including ramen, sushi, and kaiseki dining."
+    "action": "UPDATE",
+    "memo": "User is planning a spring trip to Japan (March/April) to visit Tokyo, Kyoto, and Osaka, with particular interest in experiencing Japanese cuisine including ramen, sushi, and kaiseki dining."
 }
 """
 
 MOCK_ORGANIZE_PROFILE_RESPONSE = """
 {
-    "organized_profiles": [
+    "subtopics": [
         {
-            "topic": "travel",
             "sub_topic": "destinations",
-            "profile": "User plans to visit Japan in spring (March/April), focusing on Tokyo, Kyoto, and Osaka."
+            "memo": "User plans to visit Japan in spring (March/April), focusing on Tokyo, Kyoto, and Osaka."
         },
         {
-            "topic": "food",
             "sub_topic": "japanese",
-            "profile": "User enjoys Japanese cuisine: ramen, sushi, and kaiseki."
+            "memo": "User enjoys Japanese cuisine: ramen, sushi, and kaiseki."
         }
     ]
 }
@@ -69,7 +68,20 @@ MOCK_ORGANIZE_PROFILE_RESPONSE = """
 
 MOCK_EVENT_SUMMARY_RESPONSE = """
 {
-    "event_summary": "User discussed plans for a spring trip to Japan, expressing interest in visiting major cities and experiencing authentic Japanese cuisine."
+    "tags": [
+        {
+            "tag": "topic",
+            "value": "travel_planning"
+        },
+        {
+            "tag": "destination",
+            "value": "japan"
+        },
+        {
+            "tag": "season",
+            "value": "spring"
+        }
+    ]
 }
 """
 
