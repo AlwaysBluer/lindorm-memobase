@@ -68,6 +68,30 @@ class Config:
     rerank_base_url: str = None
     rerank_model: str = "rerank-v3"
 
+    # Image storage & multimodal
+    image_storage_type: Literal["url", "binary", "both"] = "url"
+    image_oss_endpoint: Optional[str] = None
+    image_oss_bucket: Optional[str] = None
+    image_oss_access_key: Optional[str] = None
+    image_oss_secret_key: Optional[str] = None
+
+    multimodal_embedding_provider: Literal["lindormai", "dashscope"] = "lindormai"
+    multimodal_embedding_model: str = "qwen2.5-vl-embedding"
+    multimodal_embedding_dim: int = 1024
+    multimodal_embedding_api_key: Optional[str] = None
+    multimodal_embedding_base_url: Optional[str] = None
+
+    vl_model_provider: Literal["lindormai", "dashscope"] = "lindormai"
+    vl_model: str = "qwen3-vl-plus"
+    vl_model_api_key: Optional[str] = None
+    vl_model_base_url: Optional[str] = None
+    caption_rewrite_model: str = "qwen-plus"
+
+    image_search_default_top_k: int = 10
+    image_search_min_score: float = 0.5
+    image_enable_rerank: bool = False
+    image_rerank_model: str = "qwen3-rerank"
+
     additional_user_profiles: list[dict] = field(default_factory=list)
     overwrite_user_profiles: Optional[list[dict]] = None
     event_theme_requirement: Optional[str] = (
@@ -214,6 +238,5 @@ class Config:
 
         # For named timezones, we need to use the datetime.timezone.ZoneInfo
         return ZoneInfo(self.use_timezone)
-
 
 

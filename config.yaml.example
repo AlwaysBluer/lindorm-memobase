@@ -42,6 +42,32 @@ event_theme_requirement: "Focus on the user's infos, not its instructions. Do no
 # rerank_model: rerank-v3              # Rerank model name
 # NOTE: rerank_base_url and rerank_api_key should be set in .env for security
 
+# === Image Storage & Multimodal Configuration ===
+# Configuration for LindormImageStore multimodal image storage and retrieval
+
+# Storage type: url (recommended), binary, or both
+# image_storage_type: url
+
+# OSS Configuration (for URL storage mode)
+# NOTE: OSS credentials should be set in .env for security
+# image_oss_endpoint: "https://oss-cn-hangzhou.aliyuncs.com"
+# image_oss_bucket: "your-bucket-name"
+
+# Multimodal Embedding Configuration
+# multimodal_embedding_provider: lindormai   # Options: lindormai, dashscope
+# multimodal_embedding_model: qwen2.5-vl-embedding
+# multimodal_embedding_dim: 1024
+# NOTE: API keys should be set in .env as MULTIMODAL_EMBEDDING_API_KEY
+
+# Vision-Language Model Configuration (for caption generation)
+# vl_model_provider: lindormai               # Options: lindormai, dashscope
+# vl_model: qwen3-vl-plus
+# caption_rewrite_model: qwen-plus           # Model for refining captions
+
+# Image Search Configuration
+# image_search_default_top_k: 10             # Default number of results
+# image_search_min_score: 0.5                # Minimum similarity score threshold
+
 # === User Profile Schema ===
 # Define custom profile topics and subtopics
 overwrite_user_profiles:
