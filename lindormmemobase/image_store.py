@@ -22,9 +22,7 @@ from lindormmemobase.utils.image_utils import (
 )
 from lindormmemobase.multimodal import get_multimodal_embedding, generate_image_caption
 from lindormmemobase.core.storage.images import get_lindorm_image_storage
-
-
-SearchMode = Literal["caption", "embedding", "hybrid"]
+from lindormmemobase.models.enums import SearchMode
 
 
 class LindormImageStore:
@@ -35,6 +33,8 @@ class LindormImageStore:
     def __init__(self, config: Optional[Config] = None):
         try:
             self.config = config if config is not None else Config.load_config()
+            # Validate image configuration only when actually using image features
+            self.config.validate_image_config()
             self._init_storage_sync()
         except Exception as e:
             raise ConfigurationError(f"Failed to load configuration: {e}") from e
@@ -215,7 +215,7 @@ class LindormImageStore:
                     )
                 except Exception as e:
                     return ImageResult(
-                        image_id="",
+                        image_id=None,
                         caption=None,
                         success=False,
                         error=str(e),
@@ -360,13 +360,13 @@ class LindormImageStore:
         user_id: Optional[str] = None,
         top_k: Optional[int] = None,
         min_score: Optional[float] = None,
-        search_mode: SearchMode = "hybrid",
+        search_mode: SearchMode = SearchMode.HYBRID,
     ) -> List[ImageData]:
         storage = get_lindorm_image_storage(self.config)
         top_k = top_k or self.config.image_search_default_top_k
         min_score = min_score if min_score is not None else self.config.image_search_min_score
 
-        if search_mode == "caption":
+        if search_mode == SearchMode.CAPTION:
             results = await storage.search_by_caption(project_id, query, user_id, size=top_k)
             return [ImageData(**row) for row in results]
 
@@ -377,7 +377,7 @@ class LindormImageStore:
             config=self.config,
         )
 
-        if search_mode == "hybrid":
+        if search_mode == SearchMode.HYBRID:
             results = await storage.hybrid_search(
                 project_id,
                 query,

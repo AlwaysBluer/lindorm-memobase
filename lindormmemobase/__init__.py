@@ -24,6 +24,13 @@ from lindormmemobase.models.response import (
     PagedResult,
     ResetResult,
 )
+from lindormmemobase.models.enums import (
+    ImageStorageType,
+    MultimodalEmbeddingProvider,
+    VLModelProvider,
+    SearchMode,
+    MultimodalInputType,
+)
 from lindormmemobase.main import LindormMemobase
 from lindormmemobase.image_store import LindormImageStore
 
@@ -35,7 +42,7 @@ __all__ = [
     "ProfileConfig",
     "Blob",
     "ChatBlob",
-    "BlobType", 
+    "BlobType",
     "FactResponse",
     "MergeAddResult",
     "Profile",
@@ -48,4 +55,9 @@ __all__ = [
     "ImageSearchFilters",
     "PagedResult",
     "ResetResult",
+    "ImageStorageType",
+    "MultimodalEmbeddingProvider",
+    "VLModelProvider",
+    "SearchMode",
+    "MultimodalInputType",
 ]

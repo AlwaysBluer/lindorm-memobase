@@ -1,7 +1,10 @@
-from typing import Literal, List
-from httpx import AsyncClient
+from typing import Union, List
+import json
+import gzip
+from httpx import AsyncClient, DecodingError, HTTPStatusError
 from lindormmemobase.config import LOG
 from lindormmemobase.utils.errors import EmbeddingError
+from lindormmemobase.models.enums import MultimodalInputType
 
 
 def _join_url(base_url: str, path: str) -> str:
@@ -19,15 +22,17 @@ def _get_multimodal_base_url(config) -> str:
 
 
 async def get_multimodal_embedding(
-    input_type: Literal["image", "text"],
+    input_type: Union[str, MultimodalInputType],
     content: str,
     model: str = None,
     config=None,
 ) -> List[float]:
     if config is None:
         raise ValueError("config parameter is required")
-    if input_type not in {"image", "text"}:
-        raise ValueError("input_type must be 'image' or 'text'")
+
+    # Convert string to enum for backward compatibility
+    if isinstance(input_type, str):
+        input_type = MultimodalInputType(input_type)
 
     provider = config.multimodal_embedding_provider
     model = model or config.multimodal_embedding_model
@@ -39,6 +44,7 @@ async def get_multimodal_embedding(
         headers = {
             "x-ld-ak": config.lindorm_username,
             "x-ld-sk": config.lindorm_password,
+            "Accept-Encoding": "identity",  # Disable compression to avoid gzip decode errors
         }
         endpoint = _join_url(
             base_url,
@@ -64,7 +70,7 @@ async def get_multimodal_embedding(
         "input": {
             "contents": [
                 {
-                    input_type: content
+                    input_type.value: content
                 }
             ]
         },
@@ -74,8 +80,31 @@ async def get_multimodal_embedding(
     async with AsyncClient(timeout=60.0) as client:
         try:
             response = await client.post(endpoint, json=body, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response.raise_for_status()
+            except HTTPStatusError as e:
+                body = e.response.text if e.response is not None else ""
+                LOG.error(f"Multimodal embedding HTTP error: {e}")
+                if body:
+                    LOG.error(f"Multimodal embedding response body: {body[:2000]}")
+                raise EmbeddingError(
+                    f"Multimodal embedding failed: {e}. Response body: {body[:2000]}"
+                ) from e
+
+            # Handle potential gzip decode errors from Lindorm AI proxy
+            try:
+                data = response.json()
+            except DecodingError:
+                # Manual fallback for malformed gzip responses
+                LOG.warning("Failed to decode response, trying manual gzip decompression")
+                raw_content = response.content
+                try:
+                    # Try manual gzip decompression
+                    data = json.loads(gzip.decompress(raw_content).decode("utf-8"))
+                except Exception:
+                    # If that fails, try parsing as-is
+                    data = json.loads(raw_content.decode("utf-8"))
+
             embedding = data.get("output", {}).get("embeddings", [{}])[0].get("embedding")
             if not embedding:
                 raise EmbeddingError("No embedding returned from multimodal embedding API")

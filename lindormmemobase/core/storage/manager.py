@@ -39,6 +39,8 @@ class StorageManager:
     # Initialization state
     _initialized = False
     _init_lock = threading.Lock()
+    _init_task: Optional[asyncio.Task] = None
+    _init_task_loop: Optional[asyncio.AbstractEventLoop] = None
     
     @classmethod
     async def initialize(cls, config: Config) -> None:
@@ -54,37 +56,56 @@ class StorageManager:
         Raises:
             Exception: If initialization fails
         """
+        if cls.is_initialized():
+            LOG.warning("StorageManager already initialized, skipping re-initialization")
+            return
+
+        loop = asyncio.get_running_loop()
         with cls._init_lock:
             if cls._initialized:
                 LOG.warning("StorageManager already initialized, skipping re-initialization")
                 return
+            if cls._init_task is None or cls._init_task_loop is not loop:
+                cls._init_task = loop.create_task(cls._initialize_impl(config))
+                cls._init_task_loop = loop
+            init_task = cls._init_task
 
-            try:
-                # Get all storage instances first
-                table_storage = cls.get_table_storage(config)
-                search_storage = cls.get_search_storage(config)
-                event_gists_storage = cls.get_event_gists_storage(config)
-                buffer_storage = cls.get_buffer_storage(config)
-                image_storage = cls.get_image_storage(config)
+        await init_task
 
-                # Run all initializations concurrently for faster startup
-                loop = asyncio.get_event_loop()
-                await asyncio.gather(
-                    loop.run_in_executor(None, table_storage.initialize_tables),
-                    loop.run_in_executor(None, search_storage.initialize_tables_and_indices),
-                    loop.run_in_executor(None, event_gists_storage.initialize_tables_and_indices),
-                    loop.run_in_executor(None, buffer_storage.initialize_tables),
-                    loop.run_in_executor(None, image_storage.initialize_tables_and_indices),
-                )
+    @classmethod
+    async def _initialize_impl(cls, config: Config) -> None:
+        try:
+            # Get all storage instances first
+            table_storage = cls.get_table_storage(config)
+            search_storage = cls.get_search_storage(config)
+            event_gists_storage = cls.get_event_gists_storage(config)
+            buffer_storage = cls.get_buffer_storage(config)
+            image_storage = cls.get_image_storage(config)
 
+            # Run all initializations concurrently for faster startup
+            loop = asyncio.get_running_loop()
+            await asyncio.gather(
+                loop.run_in_executor(None, table_storage.initialize_tables),
+                loop.run_in_executor(None, search_storage.initialize_tables_and_indices),
+                loop.run_in_executor(None, event_gists_storage.initialize_tables_and_indices),
+                loop.run_in_executor(None, buffer_storage.initialize_tables),
+                loop.run_in_executor(None, image_storage.initialize_tables_and_indices),
+            )
+
+            with cls._init_lock:
                 cls._initialized = True
-                LOG.info("StorageManager initialized successfully")
+            LOG.info("StorageManager initialized successfully")
 
-            except Exception as e:
-                LOG.error(f"StorageManager initialization failed: {str(e)}")
-                # Clear any partially initialized instances
-                cls.cleanup()
-                raise
+        except Exception as e:
+            LOG.error(f"StorageManager initialization failed: {str(e)}")
+            # Clear any partially initialized instances
+            cls.cleanup()
+            raise
+        finally:
+            with cls._init_lock:
+                if cls._init_task is not None and cls._init_task.done():
+                    cls._init_task = None
+                    cls._init_task_loop = None
     
     @classmethod
     def get_table_storage(cls, config: Config):
@@ -267,6 +288,8 @@ class StorageManager:
         
         with cls._init_lock:
             cls._initialized = False
+            cls._init_task = None
+            cls._init_task_loop = None
 
         # Shutdown thread pool executor
         from .base import LindormStorageBase

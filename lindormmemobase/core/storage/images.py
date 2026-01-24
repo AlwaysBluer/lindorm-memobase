@@ -69,14 +69,14 @@ class LindormImageStorage(LindormStorageBase):
             cursor.execute(
                 """
                 CREATE TABLE ImageStore (
-                    project_id VARCHAR(255) NOT NULL,
-                    user_id VARCHAR(255) NOT NULL,
-                    image_id VARCHAR(255) NOT NULL,
-                    caption TEXT,
-                    image_url VARCHAR(2048),
+                    project_id VARCHAR NOT NULL,
+                    user_id VARCHAR NOT NULL,
+                    image_id VARCHAR NOT NULL,
+                    caption VARCHAR,
+                    image_url VARCHAR,
                     image_data VARBINARY,
                     feature_vector VARCHAR,
-                    content_type VARCHAR(64),
+                    content_type VARCHAR,
                     file_size BIGINT,
                     metadata JSON,
                     created_at TIMESTAMP,
@@ -107,6 +107,7 @@ class LindormImageStorage(LindormStorageBase):
         conn = pool.get_connection()
         try:
             cursor = conn.cursor()
+            LOG.info("ImageStore: Checking if search index exists...")
             cursor.execute("SHOW INDEX FROM ImageStore")
             index_exists = False
             for row in cursor.fetchall():
@@ -117,6 +118,7 @@ class LindormImageStorage(LindormStorageBase):
                 LOG.info("ImageStore search index already exists, skipping creation")
                 return
 
+            LOG.info("ImageStore: Creating search index (this may take several minutes on first run)...")
             def _create_index_with_caption_mapping(mapping: str):
                 cursor.execute(
                     f"""
@@ -585,57 +587,73 @@ class LindormImageStorage(LindormStorageBase):
     ) -> List[Dict[str, Any]]:
         """
         Hybrid search combining vector similarity and text matching using RRF fusion.
-        
+
         This method uses Lindorm's native RRF (Reciprocal Rank Fusion) to combine:
         - KNN vector search on feature_vector
-        - BM25 text search on caption
+        - BM25 text search on caption (when query is provided)
+
+        According to Lindorm documentation, the filter conditions must be separated into:
+        1. RRF full-text query conditions (first bool.must) - participates in RRF fusion
+        2. Pre-filter conditions (second bool.filter) - applied before vector search
+
+        When query is empty/None, performs pure vector search with pre-filter only.
         """
         try:
-            # Base filter conditions (project/user isolation)
-            filter_conditions = [
+            # Pre-filter conditions: project/user isolation (always applied)
+            pre_filter_conditions = [
                 {"term": {"project_id": project_id}},
             ]
             if user_id:
-                filter_conditions.append({"term": {"user_id": user_id}})
+                pre_filter_conditions.append({"term": {"user_id": user_id}})
+
+            # Build the bool.must array for the filter
+            # Must contain two separate bool clauses per Lindorm documentation
+            bool_must_clauses = []
+
+            # First bool clause: RRF full-text query (participates in RRF fusion)
+            # Only include caption match if query is provided
+            if query:
+                rrf_query_conditions = [{"match": {"caption": {"query": query}}}]
+                bool_must_clauses.append({
+                    "bool": {
+                        "must": rrf_query_conditions
+                    }
+                })
+
+            # Second bool clause: pre-filter conditions (applied before vector search)
+            bool_must_clauses.append({
+                "bool": {
+                    "filter": pre_filter_conditions
+                }
+            })
 
             # Hybrid search query with RRF fusion
-            # The text query is placed in a separate clause for RRF scoring
             search_query = {
                 "size": size,
                 "_source": {
                     "exclude": ["feature_vector", "image_data", "_searchindex_id"],
                 },
                 "query": {
-                    "hybrid": {
-                        "queries": [
-                            {
-                                "knn": {
-                                    "feature_vector": {
-                                        "vector": query_vector,
-                                        "k": size,
-                                    }
+                    "knn": {
+                        "feature_vector": {
+                            "vector": query_vector,
+                            "filter": {
+                                "bool": {
+                                    "must": bool_must_clauses
                                 }
                             },
-                            {
-                                "match": {
-                                    "caption": {
-                                        "query": query,
-                                    }
-                                }
-                            }
-                        ]
-                    }
-                },
-                "post_filter": {
-                    "bool": {
-                        "must": filter_conditions,
+                            "k": size,
+                        }
                     }
                 },
                 "ext": {
                     "lvector": {
                         "min_score": str(min_score),
-                        "hybrid_search_type": "rrf",
+                        "hybrid_search_type": "filter_rrf",
+                        "filter_type": "pre_filter",
+                        "rrf_knn_weight_factor": "0.5",
                         "rrf_rank_constant": "60",
+                        "client_refactor": "true",
                     }
                 },
             }

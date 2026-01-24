@@ -1,5 +1,7 @@
 from typing import Optional
-from httpx import AsyncClient
+import json
+import gzip
+from httpx import AsyncClient, DecodingError
 from lindormmemobase.config import LOG
 from lindormmemobase.utils.errors import LLMError
 
@@ -47,6 +49,7 @@ async def generate_image_caption(
             "x-ld-ak": config.lindorm_username,
             "x-ld-sk": config.lindorm_password,
             "Content-Type": "application/json",
+            "Accept-Encoding": "identity",  # Disable compression to avoid gzip decode errors
         }
         endpoint = _join_url(base_url, "/dashscope/compatible-mode/v1/chat/completions")
     elif provider == "dashscope":
@@ -85,7 +88,21 @@ async def generate_image_caption(
         try:
             response = await client.post(endpoint, json=body, headers=headers)
             response.raise_for_status()
-            data = response.json()
+
+            # Handle potential gzip decode errors from Lindorm AI proxy
+            try:
+                data = response.json()
+            except DecodingError:
+                # Manual fallback for malformed gzip responses
+                LOG.warning("Failed to decode response, trying manual gzip decompression")
+                raw_content = response.content
+                try:
+                    # Try manual gzip decompression
+                    data = json.loads(gzip.decompress(raw_content).decode("utf-8"))
+                except Exception:
+                    # If that fails, try parsing as-is
+                    data = json.loads(raw_content.decode("utf-8"))
+
             choices = data.get("choices") or []
             if not choices:
                 raise LLMError("No choices returned from caption generation API")

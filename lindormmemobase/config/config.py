@@ -10,7 +10,7 @@ import logging
 import tiktoken
 import dataclasses
 from dataclasses import dataclass, field
-from typing import Optional, Literal
+from typing import Optional, Literal, Union
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
 from datetime import timezone
@@ -69,19 +69,19 @@ class Config:
     rerank_model: str = "rerank-v3"
 
     # Image storage & multimodal
-    image_storage_type: Literal["url", "binary", "both"] = "url"
+    image_storage_type: Union[str, "ImageStorageType"] = "url"
     image_oss_endpoint: Optional[str] = None
     image_oss_bucket: Optional[str] = None
     image_oss_access_key: Optional[str] = None
     image_oss_secret_key: Optional[str] = None
 
-    multimodal_embedding_provider: Literal["lindormai", "dashscope"] = "lindormai"
+    multimodal_embedding_provider: Union[str, "MultimodalEmbeddingProvider"] = "lindormai"
     multimodal_embedding_model: str = "qwen2.5-vl-embedding"
     multimodal_embedding_dim: int = 1024
     multimodal_embedding_api_key: Optional[str] = None
     multimodal_embedding_base_url: Optional[str] = None
 
-    vl_model_provider: Literal["lindormai", "dashscope"] = "lindormai"
+    vl_model_provider: Union[str, "VLModelProvider"] = "lindormai"
     vl_model: str = "qwen3-vl-plus"
     vl_model_api_key: Optional[str] = None
     vl_model_base_url: Optional[str] = None
@@ -228,8 +228,65 @@ class Config:
                     "jina-embeddings-v3",
                 }, "embedding_model must be one of the following: jina-embeddings-v3"
 
-        # Delay validation to avoid circular import at module load time
-        # Validation will be done when actually needed
+        # Image storage and multimodal config: convert string to enum for backward compatibility
+        # Actual validation is deferred to LindormImageStore initialization
+        if isinstance(self.image_storage_type, str):
+            try:
+                from lindormmemobase.models.enums import ImageStorageType as ImageStorageTypeEnum
+                self.image_storage_type = ImageStorageTypeEnum(self.image_storage_type)
+            except (ValueError, ImportError):
+                pass  # Keep as string if enum not available
+
+        if isinstance(self.multimodal_embedding_provider, str):
+            try:
+                from lindormmemobase.models.enums import MultimodalEmbeddingProvider as MultimodalEmbeddingProviderEnum
+                self.multimodal_embedding_provider = MultimodalEmbeddingProviderEnum(self.multimodal_embedding_provider)
+            except (ValueError, ImportError):
+                pass  # Keep as string if enum not available
+
+        if isinstance(self.vl_model_provider, str):
+            try:
+                from lindormmemobase.models.enums import VLModelProvider as VLModelProviderEnum
+                self.vl_model_provider = VLModelProviderEnum(self.vl_model_provider)
+            except (ValueError, ImportError):
+                pass  # Keep as string if enum not available
+
+    def validate_image_config(self) -> None:
+        """Validate image storage and multimodal configuration.
+
+        Raises:
+            ConfigurationError: If image configuration is invalid.
+        """
+        from lindormmemobase.utils.errors import ConfigurationError
+
+        try:
+            from lindormmemobase.models.enums import ImageStorageType, MultimodalEmbeddingProvider, VLModelProvider
+        except ImportError:
+            # Enums not available, skip validation
+            return
+
+        # Validate URL storage requirements
+        if self.image_storage_type == ImageStorageType.URL:
+            if not self.image_oss_endpoint:
+                raise ConfigurationError("image_oss_endpoint is required when image_storage_type is 'url'")
+            if not self.image_oss_bucket:
+                raise ConfigurationError("image_oss_bucket is required when image_storage_type is 'url'")
+
+        # Validate multimodal embedding provider
+        if self.multimodal_embedding_provider == MultimodalEmbeddingProvider.LINDORMAI:
+            if not (self.multimodal_embedding_base_url or self.embedding_base_url or self.llm_base_url):
+                raise ConfigurationError(
+                    "multimodal_embedding_base_url is required when multimodal_embedding_provider is 'lindormai'. "
+                    "Alternatively, set embedding_base_url or llm_base_url as fallback."
+                )
+
+        # Validate VL model provider
+        if self.vl_model_provider == VLModelProvider.LINDORMAI:
+            if not (self.vl_model_base_url or self.llm_base_url):
+                raise ConfigurationError(
+                    "vl_model_base_url is required when vl_model_provider is 'lindormai'. "
+                    "Alternatively, set llm_base_url as fallback."
+                )
 
     @property
     def timezone(self) -> timezone:

@@ -183,8 +183,12 @@ class ImageInput(BaseModel):
 
 
 class ImageResult(BaseModel):
-    """Result model for image add/update operations."""
-    image_id: str = Field(..., description="The image's unique identifier")
+    """Result model for image add/update operations.
+
+    Note: image_id is Optional[str] to support partial failure scenarios
+    in batch operations where individual items may fail.
+    """
+    image_id: Optional[str] = Field(None, description="The image's unique identifier (None if operation failed)")
     caption: Optional[str] = Field(None, description="Generated or provided caption")
     success: bool = Field(True, description="Whether the operation succeeded")
     error: Optional[str] = Field(None, description="Error message if failed")
