@@ -269,10 +269,10 @@ class Config:
         if self.image_storage_type != ImageStorageType.URL:
             raise ConfigurationError("Only image_storage_type='url' is supported")
 
-        if not self.image_oss_endpoint:
-            raise ConfigurationError("image_oss_endpoint is required when image_storage_type is 'url'")
-        if not self.image_oss_bucket:
-            raise ConfigurationError("image_oss_bucket is required when image_storage_type is 'url'")
+        # OSS configuration is optional for URL storage
+        # Only required if you need to upload images to OSS
+        # For storing external image URLs, OSS config is not needed
+        # Remove validation for image_oss_endpoint and image_oss_bucket
 
         # Validate multimodal embedding provider
         if self.multimodal_embedding_provider == MultimodalEmbeddingProvider.LINDORMAI:

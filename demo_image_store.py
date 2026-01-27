@@ -65,15 +65,8 @@ def print_section(title: str) -> None:
 
 
 async def demo_add_image_from_url(store: LindormImageStore) -> Optional[str]:
-    """Demo: Add image from URL (requires OSS configuration)."""
+    """Demo: Add image from URL."""
     print_section("1. Add Image from URL")
-
-    # Check if OSS is configured
-    if store.config.image_storage_type == ImageStorageType.URL:
-        if not store.config.image_oss_endpoint:
-            print("⚠️  Skipping: image_storage_type='url' but image_oss_endpoint not configured")
-            print("   To enable URL storage, set image_oss_endpoint in config.yaml")
-            return None
 
     image_url = "https://img.alicdn.com/imgextra/i3/O1CN01rdstgY1uiZWt8gqSL_!!6000000006071-0-tps-1970-356.jpg"
     print(f"Adding image from URL: {image_url}")
@@ -311,11 +304,7 @@ async def check_prerequisites(store: LindormImageStore) -> bool:
 
     # Check storage type
     print(f"✅ Storage Type: {store.config.image_storage_type}")
-
-    if store.config.image_storage_type == ImageStorageType.URL:
-        if not store.config.image_oss_endpoint:
-            print("⚠️  image_storage_type='url' but image_oss_endpoint not set")
-            print("   URL-based operations will be skipped")
+    # Note: image_storage_type='url' stores external URLs directly, no OSS needed
 
     return all_good
 
