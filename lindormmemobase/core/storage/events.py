@@ -450,7 +450,7 @@ class LindormEventsStorage(LindormStorageBase):
             tag_values: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """Hybrid vector + keyword search on UserEvents table with advanced filtering.
-        
+
         Args:
             user_id: User identifier
             query: Text query for keyword matching
@@ -463,9 +463,18 @@ class LindormEventsStorage(LindormStorageBase):
             subtopics: Filter by event_data.profile_delta.attributes.sub_topic (OR logic)
             tags: Filter by event_data.event_tags.tag (OR logic)
             tag_values: Filter by event_data.event_tags.value (OR logic)
-        
+
         Returns:
             List of matching events with metadata
+
+        NOTE: [TODO] This implementation has the same RRF filter bug as images.py had before fix.
+        The event_tip match condition is mixed with pre_filter conditions, causing it to act
+        as a mandatory pre-filter instead of participating in RRF fusion. This reduces recall.
+
+        Fix: Separate RRF full-text query conditions from pre-filter conditions, similar to the
+        fix applied to images.py hybrid_search. Reference: Lindorm documentation on filter_rrf.
+
+        See: lindormmemobase/core/storage/images.py:577-662 for the corrected pattern.
         """
         try:
             time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)

@@ -227,24 +227,11 @@ class TestImageBlob:
         
         assert blob.type == BlobType.image
         assert blob.url == "https://example.com/image.jpg"
-        assert blob.base64 is None
-    
-    def test_create_image_blob_with_base64(self):
-        """Test creating image blob with base64."""
-        blob = ImageBlob(base64="iVBORw0KGgoAAAANS...")
-        
-        assert blob.base64 == "iVBORw0KGgoAAAANS..."
-        assert blob.url is None
-    
-    def test_create_image_blob_with_both(self):
-        """Test creating image blob with both URL and base64."""
-        blob = ImageBlob(
-            url="https://example.com/image.jpg",
-            base64="base64data"
-        )
-        
-        assert blob.url is not None
-        assert blob.base64 is not None
+
+    def test_create_image_blob_without_url(self):
+        """Test creating image blob without URL raises validation error."""
+        with pytest.raises(ValidationError):
+            ImageBlob()
 
 
 # ==================== TranscriptBlob Tests ====================

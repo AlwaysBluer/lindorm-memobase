@@ -59,8 +59,7 @@ class CodeBlob(Blob):
 
 
 class ImageBlob(Blob):
-    url: Optional[str] = None
-    base64: Optional[str] = None
+    url: str
     type: Literal[BlobType.image] = BlobType.image
 
 

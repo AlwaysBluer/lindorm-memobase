@@ -1,9 +1,9 @@
 from datetime import datetime
 from enum import IntEnum
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Generic, TypeVar, Union
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CODE(IntEnum):
@@ -127,6 +127,95 @@ class UserEventData(BaseModel):
         None, description="Timestamp when the event was last updated"
     )
     similarity: Optional[float] = Field(None, description="Similarity score")
+
+
+class ImageData(BaseModel):
+    """Image data model for storage and retrieval."""
+    image_id: str = Field(..., description="The image's unique identifier")
+    project_id: str = Field(..., description="Project identifier")
+    user_id: str = Field(..., description="User identifier")
+    caption: Optional[str] = Field(None, description="Image caption")
+    image_url: str = Field(..., description="Image URL")
+    content_type: Optional[str] = Field(None, description="Image MIME type")
+    file_size: Optional[int] = Field(None, description="Image size in bytes")
+    metadata: Optional[dict] = Field(None, description="Additional metadata")
+    created_at: Optional[datetime] = Field(None, description="Created timestamp")
+    updated_at: Optional[datetime] = Field(None, description="Updated timestamp")
+    similarity: Optional[float] = Field(None, description="Similarity score")
+
+    @field_validator('created_at', 'updated_at', mode='before')
+    @classmethod
+    def parse_datetime(cls, v: Union[str, datetime, None]) -> Optional[datetime]:
+        """Parse datetime from string or datetime object."""
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            # Try common formats
+            for fmt in (
+                '%Y-%m-%dT%H:%M:%S.%f%z',
+                '%Y-%m-%dT%H:%M:%S%z',
+                '%Y-%m-%dT%H:%M:%S.%f',
+                '%Y-%m-%dT%H:%M:%S',
+                '%Y-%m-%d %H:%M:%S.%f',
+                '%Y-%m-%d %H:%M:%S',
+            ):
+                try:
+                    return datetime.strptime(v, fmt)
+                except ValueError:
+                    continue
+            # Fallback: try fromisoformat
+            try:
+                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except ValueError:
+                pass
+        return v
+
+
+class ImageInput(BaseModel):
+    """Input model for adding images."""
+    image_url: str = Field(..., description="Image URL (OSS/public)")
+    caption: Optional[str] = Field(None, description="Image caption")
+    metadata: Optional[dict] = Field(None, description="Additional metadata")
+
+
+class ImageResult(BaseModel):
+    """Result model for image add/update operations.
+
+    Note: image_id is Optional[str] to support partial failure scenarios
+    in batch operations where individual items may fail.
+    """
+    image_id: Optional[str] = Field(None, description="The image's unique identifier (None if operation failed)")
+    caption: Optional[str] = Field(None, description="Generated or provided caption")
+    success: bool = Field(True, description="Whether the operation succeeded")
+    error: Optional[str] = Field(None, description="Error message if failed")
+
+
+class ImageSearchFilters(BaseModel):
+    """Image search filter conditions."""
+    time_from: Optional[datetime] = Field(None, description="Start time filter")
+    time_to: Optional[datetime] = Field(None, description="End time filter")
+    content_types: Optional[List[str]] = Field(None, description="Filter by content types")
+    metadata_filters: Optional[dict] = Field(None, description="Filter by metadata fields")
+
+
+T = TypeVar('T')
+
+
+class PagedResult(BaseModel, Generic[T]):
+    """Paginated result wrapper."""
+    items: List[Any] = Field(..., description="List of items")
+    total: int = Field(..., description="Total count")
+    page: int = Field(..., description="Current page number")
+    page_size: int = Field(..., description="Items per page")
+    has_more: bool = Field(..., description="Whether there are more pages")
+
+
+class ResetResult(BaseModel):
+    """Result model for reset operations."""
+    deleted_count: int = Field(..., description="Number of deleted items")
+    success: bool = Field(True, description="Whether the operation succeeded")
 
 
 class ContextData(BaseModel):

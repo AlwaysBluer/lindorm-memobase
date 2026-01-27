@@ -15,8 +15,24 @@ from lindormmemobase.config import Config
 from lindormmemobase.models.blob import Blob, ChatBlob, BlobType
 from lindormmemobase.models.types import FactResponse, MergeAddResult, Profile, ProfileEntry
 from lindormmemobase.models.profile_topic import ProfileConfig
-from lindormmemobase.models.response import EventSearchFilters
+from lindormmemobase.models.response import (
+    EventSearchFilters,
+    ImageData,
+    ImageInput,
+    ImageResult,
+    ImageSearchFilters,
+    PagedResult,
+    ResetResult,
+)
+from lindormmemobase.models.enums import (
+    ImageStorageType,
+    MultimodalEmbeddingProvider,
+    VLModelProvider,
+    SearchMode,
+    MultimodalInputType,
+)
 from lindormmemobase.main import LindormMemobase
+from lindormmemobase.image_store import LindormImageStore
 
 __all__ = [
     "LindormMemobase",
@@ -26,10 +42,22 @@ __all__ = [
     "ProfileConfig",
     "Blob",
     "ChatBlob",
-    "BlobType", 
+    "BlobType",
     "FactResponse",
     "MergeAddResult",
     "Profile",
     "ProfileEntry",
     "EventSearchFilters",
+    "LindormImageStore",
+    "ImageData",
+    "ImageInput",
+    "ImageResult",
+    "ImageSearchFilters",
+    "PagedResult",
+    "ResetResult",
+    "ImageStorageType",
+    "MultimodalEmbeddingProvider",
+    "VLModelProvider",
+    "SearchMode",
+    "MultimodalInputType",
 ]

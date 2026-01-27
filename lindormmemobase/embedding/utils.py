@@ -7,6 +7,27 @@ _global_jina_async_client = None
 _global_config = None
 
 
+def _ensure_lindormai_base_url(base_url: str) -> str:
+    """Ensure Lindorm AI base_url includes the Dashscope compatible mode path.
+
+    Lindorm AI uses Dashscope API which requires /dashscope/compatible-mode/v1 prefix.
+    This function automatically adds it if not present.
+    """
+    if not base_url:
+        return base_url
+
+    # Remove trailing slash for consistency
+    if base_url.endswith("/"):
+        base_url = base_url[:-1]
+
+    # Check if already has the correct path
+    if base_url.endswith("/dashscope/compatible-mode/v1"):
+        return base_url
+
+    # Add the Dashscope compatible mode path
+    return f"{base_url}/dashscope/compatible-mode/v1"
+
+
 def get_openai_async_client_instance(config) -> AsyncOpenAI:
     global _global_openai_async_client, _global_config
     if _global_openai_async_client is None or _global_config != config:
@@ -33,7 +54,7 @@ def get_lindormai_async_client_instance(config=None):
 
     Lindormai 使用 OpenAI 兼容的 API，但使用自定义的鉴权头
     """
-    base_url = config.embedding_base_url
+    base_url = _ensure_lindormai_base_url(config.embedding_base_url)
     ak = config.lindorm_username
     sk = config.lindorm_password
 
