@@ -7,19 +7,14 @@ import asyncio
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Union, Literal
+from typing import Optional, List, Dict, Any
 
 import yaml
 
 from lindormmemobase.config import Config
 from lindormmemobase.models.response import ImageData, ImageResult, ImageInput, PagedResult, ResetResult
 from lindormmemobase.utils.errors import ConfigurationError, ValidationError
-from lindormmemobase.utils.image_utils import (
-    ensure_bytes,
-    infer_content_type_from_url,
-    infer_content_type_from_bytes,
-    build_data_url,
-)
+from lindormmemobase.utils.image_utils import infer_content_type_from_url
 from lindormmemobase.multimodal import get_multimodal_embedding, generate_image_caption
 from lindormmemobase.core.storage.images import get_lindorm_image_storage
 from lindormmemobase.models.enums import SearchMode
@@ -57,7 +52,7 @@ class LindormImageStore:
             await StorageManager.initialize(self.config)
 
     @classmethod
-    def from_yaml_file(cls, config_file_path: Union[str, Path]) -> "LindormImageStore":
+    def from_yaml_file(cls, config_file_path: str | Path) -> "LindormImageStore":
         try:
             config_path = Path(config_file_path)
             if not config_path.exists():
@@ -85,8 +80,7 @@ class LindormImageStore:
         self,
         project_id: str,
         user_id: str,
-        image_url: Optional[str] = None,
-        image_data: Optional[Union[bytes, bytearray, memoryview]] = None,
+        image_url: str,
         caption: Optional[str] = None,
         auto_generate_caption: bool = True,
         generate_embedding: bool = True,
@@ -99,59 +93,23 @@ class LindormImageStore:
             raise ValidationError("project_id is required")
         if not user_id:
             raise ValidationError("user_id is required")
-        if not image_url and image_data is None:
-            raise ValidationError("image_url or image_data is required")
-
-        image_bytes = None
-        if image_data is not None:
-            image_bytes = ensure_bytes(image_data)
-
-        storage_type = self.config.image_storage_type
-        if storage_type == "url" and not image_url:
-            raise ValidationError("image_url is required when image_storage_type is 'url'")
-        if storage_type == "binary" and image_bytes is None:
-            raise ValidationError("image_data is required when image_storage_type is 'binary'")
+        if not image_url:
+            raise ValidationError("image_url is required")
 
         if content_type is None:
-            content_type = infer_content_type_from_url(image_url) if image_url else None
-            if content_type is None and image_bytes is not None:
-                content_type = infer_content_type_from_bytes(image_bytes)
+            content_type = infer_content_type_from_url(image_url)
 
-        if file_size is None and image_bytes is not None:
-            file_size = len(image_bytes)
-
-        image_ref = image_url
-        if image_ref is None and image_bytes is not None:
-            image_ref = build_data_url(image_bytes, content_type)
-
-        if caption is None and auto_generate_caption and image_ref:
-            caption = await generate_image_caption(image_ref, config=self.config)
+        if caption is None and auto_generate_caption:
+            caption = await generate_image_caption(image_url, config=self.config)
 
         feature_vector = None
         if generate_embedding:
-            if image_ref:
-                feature_vector = await get_multimodal_embedding(
-                    "image",
-                    image_ref,
-                    model=self.config.multimodal_embedding_model,
-                    config=self.config,
-                )
-            elif caption:
-                feature_vector = await get_multimodal_embedding(
-                    "text",
-                    caption,
-                    model=self.config.multimodal_embedding_model,
-                    config=self.config,
-                )
-            else:
-                raise ValidationError("Cannot generate embedding without image or caption")
-
-        if storage_type == "url":
-            image_bytes_to_store = None
-        elif storage_type == "binary":
-            image_bytes_to_store = image_bytes
-        else:
-            image_bytes_to_store = image_bytes
+            feature_vector = await get_multimodal_embedding(
+                "image",
+                image_url,
+                model=self.config.multimodal_embedding_model,
+                config=self.config,
+            )
 
         storage = get_lindorm_image_storage(self.config)
         result_image_id = await storage.store_image(
@@ -160,7 +118,6 @@ class LindormImageStore:
             image_id=image_id or str(uuid.uuid4()),
             caption=caption,
             image_url=image_url,
-            image_data=image_bytes_to_store,
             feature_vector=feature_vector,
             content_type=content_type,
             file_size=file_size,
@@ -207,7 +164,6 @@ class LindormImageStore:
                         project_id=project_id,
                         user_id=user_id,
                         image_url=img.image_url,
-                        image_data=img.image_data,
                         caption=img.caption,
                         auto_generate_caption=auto_generate_caption,
                         generate_embedding=generate_embedding,
@@ -230,10 +186,9 @@ class LindormImageStore:
         project_id: str,
         user_id: str,
         image_id: str,
-        include_data: bool = False,
     ) -> Optional[ImageData]:
         storage = get_lindorm_image_storage(self.config)
-        row = await storage.get_image(project_id, user_id, image_id, include_data=include_data)
+        row = await storage.get_image(project_id, user_id, image_id)
         if row is None:
             return None
         return ImageData(**row)
@@ -247,7 +202,6 @@ class LindormImageStore:
         auto_generate_caption: bool = False,
         regenerate_embedding: bool = False,
         image_url: Optional[str] = None,
-        image_data: Optional[Union[bytes, bytearray, memoryview]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         content_type: Optional[str] = None,
         file_size: Optional[int] = None,
@@ -259,60 +213,32 @@ class LindormImageStore:
         if not image_id:
             raise ValidationError("image_id is required")
 
-        image_bytes = None
-        if image_data is not None:
-            image_bytes = ensure_bytes(image_data)
-
         if content_type is None:
             content_type = infer_content_type_from_url(image_url) if image_url else None
-            if content_type is None and image_bytes is not None:
-                content_type = infer_content_type_from_bytes(image_bytes)
-
-        if file_size is None and image_bytes is not None:
-            file_size = len(image_bytes)
 
         storage = get_lindorm_image_storage(self.config)
 
-        image_ref = image_url
-        existing_row = None
-        if image_ref is None and image_bytes is not None:
-            image_ref = build_data_url(image_bytes, content_type)
-
         if (auto_generate_caption and caption is None) or regenerate_embedding:
-            if image_ref is None:
-                existing_row = await storage.get_image(project_id, user_id, image_id, include_data=True)
+            if image_url is None:
+                existing_row = await storage.get_image(project_id, user_id, image_id)
                 if existing_row:
-                    stored_data = existing_row.get("image_data")
-                    stored_url = existing_row.get("image_url")
-                    if stored_data:
-                        image_ref = build_data_url(
-                            stored_data,
-                            existing_row.get("content_type") or content_type,
-                        )
-                    else:
-                        image_ref = stored_url
+                    image_url = existing_row.get("image_url")
 
-        if caption is None and auto_generate_caption and image_ref:
-            caption = await generate_image_caption(image_ref, config=self.config)
+        if caption is None and auto_generate_caption:
+            if not image_url:
+                raise ValidationError("image_url is required to auto-generate caption")
+            caption = await generate_image_caption(image_url, config=self.config)
 
         feature_vector = None
         if regenerate_embedding:
-            if image_ref:
-                feature_vector = await get_multimodal_embedding(
-                    "image",
-                    image_ref,
-                    model=self.config.multimodal_embedding_model,
-                    config=self.config,
-                )
-            elif caption:
-                feature_vector = await get_multimodal_embedding(
-                    "text",
-                    caption,
-                    model=self.config.multimodal_embedding_model,
-                    config=self.config,
-                )
-            else:
-                raise ValidationError("Cannot regenerate embedding without image or caption")
+            if not image_url:
+                raise ValidationError("image_url is required to regenerate embedding")
+            feature_vector = await get_multimodal_embedding(
+                "image",
+                image_url,
+                model=self.config.multimodal_embedding_model,
+                config=self.config,
+            )
 
         result_image_id = await storage.update_image(
             project_id=project_id,
@@ -320,7 +246,6 @@ class LindormImageStore:
             image_id=image_id,
             caption=caption,
             image_url=image_url,
-            image_data=image_bytes,
             feature_vector=feature_vector,
             content_type=content_type,
             file_size=file_size,
@@ -401,29 +326,16 @@ class LindormImageStore:
         self,
         project_id: str,
         image_url: Optional[str] = None,
-        image_data: Optional[Union[bytes, bytearray, memoryview]] = None,
         user_id: Optional[str] = None,
         top_k: Optional[int] = None,
         min_score: Optional[float] = None,
     ) -> List[ImageData]:
-        if not image_url and image_data is None:
-            raise ValidationError("image_url or image_data is required")
-
-        image_bytes = None
-        if image_data is not None:
-            image_bytes = ensure_bytes(image_data)
-
-        content_type = infer_content_type_from_url(image_url) if image_url else None
-        if content_type is None and image_bytes is not None:
-            content_type = infer_content_type_from_bytes(image_bytes)
-
-        image_ref = image_url
-        if image_ref is None and image_bytes is not None:
-            image_ref = build_data_url(image_bytes, content_type)
+        if not image_url:
+            raise ValidationError("image_url is required")
 
         query_vector = await get_multimodal_embedding(
             "image",
-            image_ref,
+            image_url,
             model=self.config.multimodal_embedding_model,
             config=self.config,
         )

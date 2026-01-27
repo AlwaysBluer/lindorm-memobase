@@ -3,7 +3,7 @@
 Demo for LindormImageStore - Image storage and multimodal retrieval.
 
 This demo showcases:
-1. Adding images (URL and binary data)
+1. Adding images (URL only)
 2. Auto-generating captions with Vision-Language models
 3. Generating multimodal embeddings
 4. Three search modes: caption, embedding, hybrid
@@ -26,7 +26,7 @@ In your .env file, set:
 - MEMOBASE_MULTIMODAL_EMBEDDING_PROVIDER: lindormai or dashscope
 - MEMOBASE_MULTIMODAL_EMBEDDING_BASE_URL: Embedding service endpoint
 - MEMOBASE_VL_MODEL_PROVIDER: lindormai or dashscope (for caption generation)
-- image_storage_type: url, binary, or both (in config.yaml)
+- image_storage_type: url (in config.yaml)
 
 Example .env for multimodal features:
 -----------------------------------------
@@ -44,7 +44,6 @@ python demo_image_store.py
 """
 
 import asyncio
-import base64
 from datetime import datetime
 from typing import Optional
 
@@ -56,12 +55,6 @@ from lindormmemobase.utils.errors import LindormMemobaseError
 # Demo configuration
 PROJECT_ID = "demo_project"
 USER_ID = "demo_user"
-
-
-# Sample 1x1 red PNG (base64 encoded) for binary storage demo
-SAMPLE_PNG_BASE64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-)
 
 
 def print_section(title: str) -> None:
@@ -103,42 +96,15 @@ async def demo_add_image_from_url(store: LindormImageStore) -> Optional[str]:
         return None
 
 
-async def demo_add_image_from_binary(store: LindormImageStore) -> Optional[str]:
-    """Demo: Add image from binary data."""
-    print_section("2. Add Image from Binary Data")
-
-    image_bytes = base64.b64decode(SAMPLE_PNG_BASE64)
-    print(f"Adding image from binary ({len(image_bytes)} bytes)")
-
-    try:
-        result = await store.add_image(
-            project_id=PROJECT_ID,
-            user_id=USER_ID,
-            image_data=image_bytes,
-            content_type="image/png",
-            caption=None,  # Auto-generate
-            auto_generate_caption=True,
-            generate_embedding=True,
-            metadata={"source": "demo_binary", "color": "red"},
-        )
-        print(f"✅ Added: image_id={result.image_id}")
-        print(f"   Caption: {result.caption}")
-        return result.image_id
-    except LindormMemobaseError as e:
-        print(f"❌ Error: {e}")
-        return None
-
-
 async def demo_get_image(store: LindormImageStore, image_id: str) -> None:
     """Demo: Retrieve image metadata."""
-    print_section("3. Get Image Metadata")
+    print_section("2. Get Image Metadata")
 
     try:
         image = await store.get_image(
             project_id=PROJECT_ID,
             user_id=USER_ID,
             image_id=image_id,
-            include_data=False,  # Don't fetch binary data
         )
         if image:
             print(f"✅ Found image: {image.image_id}")
@@ -155,11 +121,10 @@ async def demo_get_image(store: LindormImageStore, image_id: str) -> None:
 
 async def demo_search_by_text(store: LindormImageStore) -> None:
     """Demo: Three different search modes."""
-    print_section("4. Search by Text (Three Modes)")
+    print_section("3. Search by Text (Three Modes)")
 
     queries = [
         "fruits",  # Should match the URL image
-        "red pixel",  # Should match the binary image
         "sunset",  # No match expected
     ]
 
@@ -184,16 +149,19 @@ async def demo_search_by_text(store: LindormImageStore) -> None:
 
 async def demo_search_by_image(store: LindormImageStore, image_id: str) -> None:
     """Demo: Image-to-image search using vector similarity."""
-    print_section("5. Search by Image (Image-to-Image)")
+    print_section("4. Search by Image (Image-to-Image)")
 
     try:
-        # Use the binary image as query
-        image_bytes = base64.b64decode(SAMPLE_PNG_BASE64)
-        print(f"Searching for similar images using binary data...")
+        image = await store.get_image(PROJECT_ID, USER_ID, image_id)
+        if not image or not image.image_url:
+            print("❌ Image URL not available for search")
+            return
+
+        print("Searching for similar images using URL...")
 
         results = await store.search_by_image(
             project_id=PROJECT_ID,
-            image_data=image_bytes,
+            image_url=image.image_url,
             user_id=USER_ID,
             top_k=3,
         )
@@ -207,7 +175,7 @@ async def demo_search_by_image(store: LindormImageStore, image_id: str) -> None:
 
 async def demo_batch_add_images(store: LindormImageStore) -> None:
     """Demo: Batch add multiple images with concurrency control."""
-    print_section("6. Batch Add Images")
+    print_section("5. Batch Add Images")
 
     from lindormmemobase.models.response import ImageInput
 
@@ -216,10 +184,6 @@ async def demo_batch_add_images(store: LindormImageStore) -> None:
         ImageInput(
             image_url="https://img.alicdn.com/imgextra/i3/O1CN01rdstgY1uiZWt8gqSL_!!6000000006071-0-tps-1970-356.jpg",
             metadata={"category": "fruit"},
-        ),
-        ImageInput(
-            image_data=base64.b64decode(SAMPLE_PNG_BASE64),
-            metadata={"category": "test"},
         ),
     ]
 
@@ -248,7 +212,7 @@ async def demo_batch_add_images(store: LindormImageStore) -> None:
 
 async def demo_list_images(store: LindormImageStore) -> None:
     """Demo: List images with pagination."""
-    print_section("7. List Images with Pagination")
+    print_section("6. List Images with Pagination")
 
     page = 1
     page_size = 5
@@ -275,7 +239,7 @@ async def demo_list_images(store: LindormImageStore) -> None:
 
 async def demo_update_image(store: LindormImageStore, image_id: str) -> None:
     """Demo: Update image caption and regenerate embedding."""
-    print_section("8. Update Image")
+    print_section("7. Update Image")
 
     new_caption = "Updated: A small red pixel for testing"
     print(f"Updating image {image_id}...")
@@ -290,7 +254,7 @@ async def demo_update_image(store: LindormImageStore, image_id: str) -> None:
         print(f"✅ Updated: {result.image_id}")
 
         # Verify the update
-        image = await store.get_image(PROJECT_ID, USER_ID, image_id, include_data=False)
+        image = await store.get_image(PROJECT_ID, USER_ID, image_id)
         print(f"   New caption: {image.caption}")
     except LindormMemobaseError as e:
         print(f"❌ Error: {e}")
@@ -298,7 +262,7 @@ async def demo_update_image(store: LindormImageStore, image_id: str) -> None:
 
 async def demo_reset(store: LindormImageStore) -> None:
     """Demo: Reset (delete all images for a user/project)."""
-    print_section("9. Reset Demo Data")
+    print_section("8. Reset Demo Data")
 
     print("⚠️  This will delete all demo images.")
     print("    Comment out this function call if you want to keep the data.")
@@ -382,10 +346,7 @@ async def main() -> None:
 
     # Run demos
     url_image_id = await demo_add_image_from_url(store)
-    binary_image_id = await demo_add_image_from_binary(store)
-
-    # Use binary_image_id for subsequent demos (it should always succeed)
-    reference_image_id = binary_image_id or url_image_id
+    reference_image_id = url_image_id
 
     if reference_image_id:
         await demo_get_image(store, reference_image_id)

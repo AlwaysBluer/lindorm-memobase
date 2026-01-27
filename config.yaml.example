@@ -45,7 +45,7 @@ event_theme_requirement: "Focus on the user's infos, not its instructions. Do no
 # === Image Storage & Multimodal Configuration ===
 # Configuration for LindormImageStore multimodal image storage and retrieval
 
-# Storage type: url (recommended), binary, or both
+# Storage type: url
 # image_storage_type: url
 
 # OSS Configuration (for URL storage mode)

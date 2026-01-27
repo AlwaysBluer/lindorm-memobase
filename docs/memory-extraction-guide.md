@@ -138,7 +138,7 @@ async def process_blobs(
   - `ChatBlob`: 对话数据，包含消息列表
   - `DocBlob`: 文档内容
   - `CodeBlob`: 代码片段
-  - `ImageBlob`: 图片数据
+  - `ImageBlob`: 图片数据（仅支持 OSS 可访问 URL）
   - `TranscriptBlob`: 转录文本
 
 - **config**: 全局配置，包含数据库连接、LLM设置等

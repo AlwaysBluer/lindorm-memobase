@@ -257,7 +257,7 @@ Blob 是输入数据的基本单位，支持多种类型：
 - **ChatBlob**: 对话消息
 - **DocBlob**: 文档内容
 - **CodeBlob**: 代码片段
-- **ImageBlob**: 图像数据
+- **ImageBlob**: 图像数据（仅支持 OSS 可访问 URL）
 - **TranscriptBlob**: 音频转录
 
 ### 2. Profile（用户档案）

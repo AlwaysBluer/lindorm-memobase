@@ -135,8 +135,7 @@ class ImageData(BaseModel):
     project_id: str = Field(..., description="Project identifier")
     user_id: str = Field(..., description="User identifier")
     caption: Optional[str] = Field(None, description="Image caption")
-    image_url: Optional[str] = Field(None, description="Image URL")
-    image_data: Optional[bytes] = Field(None, description="Raw image bytes")
+    image_url: str = Field(..., description="Image URL")
     content_type: Optional[str] = Field(None, description="Image MIME type")
     file_size: Optional[int] = Field(None, description="Image size in bytes")
     metadata: Optional[dict] = Field(None, description="Additional metadata")
@@ -176,8 +175,7 @@ class ImageData(BaseModel):
 
 class ImageInput(BaseModel):
     """Input model for adding images."""
-    image_url: Optional[str] = Field(None, description="Image URL (preferred)")
-    image_data: Optional[bytes] = Field(None, description="Image binary data")
+    image_url: str = Field(..., description="Image URL (OSS/public)")
     caption: Optional[str] = Field(None, description="Image caption")
     metadata: Optional[dict] = Field(None, description="Additional metadata")
 

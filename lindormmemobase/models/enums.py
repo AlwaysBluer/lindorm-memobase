@@ -8,8 +8,6 @@ from enum import StrEnum
 class ImageStorageType(StrEnum):
     """Image storage type options."""
     URL = "url"
-    BINARY = "binary"
-    BOTH = "both"
 
 
 class MultimodalEmbeddingProvider(StrEnum):

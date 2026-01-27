@@ -265,12 +265,14 @@ class Config:
             # Enums not available, skip validation
             return
 
-        # Validate URL storage requirements
-        if self.image_storage_type == ImageStorageType.URL:
-            if not self.image_oss_endpoint:
-                raise ConfigurationError("image_oss_endpoint is required when image_storage_type is 'url'")
-            if not self.image_oss_bucket:
-                raise ConfigurationError("image_oss_bucket is required when image_storage_type is 'url'")
+        # Enforce URL-only storage
+        if self.image_storage_type != ImageStorageType.URL:
+            raise ConfigurationError("Only image_storage_type='url' is supported")
+
+        if not self.image_oss_endpoint:
+            raise ConfigurationError("image_oss_endpoint is required when image_storage_type is 'url'")
+        if not self.image_oss_bucket:
+            raise ConfigurationError("image_oss_bucket is required when image_storage_type is 'url'")
 
         # Validate multimodal embedding provider
         if self.multimodal_embedding_provider == MultimodalEmbeddingProvider.LINDORMAI:
@@ -295,5 +297,4 @@ class Config:
 
         # For named timezones, we need to use the datetime.timezone.ZoneInfo
         return ZoneInfo(self.use_timezone)
-
 

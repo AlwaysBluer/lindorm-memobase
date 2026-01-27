@@ -73,8 +73,7 @@ class LindormImageStorage(LindormStorageBase):
                     user_id VARCHAR NOT NULL,
                     image_id VARCHAR NOT NULL,
                     caption VARCHAR,
-                    image_url VARCHAR,
-                    image_data VARBINARY,
+                    image_url VARCHAR NOT NULL,
                     feature_vector VARCHAR,
                     content_type VARCHAR,
                     file_size BIGINT,
@@ -146,7 +145,7 @@ class LindormImageStorage(LindormStorageBase):
                         metadata
                     ) PARTITION BY hash(project_id) WITH (
                         SOURCE_SETTINGS='{{
-                            "excludes": ["feature_vector", "image_data"]
+                            "excludes": ["feature_vector"]
                         }}',
                         INDEX_SETTINGS='{{
                             "index": {{
@@ -179,8 +178,7 @@ class LindormImageStorage(LindormStorageBase):
         user_id: str,
         image_id: Optional[str],
         caption: Optional[str],
-        image_url: Optional[str],
-        image_data: Optional[bytes],
+        image_url: str,
         feature_vector: Optional[List[float]],
         content_type: Optional[str],
         file_size: Optional[int],
@@ -206,9 +204,9 @@ class LindormImageStorage(LindormStorageBase):
                 cursor.execute(
                     """
                     INSERT INTO ImageStore
-                    (project_id, user_id, image_id, caption, image_url, image_data, feature_vector,
+                    (project_id, user_id, image_id, caption, image_url, feature_vector,
                      content_type, file_size, metadata, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         str(actual_project_id),
@@ -216,7 +214,6 @@ class LindormImageStorage(LindormStorageBase):
                         str(actual_image_id),
                         caption,
                         image_url,
-                        image_data,
                         feature_vector_str,
                         content_type,
                         file_size,
@@ -243,7 +240,6 @@ class LindormImageStorage(LindormStorageBase):
         image_id: str,
         caption: Optional[str] = None,
         image_url: Optional[str] = None,
-        image_data: Optional[bytes] = None,
         feature_vector: Optional[List[float]] = None,
         content_type: Optional[str] = None,
         file_size: Optional[int] = None,
@@ -265,9 +261,6 @@ class LindormImageStorage(LindormStorageBase):
                 if image_url is not None:
                     fields.append("image_url = %s")
                     params.append(image_url)
-                if image_data is not None:
-                    fields.append("image_data = %s")
-                    params.append(image_data)
                 if feature_vector is not None:
                     feature_vector_str = validate_and_format_embedding(
                         feature_vector,
@@ -335,7 +328,6 @@ class LindormImageStorage(LindormStorageBase):
         project_id: str,
         user_id: str,
         image_id: str,
-        include_data: bool = False,
     ) -> Optional[Dict[str, Any]]:
         def _get_image_sync():
             pool = self._get_pool()
@@ -343,7 +335,7 @@ class LindormImageStorage(LindormStorageBase):
             actual_project_id = project_id or DEFAULT_PROJECT_ID
             try:
                 cursor = conn.cursor(dictionary=True)
-                columns = "*" if include_data else (
+                columns = (
                     "project_id, user_id, image_id, caption, image_url, content_type, file_size, metadata, created_at, updated_at"
                 )
                 cursor.execute(
@@ -475,7 +467,7 @@ class LindormImageStorage(LindormStorageBase):
             search_query = {
                 "size": size,
                 "_source": {
-                    "exclude": ["feature_vector", "image_data", "_searchindex_id"],
+                    "exclude": ["feature_vector", "_searchindex_id"],
                 },
                 "query": {
                     "knn": {
@@ -541,7 +533,7 @@ class LindormImageStorage(LindormStorageBase):
             search_query = {
                 "size": size,
                 "_source": {
-                    "exclude": ["feature_vector", "image_data", "_searchindex_id"],
+                    "exclude": ["feature_vector", "_searchindex_id"],
                 },
                 "query": {
                     "bool": {
@@ -631,7 +623,7 @@ class LindormImageStorage(LindormStorageBase):
             search_query = {
                 "size": size,
                 "_source": {
-                    "exclude": ["feature_vector", "image_data", "_searchindex_id"],
+                    "exclude": ["feature_vector", "_searchindex_id"],
                 },
                 "query": {
                     "knn": {
