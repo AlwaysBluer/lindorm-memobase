@@ -28,7 +28,7 @@ class LindormImageStore:
     def __init__(self, config: Optional[Config] = None):
         try:
             self.config = config if config is not None else Config.load_config()
-            # Validate image configuration only when actually using image features
+            # Validate multimodal configuration only when actually using image features
             self.config.validate_image_config()
             self._init_storage_sync()
         except Exception as e:

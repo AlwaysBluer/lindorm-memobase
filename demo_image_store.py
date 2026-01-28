@@ -302,9 +302,8 @@ async def check_prerequisites(store: LindormImageStore) -> bool:
         print("⚠️  VL model base URL not set (auto-caption will be disabled)")
         print("   Set MEMOBASE_VL_MODEL_BASE_URL or use LLM_BASE_URL for auto-caption")
 
-    # Check storage type
-    print(f"✅ Storage Type: {store.config.image_storage_type}")
-    # Note: image_storage_type='url' stores external URLs directly, no OSS needed
+    # Note: Only URL-based storage is supported (external image URLs stored directly)
+    print("✅ Storage Type: URL (external image URLs)")
 
     return all_good
 

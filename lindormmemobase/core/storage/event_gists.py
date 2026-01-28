@@ -87,8 +87,12 @@ class LindormEventGistsStorage(LindormStorageBase):
                 LOG.info("UserEventsGists table already exists, skipping creation")
                 return
 
-            # Create UserEventsGists table with gist_idx for one-to-many relationship
-            cursor.execute("""
+            # Create UserEventsGists table with gist_idx for one-to-many relationship and optional TTL
+            ttl_clause = ""
+            if self.config.lindorm_event_gists_ttl > 0:
+                ttl_clause = f"WITH (TTL='{self.config.lindorm_event_gists_ttl}')"
+
+            cursor.execute(f"""
                 CREATE TABLE UserEventsGists (
                     user_id VARCHAR(255) NOT NULL,
                     project_id VARCHAR(255) NOT NULL,
@@ -100,6 +104,7 @@ class LindormEventGistsStorage(LindormStorageBase):
                     updated_at TIMESTAMP,
                     PRIMARY KEY(user_id, project_id, event_id, gist_idx)
                 )
+                {ttl_clause}
             """)
 
             conn.commit()

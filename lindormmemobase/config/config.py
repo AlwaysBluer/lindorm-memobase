@@ -69,7 +69,7 @@ class Config:
     rerank_model: str = "rerank-v3"
 
     # Image storage & multimodal
-    image_storage_type: Union[str, "ImageStorageType"] = "url"
+    # Only URL-based storage is supported (binary storage removed)
     image_oss_endpoint: Optional[str] = None
     image_oss_bucket: Optional[str] = None
     image_oss_access_key: Optional[str] = None
@@ -126,6 +126,12 @@ class Config:
     lindorm_table_database: str = "memobase"
     lindorm_table_pool_size: int = 10  # Connection pool size for table storage and buffer (events, profiles)
     lindorm_executor_workers: int = 20  # Thread pool executor size for async database operations (can be > pool_size)
+
+    # TTL for Events and EventsGists tables (in seconds)
+    # Default: 180 days = 15552000 seconds
+    # Use -1 to disable TTL (data never expires)
+    lindorm_events_ttl: int = 15552000
+    lindorm_event_gists_ttl: int = 15552000
 
     @classmethod
     def _process_env_vars(cls, config_dict):
@@ -228,15 +234,6 @@ class Config:
                     "jina-embeddings-v3",
                 }, "embedding_model must be one of the following: jina-embeddings-v3"
 
-        # Image storage and multimodal config: convert string to enum for backward compatibility
-        # Actual validation is deferred to LindormImageStore initialization
-        if isinstance(self.image_storage_type, str):
-            try:
-                from lindormmemobase.models.enums import ImageStorageType as ImageStorageTypeEnum
-                self.image_storage_type = ImageStorageTypeEnum(self.image_storage_type)
-            except (ValueError, ImportError):
-                pass  # Keep as string if enum not available
-
         if isinstance(self.multimodal_embedding_provider, str):
             try:
                 from lindormmemobase.models.enums import MultimodalEmbeddingProvider as MultimodalEmbeddingProviderEnum
@@ -260,19 +257,10 @@ class Config:
         from lindormmemobase.utils.errors import ConfigurationError
 
         try:
-            from lindormmemobase.models.enums import ImageStorageType, MultimodalEmbeddingProvider, VLModelProvider
+            from lindormmemobase.models.enums import MultimodalEmbeddingProvider, VLModelProvider
         except ImportError:
             # Enums not available, skip validation
             return
-
-        # Enforce URL-only storage
-        if self.image_storage_type != ImageStorageType.URL:
-            raise ConfigurationError("Only image_storage_type='url' is supported")
-
-        # OSS configuration is optional for URL storage
-        # Only required if you need to upload images to OSS
-        # For storing external image URLs, OSS config is not needed
-        # Remove validation for image_oss_endpoint and image_oss_bucket
 
         # Validate multimodal embedding provider
         if self.multimodal_embedding_provider == MultimodalEmbeddingProvider.LINDORMAI:

@@ -2,6 +2,8 @@
 
 This file contains important notes for Claude Code (claude.ai/code) when working with this repository.
 
+Use .venv/ the virutal enviroment when running python scripts.
+
 ## Lindorm Wide Table SQL Best Practices
 
 ### Checking Table Existence

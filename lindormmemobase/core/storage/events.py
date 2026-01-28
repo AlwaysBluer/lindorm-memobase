@@ -81,8 +81,12 @@ class LindormEventsStorage(LindormStorageBase):
                 LOG.info("UserEvents table already exists, skipping creation")
                 return
 
-            # Create UserEvents table
-            cursor.execute("""
+            # Create UserEvents table with optional TTL
+            ttl_clause = ""
+            if self.config.lindorm_events_ttl > 0:
+                ttl_clause = f"WITH (TTL='{self.config.lindorm_events_ttl}')"
+
+            cursor.execute(f"""
                 CREATE TABLE UserEvents (
                     user_id VARCHAR(255) NOT NULL,
                     project_id VARCHAR(255) NOT NULL,
@@ -93,6 +97,7 @@ class LindormEventsStorage(LindormStorageBase):
                     updated_at TIMESTAMP,
                     PRIMARY KEY(user_id, project_id, event_id)
                 )
+                {ttl_clause}
             """)
             conn.commit()
             LOG.info("UserEvents table created")
