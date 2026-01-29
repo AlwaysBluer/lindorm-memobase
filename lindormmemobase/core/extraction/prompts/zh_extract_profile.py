@@ -5,6 +5,7 @@ from lindormmemobase.config import Config
 
 ADD_KWARGS = {
     "prompt_id": "zh_extract_profile",
+    "max_tokens": 4096,
 }
 
 EXAMPLES = [

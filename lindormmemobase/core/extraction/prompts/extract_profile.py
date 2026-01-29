@@ -4,6 +4,7 @@ from lindormmemobase.models.response import AIUserProfiles
 
 ADD_KWARGS = {
     "prompt_id": "extract_profile",
+    "max_tokens": 4096,
 }
 EXAMPLES = [
     (

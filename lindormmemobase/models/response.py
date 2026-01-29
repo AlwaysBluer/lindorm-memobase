@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import IntEnum
 from typing import Optional, Any, List, Generic, TypeVar, Union
+import json
 
 import numpy as np
 from pydantic import BaseModel, Field, field_validator
@@ -32,6 +33,18 @@ class AIUserProfile(BaseModel):
 
 class AIUserProfiles(BaseModel):
     facts: list[AIUserProfile] = Field(..., description="List of user profile facts")
+
+    @field_validator('facts', mode='before')
+    @classmethod
+    def parse_facts_string(cls, v):
+        """Parse facts from JSON string if LLM returns it as string instead of list."""
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # If parsing fails, return as-is to let Pydantic handle the error
+                return v
+        return v
 
 
 class ProfileData(BaseModel):
