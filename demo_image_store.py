@@ -44,7 +44,7 @@ python demo_image_store.py
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from lindormmemobase.image_store import LindormImageStore
@@ -76,10 +76,10 @@ async def demo_add_image_from_url(store: LindormImageStore) -> Optional[str]:
             project_id=PROJECT_ID,
             user_id=USER_ID,
             image_url=image_url,
-            caption="Fresh fruits image",
+            caption="新鲜水果图片",
             auto_generate_caption=True,  # Will override the caption above
             generate_embedding=True,
-            metadata={"source": "demo_url", "added_at": datetime.utcnow().isoformat()},
+            metadata={"source": "demo_url", "added_at": datetime.now(timezone.utc).isoformat()},
         )
         print(f"✅ Added: image_id={result.image_id}")
         print(f"   Caption: {result.caption}")
@@ -117,8 +117,8 @@ async def demo_search_by_text(store: LindormImageStore) -> None:
     print_section("3. Search by Text (Three Modes)")
 
     queries = [
-        "fruits",  # Should match the URL image
-        "sunset",  # No match expected
+        "水果",  # Should match the URL image
+        "日落",  # No match expected
     ]
 
     for mode in [SearchMode.CAPTION, SearchMode.EMBEDDING, SearchMode.HYBRID]:
@@ -234,7 +234,7 @@ async def demo_update_image(store: LindormImageStore, image_id: str) -> None:
     """Demo: Update image caption and regenerate embedding."""
     print_section("7. Update Image")
 
-    new_caption = "Updated: A small red pixel for testing"
+    new_caption = "更新：用于测试的红色小像素"
     print(f"Updating image {image_id}...")
 
     try:
