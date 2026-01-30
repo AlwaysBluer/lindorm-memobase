@@ -26,6 +26,16 @@ RETRYABLE_ERRORS = (
 )
 
 
+def _append_json_repair_prompt(system_prompt: str | None) -> str:
+    repair_hint = (
+        "Return only a valid JSON object that strictly matches the required schema. "
+        "Do not include markdown or any extra text."
+    )
+    if system_prompt:
+        return f"{system_prompt}\n\n{repair_hint}"
+    return repair_hint
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -162,29 +172,41 @@ async def llm_complete_with_schema(
     kwargs["response_format"] = {"type": "json_object"}
     kwargs["json_mode"] = True
 
-    # Call LLM
-    try:
-        response_str = await llm_complete(
-            prompt,
-            system_prompt=system_prompt,
-            history_messages=history_messages,
-            model=use_model,
-            max_tokens=max_tokens,
-            config=config,
-            **kwargs,
+    last_response_str = None
+    for attempt in range(3):
+        current_system_prompt = (
+            system_prompt if attempt == 0 else _append_json_repair_prompt(system_prompt)
         )
-    except Exception as e:
-        raise LLMError(f"LLM call failed: {e}") from e
+        try:
+            response_str = await llm_complete(
+                prompt,
+                system_prompt=current_system_prompt,
+                history_messages=history_messages,
+                model=use_model,
+                max_tokens=max_tokens,
+                config=config,
+                **kwargs,
+            )
+            last_response_str = response_str
+        except Exception as e:
+            raise LLMError(f"LLM call failed: {e}") from e
 
-    # Validate response with Pydantic
-    # When json_mode=True, llm_complete returns dict; when False, returns str
-    try:
-        if isinstance(response_str, dict):
-            # LLM already parsed JSON, validate dict directly
-            return response_model.model_validate(response_str)
-        else:
-            # LLM returned raw JSON string, parse it
-            return response_model.model_validate_json(response_str)
-    except Exception as e:
-        LOG.error(f"Response validation failed: {e}\nRaw response: {response_str}")
-        raise LLMError(f"Response validation failed: {e}") from e
+        # Validate response with Pydantic
+        # When json_mode=True, llm_complete returns dict; when False, returns str
+        try:
+            if isinstance(response_str, dict):
+                # LLM already parsed JSON, validate dict directly
+                return response_model.model_validate(response_str)
+            else:
+                # LLM returned raw JSON string, parse it
+                return response_model.model_validate_json(response_str)
+        except Exception as e:
+            if attempt < 2:
+                LOG.warning(
+                    f"Response validation failed (attempt {attempt + 1}/3), retrying with stricter JSON instruction."
+                )
+                continue
+            LOG.error(
+                f"Response validation failed: {e}\nRaw response: {last_response_str}"
+            )
+            raise LLMError(f"Response validation failed: {e}") from e
