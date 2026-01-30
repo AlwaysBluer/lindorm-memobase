@@ -6,10 +6,36 @@ from lindormmemobase.config import LOG
 from lindormmemobase.utils.errors import LLMError
 
 
-DEFAULT_CAPTION_PROMPT = (
-    "Describe the image in a single concise paragraph. Focus on observable objects, "
-    "people, actions, and the scene. Avoid speculation or sensitive inferences."
-)
+def _get_prompt(config, prompt: Optional[str] = None, detailed: bool = False) -> str:
+    """Get caption prompt based on config language.
+
+    Args:
+        config: System configuration
+        prompt: Optional custom prompt (takes precedence)
+        detailed: Whether to use detailed prompt
+
+    Returns:
+        Prompt string for caption generation
+    """
+    if prompt is not None:
+        return prompt
+
+    if config.language == "zh":
+        from .prompts import zh_caption
+        return zh_caption.get_caption_prompt(detailed=detailed)
+    else:
+        from .prompts import caption
+        return caption.get_caption_prompt(detailed=detailed)
+
+
+def _get_system_prompt(config) -> str:
+    """Get system prompt based on config language."""
+    if config.language == "zh":
+        from .prompts import zh_caption
+        return zh_caption.get_system_prompt()
+    else:
+        from .prompts import caption
+        return caption.get_system_prompt()
 
 
 def _join_url(base_url: str, path: str) -> str:
@@ -31,7 +57,24 @@ async def generate_image_caption(
     config=None,
     model: Optional[str] = None,
     prompt: Optional[str] = None,
+    detailed: bool = False,
 ) -> str:
+    """Generate image caption using vision-language model.
+
+    Args:
+        image_url: URL of the image to caption
+        config: System configuration (required)
+        model: Override model name
+        prompt: Custom caption prompt (optional, uses language-specific default if not provided)
+        detailed: Whether to use detailed prompt (default: False)
+
+    Returns:
+        Generated caption text
+
+    Raises:
+        ValueError: If config or image_url is missing
+        LLMError: If caption generation fails
+    """
     if config is None:
         raise ValueError("config parameter is required")
     if not image_url:
@@ -39,7 +82,8 @@ async def generate_image_caption(
 
     provider = config.vl_model_provider
     model = model or config.vl_model
-    prompt = prompt or DEFAULT_CAPTION_PROMPT
+    system_prompt = _get_system_prompt(config)
+    user_prompt = _get_prompt(config, prompt, detailed=detailed)
 
     if provider == "lindormai":
         base_url = _get_vl_base_url(config)
@@ -69,6 +113,10 @@ async def generate_image_caption(
         "model": model,
         "messages": [
             {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
                 "role": "user",
                 "content": [
                     {
@@ -77,7 +125,7 @@ async def generate_image_caption(
                     },
                     {
                         "type": "text",
-                        "text": prompt,
+                        "text": user_prompt,
                     },
                 ],
             }
