@@ -1,10 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from enum import IntEnum
 from typing import Optional, Any, List, Generic, TypeVar, Union
 import json
 
 import numpy as np
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, field_serializer
+
 
 
 class CODE(IntEnum):
@@ -184,6 +186,15 @@ class ImageData(BaseModel):
             except ValueError:
                 pass
         return v
+
+    @field_serializer('created_at', 'updated_at', when_used='json')
+    def serialize_datetime(self, v: Optional[datetime]) -> Optional[str]:
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        beijing_tz = ZoneInfo("Asia/Shanghai")
+        return v.astimezone(beijing_tz).isoformat()
 
 
 class ImageInput(BaseModel):
