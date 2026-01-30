@@ -1,6 +1,8 @@
 import re
 import json
 import difflib
+import ast
+from typing import Any
 
 from lindormmemobase.config import LOG, CONFIG
 
@@ -79,6 +81,205 @@ def extract_first_complete_json(s: str):
     return None
 
 
+def strip_code_fences(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    lines = stripped.splitlines()
+    if not lines:
+        return stripped
+    if lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def find_first_json_like_block(text: str) -> str | None:
+    start_idx = None
+    open_char = None
+    close_char = None
+    in_string = False
+    escape = False
+    depth = 0
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+            continue
+
+        if start_idx is None and ch in "{[":
+            start_idx = i
+            open_char = ch
+            close_char = "}" if ch == "{" else "]"
+            depth = 1
+            continue
+
+        if start_idx is not None:
+            if ch == open_char:
+                depth += 1
+            elif ch == close_char:
+                depth -= 1
+                if depth == 0:
+                    return text[start_idx : i + 1]
+
+    if start_idx is not None:
+        return text[start_idx:]
+    return None
+
+
+def _replace_json_primitives(text: str) -> str:
+    text = re.sub(r"\bNone\b", "null", text)
+    text = re.sub(r"\bTrue\b", "true", text)
+    text = re.sub(r"\bFalse\b", "false", text)
+    return text
+
+
+def _remove_trailing_commas(text: str) -> str:
+    return re.sub(r",\s*([}\]])", r"\1", text)
+
+
+def _fix_common_json_issues(text: str) -> str:
+    fixed = text.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    fixed = _remove_trailing_commas(fixed)
+    fixed = _replace_json_primitives(fixed)
+    if fixed.count('"') == 0 and fixed.count("'") > 0:
+        fixed = re.sub(r"'", '"', fixed)
+    return fixed
+
+
+def _try_json_loads(text: str):
+    try:
+        return json.loads(text)
+    except Exception:
+        return None
+
+
+def _try_literal_eval(text: str):
+    try:
+        value = ast.literal_eval(text)
+    except Exception:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    return None
+
+
+def _extract_object_blocks(text: str) -> list[str]:
+    blocks = []
+    in_string = False
+    escape = False
+    depth = 0
+    start = None
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+            continue
+
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    blocks.append(text[start : i + 1])
+                    start = None
+
+    return blocks
+
+
+def _parse_array_fallback(text: str):
+    blocks = _extract_object_blocks(text)
+    if not blocks:
+        return None
+    items = []
+    for block in blocks:
+        parsed = _try_json_loads(block)
+        if parsed is None:
+            parsed = _try_literal_eval(block)
+        if parsed is None:
+            fixed = _fix_common_json_issues(block)
+            parsed = _try_json_loads(fixed)
+        if parsed is None:
+            parsed = extract_values_from_json(block, allow_no_quotes=True)
+        if parsed:
+            items.append(parsed)
+    return items or None
+
+
+def _normalize_embedded_json(value: Any):
+    if isinstance(value, dict):
+        return {k: _normalize_embedded_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_normalize_embedded_json(v) for v in value]
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate.startswith("{") or candidate.startswith("["):
+            parsed = _try_json_loads(candidate)
+            if parsed is None:
+                parsed = _try_literal_eval(candidate)
+            if parsed is None:
+                fixed = _fix_common_json_issues(candidate)
+                parsed = _try_json_loads(fixed)
+            if parsed is None and candidate.startswith("["):
+                parsed = _parse_array_fallback(candidate)
+            if parsed is not None:
+                return _normalize_embedded_json(parsed)
+    return value
+
+
+def parse_llm_json_like(response: str) -> Any | None:
+    if response is None:
+        return None
+    if isinstance(response, (dict, list)):
+        return response
+
+    text = strip_code_fences(str(response))
+    if not text:
+        return None
+
+    candidates = [text]
+    block = find_first_json_like_block(text)
+    if block and block not in candidates:
+        candidates.append(block)
+
+    for candidate in candidates:
+        parsed = _try_json_loads(candidate)
+        if parsed is None:
+            parsed = _try_literal_eval(candidate)
+        if parsed is None:
+            fixed = _fix_common_json_issues(candidate)
+            parsed = _try_json_loads(fixed)
+        if parsed is None and candidate.strip().startswith("["):
+            parsed = _parse_array_fallback(candidate)
+        if parsed is None and candidate.strip().startswith("{"):
+            parsed = extract_values_from_json(candidate, allow_no_quotes=True)
+        if parsed is not None:
+            return _normalize_embedded_json(parsed)
+    return None
+
+
 def parse_value(value: str):
     """Convert a string value to its appropriate type (int, float, bool, None, or keep as string). Work as a more broad 'eval()'"""
     value = value.strip()
@@ -127,7 +328,7 @@ def extract_values_from_json(json_string, allow_no_quotes=False):
 
 def convert_response_to_json(response: str) -> dict:
     """Convert response string to JSON, with error handling and fallback to non-standard JSON extraction."""
-    prediction_json = extract_first_complete_json(response)
+    prediction_json = parse_llm_json_like(response)
 
     if prediction_json is None:
         LOG.info("Attempting to extract values from a non-standard JSON string...")
