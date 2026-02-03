@@ -1,7 +1,7 @@
 import json
 import asyncio
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from opensearchpy import OpenSearch
 from typing import Optional, Dict, List, Any
 
@@ -220,7 +220,8 @@ class LindormEventsStorage(LindormStorageBase):
             
             try:
                 cursor = conn.cursor()
-                now = datetime.now(timezone.utc)
+                # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+                now = datetime.now(self.config.timezone).replace(tzinfo=None)
                 
                 # Convert event_data dict to JSON string
                 event_data_json = json.dumps(event_data)
@@ -330,7 +331,8 @@ class LindormEventsStorage(LindormStorageBase):
                 cursor = conn.cursor(dictionary=True)
                 
                 # Calculate time cutoff
-                time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
+                # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+                time_cutoff = datetime.now(self.config.timezone).replace(tzinfo=None) - timedelta(days=time_range_in_days)
                 
                 # Build query based on whether project_id is specified
                 if project_id:
@@ -482,7 +484,8 @@ class LindormEventsStorage(LindormStorageBase):
         See: lindormmemobase/core/storage/images.py:577-662 for the corrected pattern.
         """
         try:
-            time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
+            # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+            time_cutoff = datetime.now(self.config.timezone).replace(tzinfo=None) - timedelta(days=time_range_in_days)
             # Convert to milliseconds timestamp for TIMESTAMP field
             time_cutoff_ms = int(time_cutoff.timestamp() * 1000)
             

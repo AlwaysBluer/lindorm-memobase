@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, Dict, List, Any, Tuple
 from opensearchpy import OpenSearch
 
@@ -195,7 +195,8 @@ class LindormImageStorage(LindormStorageBase):
 
             try:
                 cursor = conn.cursor()
-                now = datetime.now(timezone.utc)
+                # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+                now = datetime.now(self.config.timezone).replace(tzinfo=None)
                 metadata_json = json.dumps(metadata) if metadata is not None else None
                 feature_vector_str = validate_and_format_embedding(
                     feature_vector,
@@ -288,7 +289,7 @@ class LindormImageStorage(LindormStorageBase):
                     return image_id
 
                 fields.append("updated_at = %s")
-                params.append(datetime.now(timezone.utc))
+                params.append(datetime.now(self.config.timezone).replace(tzinfo=None))
                 params.extend([str(actual_project_id), str(user_id), str(image_id)])
 
                 query = f"UPDATE ImageStore SET {', '.join(fields)} WHERE project_id = %s AND user_id = %s AND image_id = %s"

@@ -5,7 +5,7 @@ separated from full event storage for better code organization and maintainabili
 
 This is an independent service with its own table, index, and OpenSearch client.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from opensearchpy import OpenSearch
 from mysql.connector import pooling
 from typing import Optional, Dict, List, Any
@@ -212,7 +212,8 @@ class LindormEventGistsStorage(LindormStorageBase):
             
             try:
                 cursor = conn.cursor()
-                now = datetime.now(timezone.utc)
+                # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+                now = datetime.now(self.config.timezone).replace(tzinfo=None)
                 
                 # Validate and format embedding with strict dimension check
                 embedding_str = validate_and_format_embedding(
@@ -370,7 +371,8 @@ class LindormEventGistsStorage(LindormStorageBase):
                 cursor = conn.cursor(dictionary=True)
                 
                 # Calculate time cutoff
-                time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
+                # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+                time_cutoff = datetime.now(self.config.timezone).replace(tzinfo=None) - timedelta(days=time_range_in_days)
                 
                 # Build query based on whether project_id is specified
                 if project_id:
@@ -443,7 +445,8 @@ class LindormEventGistsStorage(LindormStorageBase):
             List of gist dictionaries with id, gist_data, created_at, updated_at, similarity
         """
         try:
-            time_cutoff = datetime.now(timezone.utc) - timedelta(days=time_range_in_days)
+            # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+            time_cutoff = datetime.now(self.config.timezone).replace(tzinfo=None) - timedelta(days=time_range_in_days)
             # Convert to milliseconds timestamp for TIMESTAMP field
             time_cutoff_ms = int(time_cutoff.timestamp() * 1000)
             

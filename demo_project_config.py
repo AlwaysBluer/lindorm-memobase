@@ -11,6 +11,88 @@ Features demonstrated:
 3. Three-tier priority: explicit profile_config > DB config > config.yaml fallback
 4. CRUD operations: read, update, delete project configs
 5. Cache management for performance
+
+================================================================================
+SUBTOPIC FIELD REFERENCE (子主题字段说明)
+================================================================================
+
+SubTopic(
+    name: str,                    # [必填] 子主题名称，如 "学习时间"、"编程能力"
+    description: Optional[str],   # [可选] 提取阶段：告诉 LLM 这个字段是干什么的
+    update_description: Optional[str],  # [可选] 合并阶段：告诉 LLM 如何处理新旧数据冲突
+    validate_value: Optional[bool],     # [可选] 是否强制验证，True 则强制走 merge 验证
+)
+
+================================================================================
+FIELD USAGE GUIDE (字段使用指南)
+================================================================================
+
+1. name (必填)
+   - 子主题的唯一标识符
+   - 示例: "学习时间", "编程能力", "常买品类"
+
+2. description (推荐填写)
+   - 用途：提取阶段，帮助 LLM 理解该字段的含义，从对话中准确抽取信息
+   - 示例: "用户喜欢在什么时间段学习"
+   - 不填写：LLM 使用默认理解，可能不够精准
+
+3. update_description (高级配置)
+   - 用途：合并阶段，当旧值和新值冲突时，告诉 LLM 如何处理
+   - 常见策略:
+     - "只保留最新值" - 每次更新覆盖旧的
+     - "保留所有历史值，用逗号分隔" - 累积式记录
+     - "保留最详细的描述" - 选内容更丰富的
+   - 不填写：使用默认 merge 策略（智能合并新旧内容）
+
+4. validate_value (可选)
+   - 用途：控制是否强制走 merge 验证逻辑
+   - True:  必须验证，即使全局关闭验证也会验证
+   - False/None: 跟随全局 PROFILE_VALIDATE_MODE 配置
+   - 场景: 关键字段（如用户身份）设为 True，次要字段跟随全局
+
+================================================================================
+COMMON PATTERNS (常见配置模式)
+================================================================================
+
+PATTERN 1: 简单子主题 (只填 name)
+    {"name": "学习科目"}  # 适合通用场景，使用默认行为
+
+PATTERN 2: 需要准确理解 (加 description)
+    {
+        "name": "学习时间",
+        "description": "用户喜欢在什么时间段学习，如早上、晚上、周末等"
+    }
+
+PATTERN 3: 覆盖式更新 (加 update_description)
+    {
+        "name": "最后活跃时间",
+        "description": "用户最后一次活跃的时间",
+        "update_description": "只保留最新的时间，丢弃旧的记录"  # 覆盖式
+    }
+
+PATTERN 4: 累积式更新 (不同的 update_description)
+    {
+        "name": "学习科目",
+        "description": "用户学习过的所有科目",
+        "update_description": "保留所有提到过的科目，用逗号连接，去重"  # 累积式
+    }
+
+PATTERN 5: 强制验证 (加 validate_value)
+    {
+        "name": "用户身份",
+        "description": "用户的职业或身份标识",
+        "validate_value": True  # 关键信息，强制验证
+    }
+
+PATTERN 6: 完整配置 (全部字段)
+    {
+        "name": "编程能力",
+        "description": "用户的编程技能水平和掌握的语言",
+        "update_description": "保留最新和最详细的描述，合并相关技能",
+        "validate_value": True
+    }
+
+================================================================================
 """
 
 import asyncio
@@ -417,12 +499,251 @@ async def demo_project_specific_config():
     print("  ✓ All cache invalidated")
     print()
 
-    # ========== Summary ==========
+    # ========== Part 9: Advanced Field Usage Examples ==========
     print("=" * 80)
-    print("Summary: Complete API Usage")
+    print("Part 9: Advanced SubTopic Field Usage Examples")
     print("=" * 80)
     print()
-    print("CRUD Operations:")
+    print("Real-world examples demonstrating when to use each field:")
+    print()
+
+    print("┌─ EXAMPLE 1: Override-style updates (覆盖式更新)")
+    print("│  Scenario: User's last login time - only keep the latest")
+    print("│")
+    last_login_config = ProfileConfig(
+        language="zh",
+        overwrite_user_profiles=[{
+            "topic": "活跃状态",
+            "description": "用户在平台的活跃情况",
+            "sub_topics": [
+                {
+                    "name": "最后登录时间",
+                    "description": "用户最后一次登录平台的时间",
+                    "update_description": "只保留最新提到的登录时间，覆盖旧的记录"
+                },
+                {
+                    "name": "活跃时段",
+                    "description": "用户经常在什么时间段活跃",
+                    "update_description": "保留所有提到的时段，合并为完整的时间偏好描述"
+                }
+            ]
+        }]
+    )
+    print("│  Config:")
+    print("│    SubTopic(")
+    print("│        name='最后登录时间',")
+    print("│        description='用户最后一次登录平台的时间',")
+    print("│        update_description='只保留最新提到的登录时间，覆盖旧的记录'")
+    print("│    )")
+    print("│")
+    print("│  Behavior:")
+    print("│    Day 1: '我昨天登录了' → '昨天'")
+    print("│    Day 2: '我刚才登录了' → '刚才' (旧的 '昨天' 被覆盖)")
+    print("│")
+    print("└─────────────────────────────────────────────────────────────")
+    print()
+
+    print("┌─ EXAMPLE 2: Accumulative updates (累积式更新)")
+    print("│  Scenario: User's learned skills - collect all mentioned skills")
+    print("│")
+    skills_config = ProfileConfig(
+        language="zh",
+        overwrite_user_profiles=[{
+            "topic": "技能清单",
+            "description": "用户掌握的所有技能",
+            "sub_topics": [
+                {
+                    "name": "编程语言",
+                    "description": "用户会使用的编程语言",
+                    "update_description": "保留所有提到过的编程语言，用顿号连接，去重，按提及时间排序"
+                },
+                {
+                    "name": "框架工具",
+                    "description": "用户使用过的开发框架和工具",
+                    "update_description": "累积式添加，用逗号分隔，去除重复项"
+                }
+            ]
+        }]
+    )
+    print("│  Config:")
+    print("│    SubTopic(")
+    print("│        name='编程语言',")
+    print("│        description='用户会使用的编程语言',")
+    print("│        update_description='保留所有提到过的编程语言，用顿号连接，去重'")
+    print("│    )")
+    print("│")
+    print("│  Behavior:")
+    print("│    Day 1: '我会Python' → 'Python'")
+    print("│    Day 2: '我还学了JavaScript' → 'Python、JavaScript'")
+    print("│    Day 3: 'Python是我的主力语言' → 'Python、JavaScript' (去重)")
+    print("│")
+    print("└─────────────────────────────────────────────────────────────")
+    print()
+
+    print("┌─ EXAMPLE 3: Smart merge (智能合并)")
+    print("│  Scenario: User's bio description - merge intelligently")
+    print("│")
+    bio_config = ProfileConfig(
+        language="zh",
+        overwrite_user_profiles=[{
+            "topic": "个人简介",
+            "description": "用户的基本个人信息",
+            "sub_topics": [
+                {
+                    "name": "自我介绍",
+                    "description": "用户对自己的描述和介绍",
+                    "update_description": "智能合并新旧描述，保留关键信息，避免重复，保持叙述连贯"
+                }
+            ]
+        }]
+    )
+    print("│  Config:")
+    print("│    SubTopic(")
+    print("│        name='自我介绍',")
+    print("│        description='用户对自己的描述和介绍',")
+    print("│        update_description='智能合并新旧描述，保留关键信息，避免重复'")
+    print("│    )")
+    print("│")
+    print("│  Behavior:")
+    print("│    Day 1: '我是一名程序员' → '我是一名程序员'")
+    print("│    Day 2: '我住在北京，喜欢编程' → '我是一名程序员，住在北京，喜欢编程'")
+    print("│")
+    print("└─────────────────────────────────────────────────────────────")
+    print()
+
+    print("┌─ EXAMPLE 4: Critical data with validation (关键数据强制验证)")
+    print("│  Scenario: User identity - must be accurate")
+    print("│")
+    identity_config = ProfileConfig(
+        language="zh",
+        overwrite_user_profiles=[{
+            "topic": "身份信息",
+            "description": "用户的核心身份标识",
+            "sub_topics": [
+                {
+                    "name": "职业",
+                    "description": "用户的职业或工作身份",
+                    "validate_value": True  # 关键信息，强制验证
+                },
+                {
+                    "name": "行业",
+                    "description": "用户所在的行业领域",
+                    "validate_value": True  # 强制验证
+                },
+                {
+                    "name": "兴趣爱好",  # 次要信息，不强制验证
+                    "description": "用户的业余爱好"
+                }
+            ]
+        }]
+    )
+    print("│  Config:")
+    print("│    SubTopic(")
+    print("│        name='职业',")
+    print("│        description='用户的职业或工作身份',")
+    print("│        validate_value=True  # 强制验证，确保准确性")
+    print("│    )")
+    print("│")
+    print("│  Behavior:")
+    print("│    - 即使全局关闭验证，职业和行业也会走 merge 验证")
+    print("│    - 兴趣爱好跟随全局配置，可能跳过验证")
+    print("│")
+    print("└─────────────────────────────────────────────────────────────")
+    print()
+
+    print("┌─ EXAMPLE 5: Minimal config (最简配置)")
+    print("│  Scenario: Quick setup for non-critical fields")
+    print("│")
+    minimal_config = ProfileConfig(
+        language="zh",
+        overwrite_user_profiles=[{
+            "topic": "基础信息",
+            "sub_topics": [
+                {"name": "昵称"},           # 只有 name，使用默认行为
+                {"name": "所在地"},
+                {"name": "个人简介"}
+            ]
+        }]
+    )
+    print("│  Config:")
+    print("│    SubTopic(name='昵称')  # 最简配置")
+    print("│")
+    print("│  Behavior:")
+    print("│    - 使用默认的 description (从 name 推断)")
+    print("│    - 使用默认的 merge 策略")
+    print("│    - 跟随全局验证配置")
+    print("│")
+    print("└─────────────────────────────────────────────────────────────")
+    print()
+
+    print("┌─ EXAMPLE 6: Complete config (完整配置示例)")
+    print("│  Scenario: E-commerce user's shipping preference")
+    print("│")
+    shipping_config = ProfileConfig(
+        language="zh",
+        overwrite_user_profiles=[{
+            "topic": "收货偏好",
+            "description": "用户的收货地址和配送偏好",
+            "sub_topics": [
+                {
+                    "name": "默认收货地址",
+                    "description": "用户最常用的收货地址，包括省市区详细地址",
+                    "update_description": "只保留最新的完整地址，如果新信息更详细则更新",
+                    "validate_value": True  # 地址信息很重要
+                },
+                {
+                    "name": "配送时间偏好",
+                    "description": "用户希望收货的时间段，如工作日、周末、具体时段",
+                    "update_description": "保留最新的时间偏好，如果用户说'只要工作日'则覆盖之前的'周末配送'"
+                },
+                {
+                    "name": "收货人备注",
+                    "description": "配送时的特殊要求，如'放快递柜'、'送货上门'等",
+                    "update_description": "合并所有备注，用分号分隔不同要求"
+                }
+            ]
+        }]
+    )
+    print("│  Config (all fields populated):")
+    print("│    SubTopic(")
+    print("│        name='默认收货地址',")
+    print("│        description='用户最常用的收货地址，包括省市区详细地址',")
+    print("│        update_description='只保留最新的完整地址，如果新信息更详细则更新',")
+    print("│        validate_value=True")
+    print("│    )")
+    print("│")
+    print("└─────────────────────────────────────────────────────────────")
+    print()
+
+    print("✅ Advanced examples completed!")
+    print("   Key takeaways:")
+    print("   - Simple fields: only name needed")
+    print("   - Need accuracy: add description")
+    print("   - Special merge behavior: add update_description")
+    print("   - Critical data: set validate_value=True")
+    print()
+
+    # ========== Summary ==========
+    print("=" * 80)
+    print("Summary: Complete API Reference")
+    print("=" * 80)
+    print()
+
+    print("┌─────────────────────────────────────────────────────────────────┐")
+    print("│ 1. SUBTOPIC FIELD CHEATSHEET                                     │")
+    print("└─────────────────────────────────────────────────────────────────┘")
+    print()
+    print("  Field               Required? Purpose                           When to Use")
+    print("  ─────────────────── ───────── ─────────────────────────────── ────────────────────────")
+    print("  name                YES       Subtopic identifier              Always")
+    print("  description         NO        Help LLM understand the field    Need accurate extraction")
+    print("  update_description  NO        Control merge behavior           Special merge strategy needed")
+    print("  validate_value      NO        Force validation on/off          Critical/less-critical data")
+    print()
+
+    print("┌─────────────────────────────────────────────────────────────────┐")
+    print("│ 2. CRUD OPERATIONS                                               │")
+    print("└─────────────────────────────────────────────────────────────────┘")
     print()
     print("  CREATE / UPDATE:")
     print("    await memobase.set_project_config(project_id, profile_config)")
@@ -437,22 +758,54 @@ async def demo_project_specific_config():
     print("    await memobase.invalidate_project_config_cache(project_id)")
     print("    await memobase.invalidate_project_config_cache()  # All")
     print()
-    print("Usage in extract_memories():")
-    print()
-    print("  # Automatic config loading by project_id")
-    print("  result = await memobase.extract_memories(")
-    print("      user_id='user123',")
-    print("      blobs=[chat_blob],")
-    print("      project_id='education_app'  # Loads DB config automatically")
-    print("  )")
-    print()
-    print("Configuration Priority (highest to lowest):")
+
+    print("┌─────────────────────────────────────────────────────────────────┐")
+    print("│ 3. CONFIGURATION PRIORITY (highest to lowest)                    │")
+    print("└─────────────────────────────────────────────────────────────────┘")
     print()
     print("  1️⃣  Explicit profile_config parameter")
-    print("  2️⃣  Database config (ProjectProfileConfigs table)")
-    print("  3️⃣  config.yaml fallback")
+    print("      result = await memobase.extract_memories(")
+    print("          user_id='user123',")
+    print("          blobs=[blob],")
+    print("          profile_config=custom_config  # Explicit wins")
+    print("      )")
     print()
-    print("Demo completed successfully! 🎉")
+    print("  2️⃣  Database config (ProjectProfileConfigs table)")
+    print("      result = await memobase.extract_memories(")
+    print("          user_id='user123',")
+    print("          blobs=[blob],")
+    print("          project_id='education_app'  # Auto-load from DB")
+    print("      )")
+    print()
+    print("  3️⃣  config.yaml fallback")
+    print("      result = await memobase.extract_memories(")
+    print("          user_id='user123',")
+    print("          blobs=[blob]")
+    print("          # No project_id = use config.yaml")
+    print("      )")
+    print()
+
+    print("┌─────────────────────────────────────────────────────────────────┐")
+    print("│ 4. QUICK CONFIG TEMPLATES                                        │")
+    print("└─────────────────────────────────────────────────────────────────┘")
+    print()
+    print("  # Minimal (simple fields)")
+    print("  SubTopic(name='field_name')")
+    print()
+    print("  # With description (need accuracy)")
+    print('  SubTopic(name="学习时间", description="用户喜欢在什么时间段学习")')
+    print()
+    print("  # Override-style (keep latest)")
+    print('  SubTopic(name="最后登录", update_description="只保留最新的时间")')
+    print()
+    print("  # Accumulative (collect all)")
+    print('  SubTopic(name="学习科目", update_description="保留所有科目，用顿号连接")')
+    print()
+    print("  # Critical data (force validate)")
+    print('  SubTopic(name="用户身份", validate_value=True)')
+    print()
+
+    print("Demo completed successfully!")
     print("=" * 80)
 
 

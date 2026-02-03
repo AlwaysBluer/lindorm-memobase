@@ -1,6 +1,6 @@
 import uuid
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from opensearchpy import OpenSearch
 
@@ -199,7 +199,8 @@ class LindormTableStorage(LindormStorageBase):
                 cursor = conn.cursor()
                 for i, (content, attributes) in enumerate(zip(profiles, attributes_list)):
                     profile_id = str(uuid.uuid4())
-                    now = datetime.now(timezone.utc)
+                    # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+                    now = datetime.now(self.config.timezone).replace(tzinfo=None)
                     
                     topic = attributes.get('topic', '')
                     subtopic = attributes.get('sub_topic', '')
@@ -250,7 +251,8 @@ class LindormTableStorage(LindormStorageBase):
             try:
                 cursor = conn.cursor(dictionary=True)
                 for i, (profile_id, content, attributes) in enumerate(zip(profile_ids, contents, attributes_list)):
-                    now = datetime.now(timezone.utc)
+                    # Use configured timezone, strip tzinfo for Lindorm TIMESTAMP
+                    now = datetime.now(self.config.timezone).replace(tzinfo=None)
                     
                     if attributes is not None and 'update_hits' in attributes:
                         new_update_hits = attributes['update_hits']
