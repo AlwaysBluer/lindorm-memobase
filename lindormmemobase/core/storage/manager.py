@@ -28,13 +28,15 @@ class StorageManager:
     _event_gists_storage_cache: Dict[Tuple, 'LindormEventGistsStorage'] = {}
     _buffer_storage_cache: Dict[Tuple, 'LindormBufferStorage'] = {}
     _image_storage_cache: Dict[Tuple, 'LindormImageStorage'] = {}
-    
+    _topic_config_storage_cache: Dict[Tuple, 'TopicConfigStorage'] = {}
+
     # Thread-safe locks
     _table_lock = threading.Lock()
     _search_lock = threading.Lock()
     _event_gists_lock = threading.Lock()
     _buffer_lock = threading.Lock()
     _image_lock = threading.Lock()
+    _topic_config_lock = threading.Lock()
     
     # Initialization state
     _initialized = False
@@ -231,7 +233,32 @@ class StorageManager:
             if cache_key not in cls._image_storage_cache:
                 cls._image_storage_cache[cache_key] = LindormImageStorage(config)
             return cls._image_storage_cache[cache_key]
-    
+
+    @classmethod
+    def get_topic_config_storage(cls, config: Config):
+        """
+        Get or create a TopicConfigStorage instance.
+
+        Args:
+            config: Configuration object
+
+        Returns:
+            TopicConfigStorage instance
+        """
+        from .topic_configs import TopicConfigStorage
+
+        cache_key = (
+            config.lindorm_table_host,
+            config.lindorm_table_port,
+            config.lindorm_table_username,
+            config.lindorm_table_database
+        )
+
+        with cls._topic_config_lock:
+            if cache_key not in cls._topic_config_storage_cache:
+                cls._topic_config_storage_cache[cache_key] = TopicConfigStorage(config)
+            return cls._topic_config_storage_cache[cache_key]
+
     @classmethod
     def cleanup(cls) -> None:
         """
@@ -285,7 +312,16 @@ class StorageManager:
                 except Exception as e:
                     LOG.warning(f"Error closing image storage: {str(e)}")
             cls._image_storage_cache.clear()
-        
+
+        with cls._topic_config_lock:
+            for storage in cls._topic_config_storage_cache.values():
+                try:
+                    if hasattr(storage, 'pool') and storage.pool:
+                        pass
+                except Exception as e:
+                    LOG.warning(f"Error closing topic config storage: {str(e)}")
+            cls._topic_config_storage_cache.clear()
+
         with cls._init_lock:
             cls._initialized = False
             cls._init_task = None

@@ -49,12 +49,12 @@ class ProfileConfig:
         except Exception as e:
             raise ValueError(f"Failed to load ProfileConfig from {config_file_path}: {e}")
     
-    @classmethod 
+    @classmethod
     def load_from_config(cls, main_config) -> "ProfileConfig":
         """Create ProfileConfig from main Config object, extracting relevant fields."""
         profile_fields = {
             'language': main_config.language,
-            'profile_strict_mode': main_config.profile_strict_mode, 
+            'profile_strict_mode': main_config.profile_strict_mode,
             'profile_validate_mode': main_config.profile_validate_mode,
             'additional_user_profiles': main_config.additional_user_profiles,
             'overwrite_user_profiles': main_config.overwrite_user_profiles,
@@ -62,6 +62,19 @@ class ProfileConfig:
             'event_tags': main_config.event_tags
         }
         return cls(**profile_fields)
+
+    def _to_yaml_string(self) -> str:
+        """
+        Convert ProfileConfig to YAML string.
+
+        Returns:
+            YAML representation of this config
+        """
+        # Convert dataclass to dict, excluding None values
+        fields_dict = dataclasses.asdict(self)
+        # Filter out None values
+        filtered_dict = {k: v for k, v in fields_dict.items() if v is not None}
+        return yaml.dump(filtered_dict, allow_unicode=True, default_flow_style=False)
 
 
 class SubTopic(BaseModel):

@@ -71,6 +71,8 @@ class LindormMemobase:
             self.config = config if config is not None else Config.load_config()
             # Initialize storage layer
             self._init_storage_sync()
+            # Lazy initialization of TopicConfigStorage
+            self._topic_config_storage: Optional['TopicConfigStorage'] = None
         except Exception as e:
             raise ConfigurationError(f"Failed to load configuration: {str(e)}") from e
 
@@ -101,7 +103,117 @@ class LindormMemobase:
         from .core.storage.manager import StorageManager
         if not StorageManager.is_initialized():
             await StorageManager.initialize(self.config)
-    
+
+    @property
+    def topic_config_storage(self) -> 'TopicConfigStorage':
+        """Lazy initialization of TopicConfigStorage."""
+        if self._topic_config_storage is None:
+            from .core.storage.manager import StorageManager
+            self._topic_config_storage = StorageManager.get_topic_config_storage(self.config)
+        return self._topic_config_storage
+
+    async def invalidate_project_config_cache(self, project_id: Optional[str] = None) -> None:
+        """
+        Invalidate cache for project config.
+
+        Args:
+            project_id: Specific project ID to invalidate. If None, invalidates all.
+        """
+        self.topic_config_storage.invalidate_cache(project_id)
+
+    async def set_project_config(
+        self,
+        project_id: str,
+        profile_config: ProfileConfig
+    ) -> None:
+        """
+        Set or update ProfileConfig for a specific project in the database.
+
+        This stores the configuration in the ProjectProfileConfigs table,
+        which will be automatically loaded when extract_memories() or
+        process_buffer() is called with this project_id.
+
+        Args:
+            project_id: Project identifier (e.g., 'education_app', 'ecommerce')
+            profile_config: ProfileConfig object to store
+
+        Raises:
+            LindormMemobaseError: If operation fails
+
+        Example:
+            config = ProfileConfig(
+                language="zh",
+                overwrite_user_profiles=[{
+                    "topic": "学习偏好",
+                    "sub_topics": [{"name": "学习时间"}]
+                }]
+            )
+            await memobase.set_project_config("education_app", config)
+        """
+        try:
+            await self.topic_config_storage.set_profile_config(project_id, profile_config)
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to set project config: {str(e)}") from e
+
+    async def delete_project_config(self, project_id: str) -> bool:
+        """
+        Delete ProfileConfig for a specific project from the database.
+
+        After deletion, extract_memories() will fall back to config.yaml
+        for this project_id.
+
+        Args:
+            project_id: Project identifier
+
+        Returns:
+            True if deleted, False if config was not found
+
+        Raises:
+            LindormMemobaseError: If operation fails
+
+        Example:
+            deleted = await memobase.delete_project_config("education_app")
+        """
+        try:
+            return await self.topic_config_storage.delete_profile_config(project_id)
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to delete project config: {str(e)}") from e
+
+    async def get_project_config(self, project_id: str) -> Optional[ProfileConfig]:
+        """
+        Get ProfileConfig for a specific project from the database.
+
+        This method retrieves the current configuration stored in the database,
+        bypassing the cache. Returns None if no config exists for the project.
+
+        Args:
+            project_id: Project identifier
+
+        Returns:
+            ProfileConfig object if found in DB, None otherwise
+
+        Raises:
+            LindormMemobaseError: If operation fails
+
+        Example:
+            config = await memobase.get_project_config("education_app")
+            if config:
+                print(f"Language: {config.language}")
+                print(f"Topics: {config.overwrite_user_profiles}")
+        """
+        try:
+            # Invalidate cache first to ensure fresh read
+            self.topic_config_storage.invalidate_cache(project_id)
+            return await self.topic_config_storage.get_profile_config(project_id)
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to get project config: {str(e)}") from e
+
     @classmethod
     def from_yaml_file(cls, config_file_path: Union[str, Path]) -> "LindormMemobase":
         """
@@ -164,31 +276,46 @@ class LindormMemobase:
     
     
     async def extract_memories(
-        self, 
-        user_id: str, 
-        blobs: List[Blob], 
+        self,
+        user_id: str,
+        blobs: List[Blob],
         profile_config: Optional[ProfileConfig] = None,
         project_id: Optional[str] = None,
     ):
         """
         Extract memories from user blobs.
-        
+
+        Profile config is resolved in this order:
+        1. Explicitly provided profile_config parameter
+        2. Project-specific config from database
+        3. Global config from config.yaml (fallback)
+
         Args:
             user_id: Unique identifier for the user
             blobs: List of user data blobs to process
-            profile_config: Profile configuration. If None, uses default.
+            profile_config: Profile configuration. If None, uses DB or default.
             project_id: Project identifier for multi-tenancy. If None, uses default.
-            
+
         Returns:
             Extraction results data
-            
+
         Raises:
             LindormMemobaseError: If extraction fails
         """
         try:
+            from .utils.profile_config_resolver import resolve_profile_config
+
+            # Resolve profile config (handles DB lookup and fallback)
+            resolved_config = await resolve_profile_config(
+                project_id=project_id,
+                user_config=profile_config,
+                topic_config_storage=self.topic_config_storage,
+                main_config=self.config
+            )
+
             return await process_blobs(
                 user_id=user_id,
-                profile_config=profile_config or ProfileConfig.load_from_config(self.config),
+                profile_config=resolved_config,
                 blobs=blobs,
                 config=self.config,
                 project_id=project_id
@@ -1023,40 +1150,52 @@ class LindormMemobase:
     ) -> Optional[Any]:
         """
         Process blobs in the buffer and extract memories.
-        
+
+        Profile config is resolved using the same logic as extract_memories:
+        1. Explicitly provided profile_config parameter
+        2. Project-specific config from database
+        3. Global config from config.yaml (fallback)
+
         This method processes either all unprocessed blobs in the buffer or specific
         blob IDs, extracting user profiles and generating events based on the content.
-        
+
         Args:
             user_id: Unique identifier for the user
             blob_type: Type of blobs to process (default: BlobType.chat)
-            profile_config: Profile configuration for extraction. Uses default if None.
+            profile_config: Profile configuration for extraction. Uses DB or default if None.
             blob_ids: Specific blob IDs to process. If None, processes all unprocessed blobs.
             project_id: Optional project identifier for multi-tenancy. If None, uses default.
-            
+
         Returns:
             Processing result data if successful, None if no blobs to process
-            
+
         Raises:
             LindormMemobaseError: If buffer processing fails
-            
+
         Example:
             # Process all unprocessed chat blobs
             result = await memobase.process_buffer("user123", BlobType.chat)
-            
+
             # Process specific blob IDs with custom profile config
             custom_profile = ProfileConfig(language="zh")
             result = await memobase.process_buffer(
-                "user123", 
-                BlobType.chat, 
+                "user123",
+                BlobType.chat,
                 profile_config=custom_profile,
                 blob_ids=["blob-id-1", "blob-id-2"]
             )
         """
         try:
-            if profile_config is None:
-                profile_config = ProfileConfig()
-                
+            from .utils.profile_config_resolver import resolve_profile_config
+
+            # Resolve profile config (handles DB lookup and fallback)
+            resolved_config = await resolve_profile_config(
+                project_id=project_id,
+                user_config=profile_config,
+                topic_config_storage=self.topic_config_storage,
+                main_config=self.config
+            )
+
             if blob_ids is not None:
                 # Process specific blob IDs
                 result = await flush_buffer_by_ids(
@@ -1065,7 +1204,7 @@ class LindormMemobase:
                     buffer_ids=blob_ids,
                     config=self.config,
                     select_status=BufferStatus.idle,
-                    profile_config=profile_config,
+                    profile_config=resolved_config,
                     project_id=project_id
                 )
             else:
@@ -1074,10 +1213,10 @@ class LindormMemobase:
                     user_id=user_id,
                     blob_type=blob_type,
                     config=self.config,
-                    profile_config=profile_config,
+                    profile_config=resolved_config,
                     project_id=project_id
                 )
-                
+
             return result
         except Exception as e:
             if isinstance(e, LindormMemobaseError):
