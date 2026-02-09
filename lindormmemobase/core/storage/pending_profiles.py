@@ -301,6 +301,9 @@ class PendingProfiles(LindormStorageBase):
                 if project_id is not None:
                     query += " AND project_id = %s"
                     params.append(str(project_id))
+                else:
+                    # When no project_id specified, only return entries with NULL project_id (global scope)
+                    query += " AND project_id IS NULL"
 
                 # Order by created_at ASC (oldest first for merge)
                 query += " ORDER BY created_at ASC"
@@ -465,10 +468,11 @@ class PendingProfiles(LindormStorageBase):
                         (str(user_id), str(project_id))
                     )
                 else:
+                    # When no project_id specified, only delete entries with NULL project_id (global scope)
                     cursor.execute(
                         """
                         DELETE FROM PendingProfiles
-                        WHERE user_id = %s
+                        WHERE user_id = %s AND project_id IS NULL
                         """,
                         (str(user_id),)
                     )

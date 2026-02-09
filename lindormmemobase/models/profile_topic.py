@@ -86,8 +86,8 @@ class ProfileConfig:
             'overwrite_user_profiles': main_config.overwrite_user_profiles,
             'event_theme_requirement': main_config.event_theme_requirement,
             'event_tags': main_config.event_tags,
-            'merge_thresholds': getattr(main_config, 'merge_thresholds', {}) or {},
-            'max_pending_profiles': getattr(main_config, 'max_pending_profiles', 1000)
+            'merge_thresholds': main_config.merge_thresholds,
+            'max_pending_profiles': main_config.max_pending_profiles
         }
         return cls(**profile_fields)
 

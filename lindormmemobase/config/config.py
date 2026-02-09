@@ -104,6 +104,7 @@ class Config:
     enable_profile_splitting: bool = True
     profile_split_delimiter: str = "; "
     max_pending_profiles: int = 1000  # Maximum pending profiles per (user, topic, subtopic) for merge threshold feature
+    merge_thresholds: dict[str, int] = field(default_factory=dict)  # Merge thresholds per topic::subtopic
 
     minimum_chats_token_size_for_event_summary: int = 256
     event_tags: list[dict] = field(default_factory=list)

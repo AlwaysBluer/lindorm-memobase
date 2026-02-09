@@ -8,7 +8,7 @@ from lindormmemobase.core.extraction.prompts.utils import parse_string_into_merg
 from lindormmemobase.core.extraction.prompts.router import PROMPTS
 from lindormmemobase.models.profile_topic import UserProfileTopic, SubTopic, ProfileConfig
 from lindormmemobase.llm.complete import llm_complete, llm_complete_with_schema
-from lindormmemobase.utils.errors import ExtractionError
+from lindormmemobase.utils.errors import ExtractionError, PendingLimitExceededError
 from lindormmemobase.models.response import ProfileData, MergeOperationResult
 from lindormmemobase.models.types import MergeAddResult, UpdateResponse
 from lindormmemobase.models.llm_responses import MergeProfileResponse
@@ -192,6 +192,14 @@ async def handle_profile_merge_or_valid(
                     user_id, KEY[0], KEY[1], project_id
                 )
 
+                # Enforce max_pending_profiles limit before inserting
+                await pending_storage.check_pending_limit(
+                    user_id=user_id,
+                    topic=KEY[0],
+                    subtopic=KEY[1],
+                    project_id=project_id
+                )
+
                 # Check if we've reached threshold
                 if current_count < merge_threshold - 1:
                     # Store in pending cache
@@ -212,13 +220,40 @@ async def handle_profile_merge_or_valid(
                     )
                     return
                 else:
-                    # Threshold reached, proceed with merge
+                    # Threshold reached: insert current profile to pending first,
+                    # then batch merge ALL pending entries (including current one)
                     TRACE_LOG.debug(
                         user_id,
                         f"Threshold reached for {KEY} ({current_count + 1}/{merge_threshold}), "
-                        f"proceeding with merge",
+                        f"inserting current profile to pending and triggering batch merge",
                         project_id=project_id
                     )
+                    await pending_storage.insert_pending(
+                        user_id=user_id,
+                        topic=KEY[0],
+                        subtopic=KEY[1],
+                        profile_content=profile_content,
+                        profile_attributes=profile_attributes,
+                        project_id=project_id,
+                        pending_count=current_count + 1
+                    )
+                    # Batch merge all pending entries for this (user, topic, subtopic, project_id)
+                    merge_result = await batch_merge_pending_profiles(
+                        user_id=user_id,
+                        topic=KEY[0],
+                        subtopic=KEY[1],
+                        config=config,
+                        project_id=project_id,
+                        pending_storage=pending_storage
+                    )
+                    # Add merge results to session if successful
+                    if merge_result.success:
+                        TRACE_LOG.info(
+                            user_id,
+                            f"Batch merge completed for {KEY}: {merge_result.message}",
+                            project_id=project_id
+                        )
+                    return
             except Exception as e:
                 TRACE_LOG.warning(
                     user_id,
