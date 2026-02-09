@@ -3,20 +3,19 @@
 This module provides storage for extracted profiles that haven't reached merge threshold yet.
 Part of feature 001-profile-merge-strategy.
 
-Table Schema:
+Table Schema (matches UserProfiles pattern exactly):
     CREATE TABLE PendingProfiles (
-        entry_id VARCHAR(64) PRIMARY KEY,
-        user_id VARCHAR(128) NOT NULL,
-        project_id VARCHAR(64),
-        topic VARCHAR(128) NOT NULL,
-        subtopic VARCHAR(128) NOT NULL,
-        profile_content TEXT NOT NULL,
+        user_id VARCHAR(255) NOT NULL,
+        project_id VARCHAR(255) NOT NULL,
+        entry_id VARCHAR(255) NOT NULL,
+        topic VARCHAR(255) NOT NULL,
+        subtopic VARCHAR(255) NOT NULL,
+        profile_content VARCHAR NOT NULL,
         profile_attributes JSON,
         pending_count INT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_user_topic (user_id, topic, subtopic),
-        INDEX idx_project (project_id)
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        PRIMARY KEY(user_id, project_id, entry_id)
     ) PARTITION BY HASH(user_id) PARTITIONS 16;
 """
 import uuid
@@ -102,19 +101,20 @@ class PendingProfiles(LindormStorageBase):
                 LOG.info("PendingProfiles table already exists, skipping creation")
                 return
 
-            # Create table (without indexes, will add them separately)
+            # Create table (matching UserProfiles pattern exactly)
             cursor.execute("""
                 CREATE TABLE PendingProfiles (
-                    entry_id VARCHAR(64) PRIMARY KEY,
-                    user_id VARCHAR(128) NOT NULL,
-                    project_id VARCHAR(64),
-                    topic VARCHAR(128) NOT NULL,
-                    subtopic VARCHAR(128) NOT NULL,
-                    profile_content TEXT NOT NULL,
+                    user_id VARCHAR(255) NOT NULL,
+                    project_id VARCHAR(255) NOT NULL,
+                    entry_id VARCHAR(255) NOT NULL,
+                    topic VARCHAR(255) NOT NULL,
+                    subtopic VARCHAR(255) NOT NULL,
+                    profile_content VARCHAR NOT NULL,
                     profile_attributes JSON,
                     pending_count INT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    PRIMARY KEY(user_id, project_id, entry_id)
                 ) PARTITION BY HASH(user_id) PARTITIONS 16
             """)
 
