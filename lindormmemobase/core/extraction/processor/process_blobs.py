@@ -107,6 +107,10 @@ async def process_profile_res(
         config: Config,
         project_id: str | None = None,
 ) -> tuple[MergeAddResult, list[dict]]:
+    # T020: Get pending_profiles storage for threshold checking
+    from lindormmemobase.core.storage.manager import StorageManager
+    pending_storage = StorageManager.get_pending_profiles_storage(config)
+
     extracted_data = await extract_topics(user_id, user_memo_str, profile_config, config, project_id)
 
     # 2. Merge it to thw whole profile
@@ -119,6 +123,7 @@ async def process_profile_res(
         total_profiles=extracted_data["total_profiles"],
         config=config,
         project_id=project_id,
+        pending_storage=pending_storage,
     )
 
     delta_profile_data = [

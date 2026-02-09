@@ -83,6 +83,18 @@ class ProcessingError(ExtractionError):
     pass
 
 
+class PendingLimitExceededError(ExtractionError):
+    """Raised when pending profiles exceed max_pending_profiles limit.
+
+    This error occurs when the number of pending profiles for a user
+    exceeds the configured threshold, preventing new profiles from being
+    added to the pending queue.
+    """
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
 class SearchError(LindormMemobaseError):
     """Raised when search operations fail."""
     

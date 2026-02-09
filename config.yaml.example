@@ -68,6 +68,23 @@ event_theme_requirement: "Focus on the user's infos, not its instructions. Do no
 # image_search_default_top_k: 10             # Default number of results
 # image_search_min_score: 0.5                # Minimum similarity score threshold
 
+# === Profile Merge Strategy Configuration ===
+# Configure merge thresholds for different subtopics to control when profiles are merged
+# Format: "topic_name::subtopic_name": threshold_value
+# threshold=1: Merge immediately (default, backward compatible)
+# threshold>1: Batch merge for cost reduction
+# Example:
+# merge_thresholds:
+#   "preferences::dietary": 1       # Immediate merge for time-sensitive data
+#   "interests::hobbies": 10         # Batch 10 profiles before merging
+#   "demographics::basic_info": 50   # Larger batch for stable data
+
+merge_thresholds: {}
+
+# Maximum number of pending profiles allowed per (user_id, topic, subtopic, project_id) tuple
+# Prevents unlimited growth of pending cache. When exceeded, new extractions will fail.
+max_pending_profiles: 1000
+
 # === User Profile Schema ===
 # Define custom profile topics and subtopics
 overwrite_user_profiles:

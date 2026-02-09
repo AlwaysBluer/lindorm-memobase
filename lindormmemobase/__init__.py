@@ -21,7 +21,9 @@ from lindormmemobase.models.response import (
     ImageInput,
     ImageResult,
     ImageSearchFilters,
+    MergeOperationResult,
     PagedResult,
+    PendingProfileEntry,
     ResetResult,
 )
 from lindormmemobase.models.enums import (
@@ -53,7 +55,9 @@ __all__ = [
     "ImageInput",
     "ImageResult",
     "ImageSearchFilters",
+    "MergeOperationResult",
     "PagedResult",
+    "PendingProfileEntry",
     "ResetResult",
     "ImageStorageType",
     "MultimodalEmbeddingProvider",

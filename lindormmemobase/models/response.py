@@ -224,6 +224,78 @@ class ImageSearchFilters(BaseModel):
     metadata_filters: Optional[dict] = Field(None, description="Filter by metadata fields")
 
 
+class MergeOperationResult(BaseModel):
+    """Result of a manual profile merge operation.
+
+    Returned by trigger_merge() API to report the outcome of merging
+    pending profiles into active user profiles.
+
+    Attributes:
+        success: Whether the operation completed without errors
+        merged_count: Number of profiles successfully merged
+        topics_merged: List of (topic, subtopic) tuples that were merged
+        message: Human-readable status message
+
+    Examples:
+        >>> result = MergeOperationResult(
+        ...     success=True,
+        ...     merged_count=5,
+        ...     topics_merged=[("life_plan", "career"), ("interests", "sports")],
+        ...     message="Successfully merged 5 profiles"
+        ... )
+    """
+    success: bool = Field(..., description="Whether the operation completed without errors")
+    merged_count: int = Field(..., description="Number of profiles successfully merged", ge=0)
+    topics_merged: List[tuple[str, str]] = Field(
+        ..., description="List of (topic, subtopic) tuples that were merged"
+    )
+    message: str = Field(..., description="Human-readable status message")
+
+
+class PendingProfileEntry(BaseModel):
+    """A profile entry awaiting merge in the pending cache.
+
+    This model represents a profile stored in the PendingProfiles table,
+    which accumulates extracted profiles until the merge threshold is reached.
+
+    Attributes:
+        entry_id: Unique identifier (UUID) for this pending entry
+        user_id: User identifier (partition key for Lindorm table)
+        project_id: Optional project identifier for multi-tenancy
+        topic: Topic name (e.g., "interests", "preferences")
+        subtopic: Subtopic name (e.g., "hobbies", "dietary")
+        profile_content: Raw extracted profile content
+        profile_attributes: Optional metadata from extraction (e.g., confidence score)
+        pending_count: Current count for this (user, topic, subtopic) tuple
+        created_at: When this entry was created
+        updated_at: When this entry was last updated
+
+    Example:
+        >>> entry = PendingProfileEntry(
+        ...     entry_id="550e8400-e29b-41d4-a716-446655440000",
+        ...     user_id="user_123",
+        ...     project_id="my_project",
+        ...     topic="interests",
+        ...     subtopic="hobbies",
+        ...     profile_content="User enjoys playing tennis and hiking on weekends",
+        ...     profile_attributes={"confidence": 0.9},
+        ...     pending_count=5,
+        ...     created_at=datetime.now(timezone.utc),
+        ...     updated_at=datetime.now(timezone.utc)
+        ... )
+    """
+    entry_id: str = Field(..., description="Unique identifier (UUID) for this pending entry")
+    user_id: str = Field(..., description="User identifier")
+    project_id: Optional[str] = Field(None, description="Optional project identifier for multi-tenancy")
+    topic: str = Field(..., description="Topic name")
+    subtopic: str = Field(..., description="Subtopic name")
+    profile_content: str = Field(..., description="Raw extracted profile content")
+    profile_attributes: Optional[dict] = Field(None, description="Optional metadata from extraction")
+    pending_count: int = Field(..., description="Current count for this (user, topic, subtopic) tuple", ge=0)
+    created_at: Optional[datetime] = Field(None, description="When this entry was created")
+    updated_at: Optional[datetime] = Field(None, description="When this entry was last updated")
+
+
 T = TypeVar('T')
 
 

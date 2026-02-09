@@ -122,3 +122,10 @@ CREATE INDEX srh_idx USING SEARCH ON UserProfiles(
 
 - [SHOW TABLES](https://help.aliyun.com/zh/lindorm/developer-reference/show-tables)
 - [SHOW INDEX](https://help.aliyun.com/zh/lindorm/developer-reference/the-show-index)
+
+## Active Technologies
+- Python 3.11+ (async/await required) + Pydantic (config/models), asyncio (async operations), mysql-connector-python (Lindorm wide table), pytest-asyncio (testing) (001-profile-merge-strategy)
+- Lindorm Wide Table engine (PendingProfiles table, existing UserProfiles table), partitioned by user_id (001-profile-merge-strategy)
+
+## Recent Changes
+- 001-profile-merge-strategy: Added Python 3.11+ (async/await required) + Pydantic (config/models), asyncio (async operations), mysql-connector-python (Lindorm wide table), pytest-asyncio (testing)

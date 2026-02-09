@@ -15,8 +15,13 @@ from pathlib import Path
 from lindormmemobase.config import Config, LOG
 from lindormmemobase.models.profile_topic import ProfileConfig
 from lindormmemobase.models.blob import Blob, BlobType, OpenAICompatibleMessage
-from lindormmemobase.models.response import UserEventGistData, UserEventData, EventSearchFilters
-from lindormmemobase.models.types import  Profile
+from lindormmemobase.models.response import (
+    UserEventGistData,
+    UserEventData,
+    EventSearchFilters,
+    MergeOperationResult,
+)
+from lindormmemobase.models.types import Profile
 from lindormmemobase.core.extraction.processor.process_blobs import process_blobs
 from lindormmemobase.core.search.context import get_user_context
 from lindormmemobase.core.search.events import get_user_events, search_user_events
@@ -1268,3 +1273,152 @@ class LindormMemobase:
             if isinstance(e, LindormMemobaseError):
                 raise
             raise LindormMemobaseError(f"Failed to reset storage: {str(e)}") from e
+
+    async def trigger_merge(
+        self,
+        user_id: str,
+        topic: Optional[str] = None,
+        subtopic: Optional[str] = None,
+        project_id: Optional[str] = None
+    ) -> MergeOperationResult:
+        """Manually trigger merge of pending profiles.
+
+        Forces immediate merging of pending profiles for a user,
+        optionally filtered by topic/subtopic/project.
+
+        Args:
+            user_id: User identifier
+            topic: Optional topic filter
+            subtopic: Optional subtopic filter
+            project_id: Optional project identifier
+
+        Returns:
+            MergeOperationResult with merge statistics
+
+        Raises:
+            LindormMemobaseError: If merge operation fails
+
+        Example:
+            # Merge all pending profiles for a user
+            result = await memobase.trigger_merge("user123")
+
+            # Merge only specific topic
+            result = await memobase.trigger_merge("user123", topic="interests")
+
+            # Merge specific topic and subtopic
+            result = await memobase.trigger_merge(
+                "user123",
+                topic="interests",
+                subtopic="hobbies"
+            )
+        """
+        from lindormmemobase.core.storage.manager import StorageManager
+        from lindormmemobase.core.extraction.processor.merge import batch_merge_pending_profiles
+        from lindormmemobase.config import TRACE_LOG
+        from collections import defaultdict
+
+        try:
+            # Get pending_profiles storage
+            pending_storage = StorageManager.get_pending_profiles_storage(self.config)
+
+            # T028: Get pending entries with filters
+            pending_entries = await pending_storage.get_pending_entries(
+                user_id=user_id,
+                topic=topic,
+                subtopic=subtopic,
+                project_id=project_id
+            )
+
+            # T031: Handle empty pending profiles case gracefully
+            if not pending_entries:
+                TRACE_LOG.info(
+                    user_id,
+                    f"No pending profiles found for merge trigger "
+                    f"(topic={topic}, subtopic={subtopic}, project_id={project_id})",
+                    project_id=project_id
+                )
+                return MergeOperationResult(
+                    success=True,
+                    merged_count=0,
+                    topics_merged=[],
+                    message="No pending profiles found matching the specified filters"
+                )
+
+            # T029: Group entries by (topic, subtopic) tuple
+            groups = defaultdict(list)
+            for entry in pending_entries:
+                key = (entry['topic'], entry['subtopic'])
+                groups[key].append(entry)
+
+            # Batch merge each group
+            total_merged = 0
+            all_topics_merged = []
+            failed_groups = []
+
+            TRACE_LOG.info(
+                user_id,
+                f"Triggering manual merge: {len(groups)} groups to process, "
+                f"{len(pending_entries)} total pending entries",
+                project_id=project_id
+            )
+
+            for (group_topic, group_subtopic), entries in groups.items():
+                try:
+                    # Call batch_merge_pending_profiles for this group
+                    result = await batch_merge_pending_profiles(
+                        user_id=user_id,
+                        topic=group_topic,
+                        subtopic=group_subtopic,
+                        config=self.config,
+                        project_id=project_id,
+                        pending_storage=pending_storage
+                    )
+
+                    if result.success:
+                        total_merged += result.merged_count
+                        all_topics_merged.extend(result.topics_merged)
+                    else:
+                        failed_groups.append(f"{group_topic}::{group_subtopic}")
+                        TRACE_LOG.warning(
+                            user_id,
+                            f"Failed to merge group {group_topic}::{group_subtopic}: {result.message}",
+                            project_id=project_id
+                        )
+                except Exception as e:
+                    failed_groups.append(f"{group_topic}::{group_subtopic}")
+                    TRACE_LOG.error(
+                        user_id,
+                        f"Exception merging group {group_topic}::{group_subtopic}: {str(e)}",
+                        project_id=project_id
+                    )
+
+            # T030: Build MergeOperationResult return object
+            success = len(failed_groups) == 0
+            merged_count = total_merged
+
+            if success:
+                message = f"Successfully merged {merged_count} pending profiles across {len(all_topics_merged)} topic groups"
+            else:
+                message = (
+                    f"Partial merge completed: {merged_count} profiles merged, "
+                    f"{len(failed_groups)} groups failed: {', '.join(failed_groups)}"
+                )
+
+            TRACE_LOG.info(
+                user_id,
+                f"Manual merge completed: success={success}, merged={merged_count}, "
+                f"topics_merged={len(all_topics_merged)}, failed={len(failed_groups)}",
+                project_id=project_id
+            )
+
+            return MergeOperationResult(
+                success=success,
+                merged_count=merged_count,
+                topics_merged=all_topics_merged,
+                message=message
+            )
+
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to trigger merge: {str(e)}") from e

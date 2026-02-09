@@ -1,5 +1,6 @@
 import yaml
 import dataclasses
+import re
 from pydantic import BaseModel, field_validator
 from dataclasses import dataclass, field
 from typing import Optional, Literal
@@ -14,8 +15,11 @@ class ProfileConfig:
     additional_user_profiles: list[dict] = field(default_factory=list)
     overwrite_user_profiles: Optional[list[dict]] = None
     event_theme_requirement: Optional[str] = None
-
     event_tags: Optional[list[dict]] = None
+
+    # Merge configuration fields (T005-T006)
+    merge_thresholds: dict[str, int] = field(default_factory=dict)
+    max_pending_profiles: int = 1000
 
     def __post_init__(self):
         if self.language not in ["en", "zh"]:
@@ -24,6 +28,28 @@ class ProfileConfig:
             [UserProfileTopic(**up) for up in self.additional_user_profiles]
         if self.overwrite_user_profiles:
             [UserProfileTopic(**up) for up in self.overwrite_user_profiles]
+
+        # T008: Validate merge_thresholds format
+        if self.merge_thresholds:
+            pattern = re.compile(r"^[a-z_]+::[a-z_]+$")
+            for key, value in self.merge_thresholds.items():
+                if not pattern.match(key):
+                    raise ValueError(
+                        f"Invalid merge_thresholds key format: '{key}'. "
+                        "Must match pattern 'topic::subtopic' with lowercase letters and underscores only."
+                    )
+                if not isinstance(value, int) or value < 1:
+                    raise ValueError(
+                        f"Invalid merge_thresholds value for '{key}': {value}. "
+                        "Threshold must be an integer >= 1."
+                    )
+
+        # T008: Validate max_pending_profiles
+        if not isinstance(self.max_pending_profiles, int) or self.max_pending_profiles < 1:
+            raise ValueError(
+                f"Invalid max_pending_profiles: {self.max_pending_profiles}. "
+                "Must be an integer >= 1."
+            )
 
     @classmethod
     def load_config_string(cls, config_string: str) -> "ProfileConfig":
@@ -59,7 +85,9 @@ class ProfileConfig:
             'additional_user_profiles': main_config.additional_user_profiles,
             'overwrite_user_profiles': main_config.overwrite_user_profiles,
             'event_theme_requirement': main_config.event_theme_requirement,
-            'event_tags': main_config.event_tags
+            'event_tags': main_config.event_tags,
+            'merge_thresholds': getattr(main_config, 'merge_thresholds', {}) or {},
+            'max_pending_profiles': getattr(main_config, 'max_pending_profiles', 1000)
         }
         return cls(**profile_fields)
 
@@ -82,10 +110,17 @@ class SubTopic(BaseModel):
     description: Optional[str] = None
     update_description: Optional[str] = None
     validate_value: Optional[bool] = None
+    merge_threshold: Optional[int] = None  # T007: Subtopic-level merge threshold
 
     @field_validator("name")
     def validate_name(cls, v):
         return attribute_unify(v)
+
+    @field_validator("merge_threshold")
+    def validate_merge_threshold(cls, v):
+        if v is not None and v < 1:
+            raise ValueError(f"merge_threshold must be >= 1, got {v}")
+        return v
 
     def __getitem__(self, key):
         return getattr(self, key)

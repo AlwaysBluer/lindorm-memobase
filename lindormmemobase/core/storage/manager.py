@@ -29,6 +29,7 @@ class StorageManager:
     _buffer_storage_cache: Dict[Tuple, 'LindormBufferStorage'] = {}
     _image_storage_cache: Dict[Tuple, 'LindormImageStorage'] = {}
     _topic_config_storage_cache: Dict[Tuple, 'TopicConfigStorage'] = {}
+    _pending_profiles_storage_cache: Dict[Tuple, 'PendingProfiles'] = {}
 
     # Thread-safe locks
     _table_lock = threading.Lock()
@@ -37,6 +38,7 @@ class StorageManager:
     _buffer_lock = threading.Lock()
     _image_lock = threading.Lock()
     _topic_config_lock = threading.Lock()
+    _pending_profiles_lock = threading.Lock()
     
     # Initialization state
     _initialized = False
@@ -83,6 +85,7 @@ class StorageManager:
             event_gists_storage = cls.get_event_gists_storage(config)
             buffer_storage = cls.get_buffer_storage(config)
             image_storage = cls.get_image_storage(config)
+            pending_profiles_storage = cls.get_pending_profiles_storage(config)
 
             # Run all initializations concurrently for faster startup
             loop = asyncio.get_running_loop()
@@ -92,6 +95,7 @@ class StorageManager:
                 loop.run_in_executor(None, event_gists_storage.initialize_tables_and_indices),
                 loop.run_in_executor(None, buffer_storage.initialize_tables),
                 loop.run_in_executor(None, image_storage.initialize_tables_and_indices),
+                loop.run_in_executor(None, pending_profiles_storage.initialize_tables),
             )
 
             with cls._init_lock:
@@ -260,6 +264,31 @@ class StorageManager:
             return cls._topic_config_storage_cache[cache_key]
 
     @classmethod
+    def get_pending_profiles_storage(cls, config: Config):
+        """
+        Get or create a PendingProfiles storage instance.
+
+        Args:
+            config: Configuration object
+
+        Returns:
+            PendingProfiles instance
+        """
+        from .pending_profiles import PendingProfiles
+
+        cache_key = (
+            config.lindorm_table_host,
+            config.lindorm_table_port,
+            config.lindorm_table_username,
+            config.lindorm_table_database
+        )
+
+        with cls._pending_profiles_lock:
+            if cache_key not in cls._pending_profiles_storage_cache:
+                cls._pending_profiles_storage_cache[cache_key] = PendingProfiles(config)
+            return cls._pending_profiles_storage_cache[cache_key]
+
+    @classmethod
     def cleanup(cls) -> None:
         """
         Close all connections and clear storage caches.
@@ -322,6 +351,15 @@ class StorageManager:
                     LOG.warning(f"Error closing topic config storage: {str(e)}")
             cls._topic_config_storage_cache.clear()
 
+        with cls._pending_profiles_lock:
+            for storage in cls._pending_profiles_storage_cache.values():
+                try:
+                    if hasattr(storage, 'pool') and storage.pool:
+                        pass
+                except Exception as e:
+                    LOG.warning(f"Error closing pending profiles storage: {str(e)}")
+            cls._pending_profiles_storage_cache.clear()
+
         with cls._init_lock:
             cls._initialized = False
             cls._init_task = None
@@ -376,6 +414,7 @@ class StorageManager:
             "gists_deleted": 0,
             "profiles_deleted": 0,
             "images_deleted": 0,
+            "pending_profiles_deleted": 0,
             "tables_recreated": False
         }
         # Get storage instances
@@ -384,6 +423,8 @@ class StorageManager:
         event_gists_storage = cls.get_event_gists_storage(config)
         profiles_storage = cls.get_table_storage(config)
         image_storage = cls.get_image_storage(config)
+        pending_profiles_storage = cls.get_pending_profiles_storage(config)
+
         # If both user_id and project_id are None, drop and recreate tables
         if user_id is None and project_id is None:
             # Drop and recreate buffer table
@@ -396,6 +437,8 @@ class StorageManager:
             await cls._drop_and_recreate_profiles_table(profiles_storage)
             # Drop and recreate images table
             await cls._drop_and_recreate_images_table(image_storage)
+            # Drop and recreate pending profiles table
+            await cls._drop_and_recreate_pending_profiles_table(pending_profiles_storage)
             result["tables_recreated"] = True
         elif user_id is None or user_id == "":
             raise ValueError("user_id cannot be None or empty")
@@ -415,7 +458,10 @@ class StorageManager:
             # Reset images
             images_count = await image_storage.reset(project_id, user_id)
             result["images_deleted"] = images_count
-        
+            # Reset pending profiles
+            pending_count = await pending_profiles_storage.reset(user_id, project_id)
+            result["pending_profiles_deleted"] = pending_count
+
         return result
     
     @classmethod
@@ -508,6 +554,24 @@ class StorageManager:
                 cursor.close()
                 conn.close()
             storage.initialize_tables_and_indices()
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _drop_and_recreate_sync)
+
+    @classmethod
+    async def _drop_and_recreate_pending_profiles_table(cls, storage) -> None:
+        """Drop and recreate PendingProfiles table."""
+        def _drop_and_recreate_sync():
+            pool = storage._get_pool()
+            conn = pool.get_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DROP TABLE IF EXISTS PendingProfiles")
+                conn.commit()
+            finally:
+                cursor.close()
+                conn.close()
+            storage.initialize_tables()
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _drop_and_recreate_sync)
