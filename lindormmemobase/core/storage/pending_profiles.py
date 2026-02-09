@@ -102,7 +102,7 @@ class PendingProfiles(LindormStorageBase):
                 LOG.info("PendingProfiles table already exists, skipping creation")
                 return
 
-            # Create table
+            # Create table (without indexes, will add them separately)
             cursor.execute("""
                 CREATE TABLE PendingProfiles (
                     entry_id VARCHAR(64) PRIMARY KEY,
@@ -114,11 +114,24 @@ class PendingProfiles(LindormStorageBase):
                     profile_attributes JSON,
                     pending_count INT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_user_topic (user_id, topic, subtopic),
-                    INDEX idx_project (project_id)
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 ) PARTITION BY HASH(user_id) PARTITIONS 16
             """)
+
+            # Create secondary indexes
+            try:
+                cursor.execute("""
+                    CREATE INDEX idx_user_topic ON PendingProfiles (user_id, topic, subtopic)
+                """)
+            except Exception:
+                pass
+
+            try:
+                cursor.execute("""
+                    CREATE INDEX idx_project ON PendingProfiles (project_id)
+                """)
+            except Exception:
+                pass
 
             conn.commit()
             LOG.info("PendingProfiles table created")
