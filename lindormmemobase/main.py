@@ -1044,6 +1044,61 @@ class LindormMemobase:
                 raise
             raise LindormMemobaseError(f"Failed to hybrid search profiles: {str(e)}") from e
 
+    async def search_profiles_by_filter_rrf(
+        self,
+        user_id: str,
+        query: str,
+        topics: Optional[List[str]] = None,
+        subtopics: Optional[List[str]] = None,
+        max_results: int = 10,
+        min_score: float = 0.5,
+        project_id: Optional[str] = None
+    ) -> List[Profile]:
+        """
+        Search profiles using Lindorm filter_rrf hybrid retrieval.
+
+        This method combines full-text and vector retrieval in Lindorm Search
+        using filter_rrf mode with scalar filters.
+
+        Args:
+            user_id: Unique identifier for the user
+            query: Search query text
+            topics: Optional topic filter (OR logic)
+            subtopics: Optional subtopic filter (OR logic)
+            max_results: Maximum number of results to return (default: 10)
+            min_score: Minimum similarity score threshold (default: 0.5)
+            project_id: Optional project filter
+
+        Returns:
+            List of Profile objects matching the query
+
+        Raises:
+            LindormMemobaseError: If search fails
+        """
+        from lindormmemobase.core.search.user_profiles import search_profiles_by_filter_rrf as _search
+
+        try:
+            result = await _search(
+                user_id=user_id,
+                query=query,
+                global_config=self.config,
+                topk=max_results,
+                min_score=min_score,
+                project_id=project_id,
+                topics=topics,
+                subtopics=subtopics
+            )
+            return convert_profile_data_to_profiles(
+                result.profiles,
+                self.config.profile_split_delimiter,
+                topics,
+                max_results
+            )
+        except Exception as e:
+            if isinstance(e, LindormMemobaseError):
+                raise
+            raise LindormMemobaseError(f"Failed to filter_rrf search profiles: {str(e)}") from e
+
     # ===== Buffer Management Methods =====
 
     async def add_blob_to_buffer(

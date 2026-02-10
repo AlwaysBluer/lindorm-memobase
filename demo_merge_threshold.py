@@ -6,7 +6,7 @@ This demo showcases the new merge threshold feature that allows different
 merge behaviors for different subtopics.
 
 Features demonstrated:
-1. Configure merge thresholds per "topic::subtopic"
+1. Configure merge thresholds directly in SubTopic definitions
 2. Immediate merge for time-sensitive data (threshold=1)
 3. Batch merge for stable data (threshold>1) with pending cache
 4. Manual trigger_merge() API for on-demand merging
@@ -32,27 +32,31 @@ Pending Cache: Temporary storage for profiles below merge threshold
   → Can be manually triggered via trigger_merge()
 
 ================================================================================
-CONFIGURATION EXAMPLES (配置示例)
+CONFIGURATION FORMAT (配置格式)
 ================================================================================
 
-# Method 1: Via config.yaml (global default)
-merge_thresholds:
-  "preferences::current_mood": 1      # Immediate merge (time-sensitive)
-  "interests::hobbies": 10           # Batch 10 profiles
-  "interests::long_term": 20         # Batch 20 profiles
-
-# Method 2: Via ProfileConfig in code
-from lindormmemobase.models.profile_topic import ProfileConfig
-
-config = ProfileConfig(
-    merge_thresholds={
-        "preferences::dietary": 1,    # Immediate
-        "interests::reading": 5,      # Batch 5
-    },
-    max_pending_profiles=1000         # Max cache size
+# Method: Define merge_threshold directly in SubTopic
+ProfileConfig(
+    overwrite_user_profiles=[
+        {
+            "topic": "preferences",
+            "description": "用户偏好设置",
+            "sub_topics": [
+                {
+                    "name": "current_mood",
+                    "description": "用户当前的心情状态",
+                    "merge_threshold": 1  # Immediate merge
+                },
+                {
+                    "name": "long_term_goals",
+                    "description": "用户的长期目标",
+                    "merge_threshold": 10  # Batch 10 profiles
+                }
+            ]
+        }
+    ],
+    max_pending_profiles=1000  # Global limit
 )
-
-await memobase.set_project_config("my_app", config)
 
 ================================================================================
 USE CASES (使用场景)
@@ -75,7 +79,7 @@ USE CASES (使用场景)
 
 import asyncio
 from datetime import datetime
-from lindormmemobase import LindormMemobase, Config, ProfileConfig
+from lindormmemobase import LindormMemobase, Config
 from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
 
 
@@ -102,33 +106,82 @@ async def demo_merge_threshold():
     print(f"✓ 项目ID: {project_id}")
     print()
 
-    # ========== Step 2: Configure Merge Thresholds ==========
-    print("📌 步骤 2: 配置合并阈值")
+    # ========== Step 2: Configure Profile with Merge Thresholds ==========
+    print("📌 步骤 2: 配置 Profile (包含 merge_threshold)")
     print("-" * 80)
 
-    # Configure project-specific merge thresholds
+    from lindormmemobase.models.profile_topic import ProfileConfig
+
+    # Configure project-specific profiles with merge thresholds
     profile_config = ProfileConfig(
         language="zh",
-        merge_thresholds={
-            # Time-sensitive: immediate merge
-            "preferences::current_mood": 1,
-            "preferences::immediate_needs": 1,
-
-            # Stable: batch merge for cost savings
-            "interests::hobbies": 3,      # Batch 3 profiles
-            "interests::reading": 3,      # Batch 3 profiles
-            "demographics::basic_info": 5, # Batch 5 profiles
-        },
-        max_pending_profiles=1000
+        max_pending_profiles=1000,
+        overwrite_user_profiles=[
+            # Topic 1: 偏好设置 (Preferences) - 时效性强，立即合并
+            {
+                "topic": "preferences",
+                "description": "用户的偏好设置",
+                "sub_topics": [
+                    {
+                        "name": "current_mood",
+                        "description": "用户当前的心情状态",
+                        "update_description": "只保留最新的心情描述",
+                        "merge_threshold": 1  # 立即合并
+                    },
+                    {
+                        "name": "immediate_needs",
+                        "description": "用户当前的紧急需求",
+                        "update_description": "只保留最新的需求信息",
+                        "merge_threshold": 1  # 立即合并
+                    }
+                ]
+            },
+            # Topic 2: 兴趣爱好 (Interests) - 相对稳定，批量合并
+            {
+                "topic": "interests",
+                "description": "用户的兴趣爱好",
+                "sub_topics": [
+                    {
+                        "name": "hobbies",
+                        "description": "用户的业余爱好，如运动、娱乐等",
+                        "update_description": "保留所有提到的爱好，合并为完整的兴趣描述",
+                        "merge_threshold": 3  # 批量3条后合并
+                    },
+                    {
+                        "name": "reading",
+                        "description": "用户的阅读偏好和正在阅读的书籍",
+                        "update_description": "保留阅读偏好，更新正在阅读的书籍",
+                        "merge_threshold": 3  # 批量3条后合并
+                    }
+                ]
+            },
+            # Topic 3: 基本信息 (Demographics) - 非常稳定，大批量合并
+            {
+                "topic": "demographics",
+                "description": "用户的基本人口统计信息",
+                "sub_topics": [
+                    {
+                        "name": "basic_info",
+                        "description": "用户的基本信息，如性别、年龄、所在地等",
+                        "update_description": "只保留最新和最完整的基本信息",
+                        "merge_threshold": 5  # 批量5条后合并
+                    }
+                ]
+            }
+        ]
     )
 
     await memobase.set_project_config(project_id, profile_config)
-    print("✓ 已配置项目合并策略:")
-    print("  - preferences::current_mood: threshold=1 (立即合并)")
-    print("  - preferences::immediate_needs: threshold=1 (立即合并)")
-    print("  - interests::hobbies: threshold=3 (批量合并)")
-    print("  - interests::reading: threshold=3 (批量合并)")
-    print("  - demographics::basic_info: threshold=5 (批量合并)")
+
+    print("✓ 已配置项目 Profile Config:")
+    print("  【preferences - 偏好设置】")
+    print("    - current_mood: threshold=1 (立即合并)")
+    print("    - immediate_needs: threshold=1 (立即合并)")
+    print("  【interests - 兴趣爱好】")
+    print("    - hobbies: threshold=3 (批量合并)")
+    print("    - reading: threshold=3 (批量合并)")
+    print("  【demographics - 基本信息】")
+    print("    - basic_info: threshold=5 (批量合并)")
     print()
 
     # ========== Step 3: Immediate Merge Demo ==========
@@ -347,9 +400,20 @@ async def demo_merge_threshold():
     # Configure different thresholds for project 2
     profile_config_2 = ProfileConfig(
         language="zh",
-        merge_thresholds={
-            "interests::hobbies": 1,  # Immediate merge for project 2
-        }
+        max_pending_profiles=1000,
+        overwrite_user_profiles=[
+            {
+                "topic": "interests",
+                "description": "用户的兴趣爱好",
+                "sub_topics": [
+                    {
+                        "name": "hobbies",
+                        "description": "用户的业余爱好",
+                        "merge_threshold": 1  # 项目2: 立即合并
+                    }
+                ]
+            }
+        ]
     )
     await memobase.set_project_config(project_id_2, profile_config_2)
 

@@ -394,3 +394,35 @@ async def hybrid_search_profiles(
     
     result_profiles = [embedding_results.profiles[r.index] for r in rerank_results]
     return UserProfilesData(profiles=result_profiles)
+
+
+async def search_profiles_by_filter_rrf(
+    user_id: str,
+    query: str,
+    global_config: Config,
+    topk: int = 10,
+    min_score: float = 0.5,
+    project_id: Optional[str] = None,
+    topics: Optional[list[str]] = None,
+    subtopics: Optional[list[str]] = None
+) -> UserProfilesData:
+    """Search profiles using Lindorm filter_rrf hybrid retrieval."""
+    from lindormmemobase.embedding import get_embedding
+    from lindormmemobase.core.storage.user_profiles import get_lindorm_table_storage
+
+    query_embeddings = await get_embedding([query], phase="query", config=global_config)
+    query_vector = query_embeddings[0].tolist()
+
+    storage = get_lindorm_table_storage(global_config)
+    results = await storage.hybrid_search_profiles(
+        user_id=user_id,
+        query=query,
+        query_vector=query_vector,
+        size=topk,
+        min_score=min_score,
+        project_id=project_id,
+        topics=topics,
+        subtopics=subtopics
+    )
+
+    return UserProfilesData(profiles=results)

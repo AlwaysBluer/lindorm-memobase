@@ -551,11 +551,10 @@ class LindormTableStorage(LindormStorageBase):
         
         try:
             filter_conditions = [
-                {"term": {"user_id": user_id}},
-                {"match": {"content": {"query": query}}}
+                {"term": {"user_id": user_id}}
             ]
             
-            if project_id:
+            if project_id is not None:
                 filter_conditions.append({"term": {"project_id": project_id}})
             
             if topics:
@@ -579,7 +578,7 @@ class LindormTableStorage(LindormStorageBase):
                             "vector": query_vector,
                             "filter": {
                                 "bool": {
-                                    "must": [{"bool": {"must": filter_conditions}}]
+                                    "filter": filter_conditions
                                 }
                             },
                             "k": size,
@@ -589,11 +588,7 @@ class LindormTableStorage(LindormStorageBase):
                 "ext": {
                     "lvector": {
                         "min_score": str(min_score),
-                        "hybrid_search_type": "filter_rrf",
-                        "filter_type": "pre_filter",
-                        "rrf_knn_weight_factor": "0.6",
-                        "client_refactor": "true",
-                        "rrf_rank_constant": "2"
+                        "filter_type": "pre_filter"
                     }
                 }
             }
@@ -624,6 +619,96 @@ class LindormTableStorage(LindormStorageBase):
             return results
         except Exception as e:
             raise SearchStorageError(f"Failed to vector search profiles: {str(e)}") from e
+
+    async def hybrid_search_profiles(
+        self,
+        user_id: str,
+        query: str,
+        query_vector: List[float],
+        size: int = 10,
+        min_score: float = 0.5,
+        project_id: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        subtopics: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """Hybrid vector + full-text search on UserProfiles using Lindorm filter_rrf mode."""
+        from lindormmemobase.utils.errors import SearchStorageError
+
+        try:
+            scalar_filter_conditions = [
+                {"term": {"user_id": user_id}}
+            ]
+
+            if project_id is not None:
+                scalar_filter_conditions.append({"term": {"project_id": project_id}})
+
+            if topics:
+                scalar_filter_conditions.append({
+                    "terms": {"topic": topics}
+                })
+
+            if subtopics:
+                scalar_filter_conditions.append({
+                    "terms": {"subtopic": subtopics}
+                })
+
+            search_query = {
+                "size": size,
+                "_source": {
+                    "exclude": ["embedding", "_searchindex_id"]
+                },
+                "query": {
+                    "knn": {
+                        "embedding": {
+                            "vector": query_vector,
+                            "filter": {
+                                "bool": {
+                                    "must": [
+                                        {"bool": {"must": [{"match": {"content": {"query": query}}}]}},
+                                        {"bool": {"filter": scalar_filter_conditions}}
+                                    ]
+                                }
+                            },
+                            "k": size,
+                        }
+                    }
+                },
+                "ext": {
+                    "lvector": {
+                        "min_score": str(min_score),
+                        "hybrid_search_type": "filter_rrf",
+                        "filter_type": "efficient_filter",
+                        "rrf_knn_weight_factor": "0.5",
+                    }
+                }
+            }
+
+            response = self.client.search(
+                index=self.profile_index_name,
+                body=search_query,
+                routing=user_id
+            )
+
+            results = []
+            for hit in response['hits']['hits']:
+                source = hit['_source']
+                results.append({
+                    'id': source.get('profile_id', hit['_id']),
+                    'content': source.get('content', ''),
+                    'attributes': {
+                        'topic': source.get('topic', ''),
+                        'sub_topic': source.get('subtopic', ''),
+                        'update_hits': source.get('update_hits', 0),
+                    },
+                    'created_at': source.get('created_at'),
+                    'updated_at': source.get('updated_at'),
+                    'similarity': hit['_score'],
+                    'project_id': source.get('project_id', DEFAULT_PROJECT_ID)
+                })
+
+            return results
+        except Exception as e:
+            raise SearchStorageError(f"Failed to hybrid search profiles: {str(e)}") from e
 
 
 async def add_user_profiles(

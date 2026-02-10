@@ -505,7 +505,50 @@ for profile in profiles:
 - 使用向量嵌入进行语义相似度搜索
 - 延迟最低（约 50ms）
 - 绕过 LLM 过滤，适合高吞吐量场景
-- 使用 Lindorm Search 的 HNSW 向量索引 + RRF 混合检索
+- 使用 Lindorm Search 的 HNSW 向量索引进行纯向量检索（pre_filter）
+
+#### Lindorm filter_rrf 混合搜索档案（NEW）
+
+使用 Lindorm Search 的全文 + 向量融合检索（filter_rrf）：
+
+```python
+async def search_profiles_by_filter_rrf(
+    user_id: str,
+    query: str,
+    topics: Optional[List[str]] = None,
+    subtopics: Optional[List[str]] = None,
+    max_results: int = 10,
+    min_score: float = 0.5,
+    project_id: Optional[str] = None
+) -> List[Profile]
+```
+
+**参数说明：**
+- `user_id`: 用户标识符
+- `query`: 搜索查询文本
+- `topics`: 主题过滤（可选，OR 逻辑）
+- `subtopics`: 子主题过滤（可选，OR 逻辑）
+- `max_results`: 返回的最大结果数（默认：10）
+- `min_score`: 最小相似度阈值（默认：0.5）
+- `project_id`: 项目过滤（可选）
+
+**示例：**
+
+```python
+profiles = await memobase.search_profiles_by_filter_rrf(
+    user_id="user123",
+    query="旅行目的地和计划",
+    topics=["travel"],
+    max_results=5,
+    min_score=0.3,
+    project_id="project_a"
+)
+```
+
+**特点：**
+- 使用 Lindorm Search 的 `filter_rrf` 融合模式
+- 将全文 `match(content)` 与向量召回融合排序
+- 支持 `project_id/topic/subtopic` 标量过滤
 
 #### Rerank 模型搜索档案（NEW）
 
@@ -608,11 +651,13 @@ profiles = await memobase.search_profiles_hybrid(
 |------|------|--------|----------|
 | `search_profiles` | 最慢 (~2000ms) | 最高 | 复杂推理，需要 LLM 理解 |
 | `search_profiles_by_embedding` | 最快 (~50ms) | 良好 | 实时应用，高吞吐量 |
+| `search_profiles_by_filter_rrf` | 快 (~80-150ms) | 很高 | Lindorm 原生全文+向量融合 |
 | `search_profiles_with_rerank` | 较慢 (~500ms) | 很高 | 复杂查询，小规模档案 |
 | `search_profiles_hybrid` | 中等 (~200ms) | 很高 | **生产推荐**，平衡方案 |
 
 **配置要求：**
 - `search_profiles_by_embedding`: 需要 `enable_profile_embedding=True`
+- `search_profiles_by_filter_rrf`: 需要 `enable_profile_embedding=True`
 - `search_profiles_with_rerank`: 需要配置 `rerank_provider`、`rerank_base_url`、`rerank_api_key`
 - `search_profiles_hybrid`: 需要同时满足上述两项配置
 

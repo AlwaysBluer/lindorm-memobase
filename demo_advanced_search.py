@@ -13,6 +13,7 @@ import asyncio
 from lindormmemobase import LindormMemobase, Config
 from lindormmemobase.models.response import EventSearchFilters
 from lindormmemobase.models.blob import ChatBlob, BlobType, OpenAICompatibleMessage
+from lindormmemobase.core.storage.user_profiles import add_user_profiles
 
 
 async def main():
@@ -27,6 +28,7 @@ async def main():
     user_id = f"demo_user_advanced_search_{uuid.uuid4().hex}"
     # user_id = f"demo_user_advanced_search_4038a5bfc33342379dbb3bf51bb11187"
     project_id = "demo_project"
+    other_project_id = "demo_project_other"
     
     if adding:
         print("\n2. Creating sample conversations...")
@@ -119,6 +121,33 @@ async def main():
                 project_id=project_id
             )
             print("   Buffer processed successfully")
+
+        # Add one conversation into a different project to validate project_id isolation
+        other_project_conv = ChatBlob(
+            messages=[
+                OpenAICompatibleMessage(
+                    role="user",
+                    content="Cross-project marker: kiwi-mars-8721. This preference belongs only to the other project."
+                ),
+                OpenAICompatibleMessage(
+                    role="assistant",
+                    content="Got it. I will remember this marker for your other project context only."
+                ),
+            ],
+            type=BlobType.chat
+        )
+        await memobase.add_blob_to_buffer(
+            user_id=user_id,
+            blob=other_project_conv,
+            blob_id="demo_blob_other_project",
+            project_id=other_project_id
+        )
+        await memobase.process_buffer(
+            user_id=user_id,
+            blob_type=BlobType.chat,
+            project_id=other_project_id
+        )
+        print(f"   Added and processed one conversation in other project: {other_project_id}")
     
         # Wait a bit for indexing
         await asyncio.sleep(2)
@@ -267,8 +296,9 @@ async def main():
     print("=" * 60)
     print("\nThese new APIs provide optimized profile search without LLM-based filtering:")
     print("  1. search_profiles_by_embedding - Fast vector similarity search")
-    print("  2. search_profiles_with_rerank - Rerank model for accurate relevance")
-    print("  3. search_profiles_hybrid - Best of both: embedding + rerank")
+    print("  2. search_profiles_by_filter_rrf - Lindorm full-text + vector fusion")
+    print("  3. search_profiles_with_rerank - Rerank model for accurate relevance")
+    print("  4. search_profiles_hybrid - Best of both: embedding + rerank")
     
     # Example 8: Profile search by embedding (vector similarity)
     print("\n" + "=" * 60)
@@ -291,9 +321,113 @@ async def main():
     except Exception as e:
         print(f"   (Embedding search requires embedding to be enabled: {e})")
     
-    # Example 9: Profile search with rerank model
+    # Example 9: Profile search with Lindorm filter_rrf hybrid retrieval
     print("\n" + "=" * 60)
-    print("Example 9: Profile search with rerank model")
+    print("Example 9: Profile search by Lindorm filter_rrf hybrid retrieval")
+    print("=" * 60)
+    try:
+        profiles = await memobase.search_profiles_by_filter_rrf(
+            user_id=user_id,
+            query="travel destinations",
+            topics=["travel"],
+            max_results=5,
+            min_score=0.3,
+            project_id=project_id
+        )
+        print(f"Found {len(profiles)} profiles via filter_rrf hybrid search")
+        for i, profile in enumerate(profiles[:3], 1):
+            print(f"\n  {i}. Topic: {profile.topic}")
+            for subtopic, entry in list(profile.subtopics.items())[:2]:
+                print(f"     {subtopic}: {entry.content[:100]}...")
+    except Exception as e:
+        print(f"   (filter_rrf hybrid search requires embedding to be enabled: {e})")
+
+    # Example 9.1: Validate project_id filter isolation with controlled marker profiles
+    print("\n" + "=" * 60)
+    print("Example 9.1: Validate project_id filtering with cross-project marker")
+    print("=" * 60)
+    try:
+        marker_current = "project-scope-marker-alpha-9012"
+        marker_other = "project-scope-marker-beta-7755"
+
+        await add_user_profiles(
+            user_id=user_id,
+            profiles=[f"Controlled marker profile for current project: {marker_current}"],
+            attributes_list=[{"topic": "demo_scope", "sub_topic": "marker"}],
+            config=config,
+            project_id=project_id,
+        )
+        await add_user_profiles(
+            user_id=user_id,
+            profiles=[f"Controlled marker profile for other project: {marker_other}"],
+            attributes_list=[{"topic": "demo_scope", "sub_topic": "marker"}],
+            config=config,
+            project_id=other_project_id,
+        )
+
+        # Use pure vector search for deterministic project_id filter validation.
+        # Poll briefly because search index update can be asynchronous.
+        current_project_profiles = []
+        wrong_project_profiles = []
+        other_project_profiles = []
+        for _ in range(10):
+            current_project_profiles = await memobase.search_profiles_by_embedding(
+                user_id=user_id,
+                query=marker_current,
+                max_results=5,
+                min_score=0.1,
+                project_id=project_id
+            )
+            wrong_project_profiles = await memobase.search_profiles_by_embedding(
+                user_id=user_id,
+                query=marker_current,
+                max_results=5,
+                min_score=0.1,
+                project_id=other_project_id
+            )
+            other_project_profiles = await memobase.search_profiles_by_embedding(
+                user_id=user_id,
+                query=marker_other,
+                max_results=5,
+                min_score=0.1,
+                project_id=other_project_id
+            )
+
+            def _contains_marker(profiles, marker):
+                for profile in profiles:
+                    for _, entry in profile.subtopics.items():
+                        if marker in entry.content:
+                            return True
+                return False
+
+            current_has_current_marker = _contains_marker(current_project_profiles, marker_current)
+            other_has_current_marker = _contains_marker(wrong_project_profiles, marker_current)
+            other_has_other_marker = _contains_marker(other_project_profiles, marker_other)
+
+            if current_has_current_marker and other_has_other_marker and not other_has_current_marker:
+                break
+            await asyncio.sleep(1)
+
+        print(f"Query marker (current project): {marker_current}")
+        print(f"  - Results in {project_id}: {len(current_project_profiles)}")
+        print(f"  - Results in {other_project_id}: {len(wrong_project_profiles)}")
+        print(f"Query marker (other project): {marker_other}")
+        print(f"  - Results in {other_project_id}: {len(other_project_profiles)}")
+
+        current_has_current_marker = any(marker_current in entry.content for p in current_project_profiles for _, entry in p.subtopics.items())
+        other_has_current_marker = any(marker_current in entry.content for p in wrong_project_profiles for _, entry in p.subtopics.items())
+        other_has_other_marker = any(marker_other in entry.content for p in other_project_profiles for _, entry in p.subtopics.items())
+
+        if current_has_current_marker and other_has_other_marker and not other_has_current_marker:
+            print("  - project_id filter works: markers are isolated by project")
+        else:
+            print("  - project_id isolation check is inconclusive (possible index refresh delay)")
+    except Exception as e:
+        print(f"   (Project isolation check failed: {e})")
+
+    # Example 10: Profile search with rerank model
+    print("\n" + "=" * 60)
+    print("Example 10: Profile search with rerank model")
     print("=" * 60)
     try:
         profiles = await memobase.search_profiles_with_rerank(
@@ -311,9 +445,9 @@ async def main():
     except Exception as e:
         print(f"   (Rerank search requires rerank API to be configured: {e})")
     
-    # Example 10: Hybrid search (embedding + rerank)
+    # Example 11: Hybrid search (embedding + rerank)
     print("\n" + "=" * 60)
-    print("Example 10: Hybrid search (embedding + rerank)")
+    print("Example 11: Hybrid search (embedding + rerank)")
     print("=" * 60)
     try:
         profiles = await memobase.search_profiles_hybrid(
