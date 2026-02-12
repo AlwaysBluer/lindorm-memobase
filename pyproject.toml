@@ -1,6 +1,6 @@
 [project]
 name = "lindorm-memobase"
-version = "0.3.0.1"
+version = "0.3.0.3"
 description = "A lightweight memory extraction and profile management system for LLM applications"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -26,7 +26,7 @@ dependencies = [
     "tenacity>=8.5.0",
     "typeguard>=4.4.4",
     "opensearch-py>=2.0.0",
-    "mysql-connector-python==8.0.11",
+    "mysql-connector-python==8.4.0",
     "numpy"
 ]
 
